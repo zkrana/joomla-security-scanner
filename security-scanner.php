@@ -523,8 +523,8 @@ $KNOWN_VENDOR_PATH_FRAGMENTS = [
     '/administrator/components/com_sppagebuilder/assets/vendor/phpseclib/',
 ];
 
-// Path fragments that are always legitimate Joomla / SPPB / Helix Ultimate
-// core code, exempted from the generic "executable file in a media/images
+// Path fragments that are always legitimate Joomla / SPPB / Helix Ultimate /
+// JCE core code, exempted from the generic "executable file in a media/images
 // path" heuristic (content-signature scanning still applies to all of them).
 $SAFE_PATH_FRAGMENTS = [
     '/administrator/components/com_sppagebuilder/views/',
@@ -544,6 +544,21 @@ $SAFE_PATH_FRAGMENTS = [
     '/templates/helix-ultimate/',
     '/templates/shaper_helixultimate/',
     '/templates/shaper_helix_ultimate/',
+    // JCE editor core code (views/controllers/models/libraries are not
+    // user-uploadable content, same rationale as the SPPB entries above).
+    '/administrator/components/com_jce/views/',
+    '/administrator/components/com_jce/models/',
+    '/administrator/components/com_jce/controllers/',
+    '/administrator/components/com_jce/tables/',
+    '/administrator/components/com_jce/helpers/',
+    '/administrator/components/com_jce/editor/libraries/',
+    '/administrator/components/com_jce/editor/tiny_mce/',
+    '/components/com_jce/',
+    '/media/com_jce/js/',
+    '/media/com_jce/css/',
+    '/media/com_jce/editor/tiny_mce/',
+    '/plugins/editors/jce/',
+    '/plugins/editors-xtd/jcefilelink/',
 ];
 
 // Filenames matching known malicious patterns from real SPPB compromises.
@@ -574,6 +589,17 @@ $ICONFONT_ALLOWED_DIRNAMES   = ['css','font','fonts','demo','docs','demo-files']
 $ICONFONT_ALLOWED_EXTENSIONS = ['woff','woff2','ttf','eot','otf','svg','css','json','html','htm','txt','md'];
 $ICONFONT_ALLOWED_BARE_NAMES = ['license','readme','changelog'];
 
+// Strict allow-list for JCE's file browser upload roots (images/, media/jce/,
+// the "jce" file-browser connector folder). Several real-world JCE
+// compromises have dropped shells through the file browser's upload path,
+// the same way SPPB's iconfont path gets abused. Bare extension-less files
+// and any executable extension inside these folders are flagged.
+$JCE_UPLOAD_PATH_FRAGMENTS = [
+    '/media/com_jce/editor/tiny_mce/plugins/filemanager/',
+    '/components/com_jce/editor/extensions/filesystem/',
+];
+$JCE_UPLOAD_ALLOWED_EXTENSIONS = ['jpg','jpeg','png','gif','webp','svg','pdf','doc','docx','xls','xlsx','zip','css','js','json'];
+
 $EXEC_EXTS = ['php','phtml','php3','php4','php5','php7','phar','pht'];
 
 // Joomla files we never want to flag or delete from the bare webroot scan.
@@ -591,6 +617,12 @@ $fileFindings = [];
 $scanDirs = [
     $JOOMLA_ROOT.'/media/com_sppagebuilder',
     $JOOMLA_ROOT.'/administrator/components/com_sppagebuilder',
+    // JCE editor component — flagged by some hosts as a secondary infection
+    // vector chained alongside the SPPB upload vulnerability.
+    $JOOMLA_ROOT.'/media/com_jce',
+    $JOOMLA_ROOT.'/administrator/components/com_jce',
+    $JOOMLA_ROOT.'/components/com_jce',
+    $JOOMLA_ROOT.'/plugins/editors/jce',
     $JOOMLA_ROOT.'/images',
     $JOOMLA_ROOT.'/media',
     $JOOMLA_ROOT.'/tmp',
@@ -604,6 +636,7 @@ foreach ($scanDirs as $dir) {
         &$fileFindings, $JOOMLA_ROOT, $KNOWN_VENDOR_PATH_FRAGMENTS, $SAFE_PATH_FRAGMENTS,
         $SUSPICIOUS_FILENAME_REGEXES, $CONTENT_SIGNATURES, $MAX_FILE_SCAN_SIZE,
         $ICONFONT_ALLOWED_DIRNAMES, $ICONFONT_ALLOWED_EXTENSIONS, $ICONFONT_ALLOWED_BARE_NAMES,
+        $JCE_UPLOAD_PATH_FRAGMENTS, $JCE_UPLOAD_ALLOWED_EXTENSIONS,
         $EXEC_EXTS, &$seenAbs
     ) {
         if (isset($seenAbs[$path])) return;
@@ -633,6 +666,28 @@ foreach ($scanDirs as $dir) {
                         $reasons[] = 'Unrecognized file type inside icon-font asset directory.';
                     }
                 }
+            }
+            if ($flagged) {
+                $clusterCount = clusterSiblingCount($path);
+                if ($clusterCount >= 3) {
+                    $reasons[] = "Appeared together with {$clusterCount} other new items within the same couple of minutes — consistent with an automated/scripted drop.";
+                }
+            }
+        }
+
+        // ---- Strict allow-list for JCE file-browser upload roots ----
+        $inJceUploadPath = false;
+        foreach ($JCE_UPLOAD_PATH_FRAGMENTS as $frag) {
+            if (stripos($path, $frag) !== false) { $inJceUploadPath = true; break; }
+        }
+        if (!$isDir && $inJceUploadPath && !$flagged) {
+            $extL = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+            if (in_array($extL, $EXEC_EXTS, true)) {
+                $flagged = true;
+                $reasons[] = 'Executable file inside JCE file-browser upload path — this folder should never contain runnable code.';
+            } elseif ($extL !== '' && !in_array($extL, $JCE_UPLOAD_ALLOWED_EXTENSIONS, true)) {
+                $flagged = true;
+                $reasons[] = 'Unrecognized file type inside JCE file-browser upload path.';
             }
             if ($flagged) {
                 $clusterCount = clusterSiblingCount($path);
@@ -1061,11 +1116,21 @@ input[type=checkbox] { accent-color: var(--blue); width: 15px; height: 15px; cur
     its own. Always keep a backup before deleting anything.
   </div>
 
+  <div class="disclaimer">
+    <strong>A note on JCE:</strong> some hosts have reported malicious files appearing inside the JCE editor component
+    (<code>com_jce</code>) on sites that were also hit by the SP Page Builder upload vulnerability — likely the same
+    attacker using JCE's own file-browser upload path as a secondary or fallback drop point once they had a foothold.
+    This scanner now also walks <code>media/com_jce</code>, <code>administrator/components/com_jce</code>,
+    <code>components/com_jce</code>, and <code>plugins/editors/jce</code> using the same heuristics. If you don't
+    actively need JCE, updating it to the latest release — or removing it entirely if it's unused — is worth doing
+    alongside the SPPB fixes below.
+  </div>
+
   <!-- 1. Files -->
   <div class="section">
     <div class="section-header">
       <div class="section-num">1</div>
-      <div class="section-title">Suspicious files &amp; folders <small>media · images · com_sppagebuilder · tmp · cache · webroot</small></div>
+      <div class="section-title">Suspicious files &amp; folders <small>media · images · com_sppagebuilder · com_jce · tmp · cache · webroot</small></div>
     </div>
     <div class="panel">
       <?php if (empty($fileFindings)): ?>
@@ -1209,6 +1274,7 @@ input[type=checkbox] { accent-color: var(--blue); width: 15px; height: 15px; cur
       <ul>
         <li><span><strong>Update SP Page Builder immediately</strong> to the latest version — repeated infections in the same upload path almost always mean the underlying upload vulnerability is still unpatched.</span></li>
         <li><span><strong>Update Helix Ultimate and every other extension/template</strong> too — attackers often chain together whichever vulnerable extension is easiest, not just SPPB.</span></li>
+        <li><span><strong>Update or remove the JCE editor.</strong> Some hosts have flagged malicious files appearing inside <code>com_jce</code> on sites also hit by the SPPB exploit — most likely opportunistic reuse of JCE's own upload path once a foothold was established, rather than a new unrelated vulnerability. If you don't actively use JCE's editor or file browser, removing the component entirely is the simplest fix; if you do need it, update to the current release and re-run this scan afterward.</span></li>
         <li>
           <span><strong>Block PHP execution in upload directories</strong> as a stop-gap even after patching, via <code>.htaccess</code>:
           <pre>&lt;DirectoryMatch "/(media|images|uploads|tmp|cache|assets|icons|fonts)(/|$)"&gt;
@@ -1219,7 +1285,7 @@ input[type=checkbox] { accent-color: var(--blue); width: 15px; height: 15px; cur
 &lt;/DirectoryMatch&gt;</pre>
           </span>
         </li>
-        <li><span><strong>Verify against a fresh copy.</strong> This scanner uses heuristics, not file checksums. Download a clean copy of SP Page Builder / Helix Ultimate from the official source and diff (<code>diff -rq</code>) the installed version against it to catch anything subtler than these rules.</span></li>
+        <li><span><strong>Verify against a fresh copy.</strong> This scanner uses heuristics, not file checksums. Download a clean copy of SP Page Builder / Helix Ultimate / JCE from the official source and diff (<code>diff -rq</code>) the installed version against it to catch anything subtler than these rules.</span></li>
       </ul>
 
       <h4>Look beyond the obvious folders</h4>

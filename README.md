@@ -1,11 +1,12 @@
 # 🛡️ SP Page Builder Infection Scanner for Joomla
 
-A lightweight but powerful **Joomla security scanner** built to detect and remove malware caused by the **SP Page Builder uploadCustomIcon RCE vulnerability (pre-6.6.2)**.
+A lightweight but powerful **Joomla security scanner** built to detect and remove malware caused by the **SP Page Builder uploadCustomIcon RCE vulnerability (pre-6.6.2)** — including secondary infections found inside the **JCE editor component (com_jce)**.
 
 This tool helps you quickly identify:
 - Webshell backdoors
 - Rogue Joomla Super Users
 - Suspicious PHP uploads
+- Malicious files inside the JCE editor's upload paths
 - Database injections
 - Known SPPB exploit patterns
 
@@ -21,6 +22,10 @@ A major vulnerability was discovered in **SP Page Builder (< 6.6.2)**:
 - Unauthorized admin account creation
 
 👉 **Always update to SP Page Builder 6.6.2 or higher before scanning**
+
+Several hosts have also reported malicious files appearing inside the **JCE editor component (com_jce)** on sites compromised via SPPB — most likely the same attacker reusing JCE's own file-browser upload path as a secondary drop point once a foothold was established.
+
+👉 **If you run JCE, update it to the latest version — or remove it entirely if it's unused**
 
 ---
 
@@ -43,6 +48,7 @@ If this tool helps you:
 ## 🚀 Features
 
 * 🔍 Detects malware files and PHP shells
+* 🧩 Scans both SP Page Builder **and** JCE editor directories
 * 👤 Finds rogue Joomla admin accounts
 * 🧠 Pattern-based exploit detection
 * 🗄️ Database injection scanning
@@ -120,6 +126,7 @@ Login using your secret key.
 * `eval(base64_decode())`
 * `codex-sppb-*.php`
 * Unexpected executables in upload folders
+* Malicious files inside JCE's editor and file-browser upload paths (`media/com_jce`, `administrator/components/com_jce`, `components/com_jce`, `plugins/editors/jce`)
 
 ---
 
@@ -147,14 +154,15 @@ If malware is found:
 
 1. Delete all **high-confidence files**
 2. Remove rogue admin accounts
-3. Change all passwords:
+3. Update or remove the **JCE editor** if flagged or unused
+4. Change all passwords:
 
    * Joomla admin
    * Database
    * SMTP/API keys
-4. Clear sessions (`#__session`)
-5. Check cron jobs
-6. Re-scan after cleanup
+5. Clear sessions (`#__session`)
+6. Check cron jobs
+7. Re-scan after cleanup
 
 ---
 
@@ -187,11 +195,12 @@ After scanning, use the built-in cleanup:
 
 1. Backup full website
 2. Update SP Page Builder to 6.6.2+
-3. Upload scanner
-4. Run full scan
-5. Remove threats
-6. Rotate credentials
-7. Delete scanner (self-destruct)
+3. Update or remove JCE if it's installed
+4. Upload scanner
+5. Run full scan
+6. Remove threats
+7. Rotate credentials
+8. Delete scanner (self-destruct)
 
 ---
 
@@ -201,6 +210,7 @@ After scanning, use the built-in cleanup:
 * Scan all websites under same hosting account
 * Monitor server logs for exploit attempts
 * Use firewall (Admin Tools / RSFirewall)
+* Audit every editor/extension with file-upload capability (not just SPPB and JCE) for the same upload-path weaknesses
 
 ---
 
@@ -215,7 +225,3 @@ Building secure, scalable digital systems for modern web applications.
 ## 📄 License
 
 MIT / Internal Security Tool (update as needed)
-
-```
-
----
