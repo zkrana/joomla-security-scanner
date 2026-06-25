@@ -216,7 +216,7 @@ After scanning, use the built-in cleanup:
 
 ## 👨‍💻 Author
 
-**Lyzerslab**
+**ZKRANA**
 
 Building secure, scalable digital systems for modern web applications.
 
