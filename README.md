@@ -7,14 +7,20 @@ A lightweight but powerful **Joomla security scanner** built to detect and remov
 If you find this project helpful, consider supporting my work.
 
 <p align="center">
-  <a href="[https://buymeacoffee.com/YOUR_USERNAME](https://www.supportkori.com/zkranao)" target="_blank">
-    <img
-      src="https://plus.unsplash.com/premium_photo-1674327105076-36c4419864cf?q=80&w=987&auto=format&fit=crop"
-      alt="Buy Me a Coffee"
-      width="100"
-      height="80"
-      style="border-radius:10px; object-fit: contain"
-    />
+  <a href="https://buymeacoffee.com/YOUR_USERNAME" target="_blank" style="text-decoration: none;">
+    <span style="display: inline-block; vertical-align: middle;">
+      <img
+        src="https://plus.unsplash.com/premium_photo-1674327105076-36c4419864cf?q=80&w=987&auto=format&fit=crop"
+        alt="Coffee"
+        width="45"
+        height="45"
+        style="border-radius: 8px; vertical-align: middle;"
+      />
+    </span>
+
+    <span style="font-size: 18px; font-weight: 600; margin-left: 10px; vertical-align: middle; color: #ff813f;">
+      Buy me a coffee
+    </span>
   </a>
 </p>
 
