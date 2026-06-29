@@ -2,6 +2,14 @@
 
 A lightweight but powerful **Joomla security scanner** built to detect and remove malware caused by the **SP Page Builder uploadCustomIcon RCE vulnerability (pre-6.6.2)** — including secondary infections found inside the **JCE editor component (com_jce)**.
 
+## Support
+
+If you find this project helpful, you can support me here:
+
+<a href="https://buymeacoffee.com/YOUR_USERNAME" target="_blank">
+  <img src="[https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png](https://www.supportkori.com/zkranao)" alt="Buy Me A Coffee" width="200">
+</a>
+
 This tool helps you quickly identify:
 - Webshell backdoors
 - Rogue Joomla Super Users
