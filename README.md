@@ -3,11 +3,15 @@
 A lightweight but powerful **Joomla security scanner** built to detect and remove malware caused by the **SP Page Builder uploadCustomIcon RCE vulnerability (pre-6.6.2)** — including secondary infections found inside the **JCE editor component (com_jce)**.
 
 ## ❤️ Support
-<p align="center">
+<p align="left">
   <span>Support My Work</span>
   
   <a href="https://www.supportkori.com/zkranao" target="_blank" style="text-decoration: none; color: inherit; font-weight: margin-left: 10px; bold; font-family: sans-serif;">
-    <span style="display: flex; flex-direction: column; align-items: center; gap: 10px;">
+    <span style="    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: baseline;
+    gap: 10px;">
       <img
         src="https://plus.unsplash.com/premium_photo-1674327105076-36c4419864cf?q=80&w=987&auto=format&fit=crop"
         alt="Coffee"
