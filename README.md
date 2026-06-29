@@ -4,9 +4,9 @@ A lightweight but powerful **Joomla security scanner** built to detect and remov
 
 ## ❤️ Support
 <p align="center">
+  <span>Support My Work</span>
   <a href="https://www.supportkori.com/zkranao" target="_blank" style="text-decoration: none; color: inherit; font-weight: bold; font-family: sans-serif;">
     <span style="display: inline-flex; align-items: center; gap: 10px;">
-      <span>Support My Work</span>
       <img
         src="https://plus.unsplash.com/premium_photo-1674327105076-36c4419864cf?q=80&w=987&auto=format&fit=crop"
         alt="Coffee"
