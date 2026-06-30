@@ -171,7 +171,7 @@ Leaving a security scanner reachable on a live server is itself a risk. Once cle
 
 If this tool saved you time, consider supporting continued development:
 
-[☕ Buy me a coffee](https://www.supportkori.com/zkranao)
+[☕ Buy me a coffee (via Payoneer or PyaPal Zoom)](zkranao@gmail.com)
 
 And if you found it useful, a ⭐ on the repository helps others find it too.
 
