@@ -1,36 +1,39 @@
 <?php
 /**
- * SP Page Builder Infection Scanner & Cleaner  (hardened build v2)
+ * SP Page Builder Infection Scanner & Cleaner  (hardened build v3)
  *
- * v2 changes vs v1:
- *  - Fixed an ACCESS_KEY setup-check bug where editing the key could leave the
- *    script permanently stuck on the "Setup required" screen (the check now
- *    looks for a literal CHANGE_ME marker instead of comparing against itself).
- *  - Joomla MVC "views/.../tmpl/*.php" and "view.*.php" files are no longer
- *    flagged just for living in a path that contains the word "media" or
- *    "images" as a folder name (e.g. com_sppagebuilder's admin Media Manager
- *    view). These are core component code, not user-uploadable content.
- *  - Bundled vendor libraries (Facebook Graph SDK, phpseclib) are no longer
- *    flagged merely for being .php files inside a "risky" vendor path -- that
- *    is 100% expected for any PHP library. They are still fully scanned for
- *    actual malware content signatures, and any file whose modification time
- *    doesn't match its siblings gets an extra "verify this" note.
- *  - NEW strict allow-list specifically for "assets/iconfont" folders
- *    (a known real-world drop point for SP Page Builder's unauthenticated
- *    upload vulnerability). Any folder or file inside an iconfont asset
- *    directory that isn't a recognised font/css/json/html asset is flagged --
- *    including bare, no-extension subdirectories with random names, which is
- *    exactly the pattern this build was tested against.
- *  - Directories can now be flagged (not just files), and the delete action
- *    can remove a flagged directory recursively. Top-level Joomla folders are
- *    hard-protected from deletion regardless of what gets flagged.
- *  - "Mass creation cluster" detection: if 3+ items appear in the same folder
- *    within the same couple of minutes, that's called out explicitly, since
- *    that pattern is a strong signal of an automated/scripted drop.
- *  - A shallow (non-recursive) check of the Joomla webroot itself, since
- *    dropped shells are sometimes placed directly alongside index.php.
- *  - Confidence labels (High / Medium) on each finding so you can triage
- *    quickly, plus a much more detailed hardening/cleanup checklist.
+ * v3 changes vs v2:
+ *  - NEW: templates/ is now scanned recursively, alongside the existing
+ *    media/images/com_sppagebuilder/com_jce/tmp/cache paths.
+ *  - NEW: "numeric drop folder" detection. Any folder with a purely
+ *    numeric name (4+ digits, e.g. "252692") found inside templates/,
+ *    media/, or images/ is flagged outright -- this is a very common
+ *    pattern for automated malware-drop directories (random IDs).
+ *    Every file inside such a folder is flagged too, regardless of
+ *    extension, since the folder itself is the red flag.
+ *  - NEW: "fake index.php stub" detection. Joomla places a blank
+ *    "no direct access" stub (`defined('_JEXEC') or die;`) in every
+ *    subfolder by convention -- so an index.php existing somewhere is
+ *    normal, but its CONTENT should always be that one-line guard and
+ *    nothing else. Any index.php whose content is anything more than
+ *    that stub is flagged as a likely disguised webshell. The single
+ *    legitimate exception is a template's own top-level index.php
+ *    (templates/<name>/index.php), which is the real template layout
+ *    file and is expected to contain real markup/code.
+ *  - Cluster-drop detection (3+ new items in the same folder within a
+ *    couple of minutes) now also applies to numeric-folder findings.
+ *  - The "modified out of step with its siblings" timestamp-anomaly
+ *    note now applies to ANY flagged finding under templates/ (not
+ *    just bundled vendor libraries as in v2).
+ *  - Fixed an ACCESS_KEY setup-check bug from v1 (see v2 changelog).
+ *  - Joomla MVC views/controllers/models etc. are not flagged merely
+ *    for living in a path containing "media"/"images" as a folder name.
+ *  - Strict allow-list for assets/iconfont folders (SPPB's real-world
+ *    upload-vulnerability drop point) and JCE's file-browser upload
+ *    roots, each scanned with the same heuristics as v2.
+ *  - Directories can be flagged and deleted recursively; top-level
+ *    Joomla folders are hard-protected from deletion regardless.
+ *  - Confidence labels (High / Medium) on each finding.
  *
  * This is a heuristic scanner, not a guarantee. Pair it with a fresh
  * extension download + checksum comparison and a full server-side malware
@@ -44,7 +47,7 @@ set_time_limit(180);
 // =====================================================================
 // CONFIG — EDIT BEFORE UPLOADING
 // =====================================================================
-$ACCESS_KEY         = 'REPLACE_THIS_WITH_YOUR_OWN_KEY';
+$ACCESS_KEY         = 'PASTE_YOUR_GENERATED_KEY_HERE';
 $JOOMLA_ROOT        = __DIR__;
 $MAX_FILE_SCAN_SIZE = 2 * 1024 * 1024;
 $SESSION_TIMEOUT    = 1800;
@@ -70,11 +73,11 @@ header('Content-Type: text/html; charset=UTF-8');
 
 if ($DISABLED) { http_response_code(404); echo 'Not found.'; exit; }
 
-if (strlen($ACCESS_KEY) < 32 || stripos($ACCESS_KEY, 'CHANGE_ME') !== false) {
+if (strlen($ACCESS_KEY) < 32 || stripos($ACCESS_KEY, 'CHANGE_ME') !== false || stripos($ACCESS_KEY, 'REPLACE_THIS') !== false) {
     http_response_code(403);
     echo "Setup required: open this file and set \$ACCESS_KEY to a unique random secret (min 32 chars).\n";
     echo "Generate one: php -r \"echo bin2hex(random_bytes(32));\"\n";
-    echo "Paste ONLY the generated value between the quotes — do not leave the CHANGE_ME text in there.\n";
+    echo "Paste ONLY the generated value between the quotes — do not leave the placeholder text in there.\n";
     exit;
 }
 
@@ -109,7 +112,7 @@ function humanSize(int $bytes): string {
 }
 function pruneFails(array $fails, int $window): array {
     $cutoff = time() - $window;
-    return array_values(array_filter($fails, fn($t) => $t >= $cutoff));
+    return array_values(array_filter($fails, function ($t) use ($cutoff) { return $t >= $cutoff; }));
 }
 function getLockoutFails(string $file, int $window): array {
     if (!is_file($file)) return [];
@@ -165,7 +168,7 @@ function readJoomlaDbConfig(string $root): ?array {
 function dbConnect(array $cfg): ?mysqli {
     if (!isset($cfg['host'],$cfg['user'],$cfg['password'],$cfg['db'])) return null;
     $host = $cfg['host']; $port = 3306;
-    if (strpos($host,':') !== false) { [$host,$port] = explode(':',$host,2); $port=(int)$port; }
+    if (strpos($host,':') !== false) { $parts = explode(':',$host,2); $host = $parts[0]; $port = (int)$parts[1]; }
     mysqli_report(MYSQLI_REPORT_OFF);
     $mysqli = @mysqli_connect($host,$cfg['user'],$cfg['password'],$cfg['db'],$port);
     return $mysqli ?: null;
@@ -237,10 +240,55 @@ function mtimeOutlierNote(string $path): ?string {
     if ($daysAgo > 60) return null;
     return "Modified on {$myDate}, while most sibling files in this folder date from {$modeDate} — confirm this change was an intentional update.";
 }
+/**
+ * Returns true if $contents is (after stripping comments/whitespace)
+ * nothing more than Joomla's standard "no direct access" guard. Joomla
+ * places this blank stub in every subfolder by convention, so an
+ * index.php existing somewhere is normal — but it should never contain
+ * anything beyond this guard. Used to catch webshells disguised with a
+ * legitimate-sounding filename.
+ */
+function isStandardJoomlaStub(string $contents): bool {
+    $trimmed = trim($contents);
+    if ($trimmed === '') return true; // some older stubs are just blank files
+
+    // Strip /* */ and // comments, then collapse whitespace.
+    $noBlockComments = preg_replace('#/\*.*?\*/#s', '', $trimmed);
+    $noLineComments  = preg_replace('#//[^\n]*#', '', $noBlockComments);
+    $normalized = trim(preg_replace('/\s+/', ' ', $noLineComments));
+
+    // Remove the standard guard expression itself (several accepted variants).
+    $guardPatterns = [
+        '/<\?php\s*defined\(\s*[\'"]_JEXEC[\'"]\s*\)\s*or\s*die(\s*\(\s*[\'"]?.*?[\'"]?\s*\))?\s*;?/i',
+        '/<\?php\s*\?>/i',
+        '/<\?php/i',
+        '/\?>/',
+    ];
+    $stripped = $normalized;
+    foreach ($guardPatterns as $p) {
+        $stripped = preg_replace($p, '', $stripped);
+    }
+    $stripped = trim($stripped);
+
+    // After removing the guard, comments, and PHP tags, almost nothing
+    // should remain. Allow a small margin (e.g. a trailing "exit;").
+    return strlen($stripped) <= 12;
+}
+
+/**
+ * True if $name looks like a standard Joomla date-based upload path
+ * component (a 4-digit year or a 2-digit month/day) — a normal,
+ * non-malicious folder-naming convention used by Joomla's media manager
+ * and editors like JCE for organizing uploads by date (images/2025/10/17/).
+ */
+function isDateLikeNumericFolderName(string $name): bool {
+    return (bool)preg_match('/^\d{2}$/', $name) || (bool)preg_match('/^\d{4}$/', $name);
+}
+
 function recordFinding(array &$arr, string $absPath, string $root, string $reason, bool $isDir = false): void {
     $rel = ltrim(str_replace($root,'',$absPath),'/');
     $size = $isDir ? dirSize($absPath) : (is_file($absPath) ? (int)@filesize($absPath) : 0);
-    $highSignals = ['content signature','icon-font','malicious pattern','unrecognized'];
+    $highSignals = ['content signature','icon-font','malicious pattern','unrecognized','numeric','non-standard index.php'];
     $confidence = 'medium';
     foreach ($highSignals as $sig) {
         if (stripos($reason, $sig) !== false) { $confidence = 'high'; break; }
@@ -544,8 +592,6 @@ $SAFE_PATH_FRAGMENTS = [
     '/templates/helix-ultimate/',
     '/templates/shaper_helixultimate/',
     '/templates/shaper_helix_ultimate/',
-    // JCE editor core code (views/controllers/models/libraries are not
-    // user-uploadable content, same rationale as the SPPB entries above).
     '/administrator/components/com_jce/views/',
     '/administrator/components/com_jce/models/',
     '/administrator/components/com_jce/controllers/',
@@ -554,6 +600,7 @@ $SAFE_PATH_FRAGMENTS = [
     '/administrator/components/com_jce/editor/libraries/',
     '/administrator/components/com_jce/editor/tiny_mce/',
     '/components/com_jce/',
+    '/components/com_jce/editor/extensions/filesystem/',
     '/media/com_jce/js/',
     '/media/com_jce/css/',
     '/media/com_jce/editor/tiny_mce/',
@@ -596,11 +643,11 @@ $ICONFONT_ALLOWED_BARE_NAMES = ['license','readme','changelog'];
 // and any executable extension inside these folders are flagged.
 $JCE_UPLOAD_PATH_FRAGMENTS = [
     '/media/com_jce/editor/tiny_mce/plugins/filemanager/',
-    '/components/com_jce/editor/extensions/filesystem/',
 ];
-$JCE_UPLOAD_ALLOWED_EXTENSIONS = ['jpg','jpeg','png','gif','webp','svg','pdf','doc','docx','xls','xlsx','zip','css','js','json'];
 
-$EXEC_EXTS = ['php','phtml','php3','php4','php5','php7','phar','pht'];
+$JCE_UPLOAD_ALLOWED_EXTENSIONS = ['jpg','jpeg','png','gif','webp','svg','pdf','doc','docx','xls','xlsx','zip','css','js','json','html','htm'];
+
+$EXEC_EXTS = ['php','phtml','php3','php4','php5','php7','phar','pht','shtml'];
 
 // Joomla files we never want to flag or delete from the bare webroot scan.
 $KNOWN_ROOT_FILES = ['index.php','configuration.php','htaccess.txt','web.config.txt','robots.txt.dist'];
@@ -627,6 +674,10 @@ $scanDirs = [
     $JOOMLA_ROOT.'/media',
     $JOOMLA_ROOT.'/tmp',
     $JOOMLA_ROOT.'/cache',
+    // NEW: template directories. A common real-world drop point — random
+    // numeric-named subfolders and disguised index.php files inside an
+    // otherwise legitimate template (e.g. shaper_helixultimate/features/).
+    $JOOMLA_ROOT.'/templates',
 ];
 $seenAbs = [];
 
@@ -643,9 +694,35 @@ foreach ($scanDirs as $dir) {
         $basename = basename($path);
         $flagged = false; $reasons = [];
 
+        $inTemplatesTree = (stripos($path, '/templates/') !== false);
+        $inMediaOrImagesTree = (stripos($path, '/media/') !== false || stripos($path, '/images/') !== false);
+
+        // ---- numeric "drop folder" detection (date-folder aware) ----
+        // Purely-numeric folder names are flagged UNLESS they look like a
+        // standard Joomla date-based upload path component (a 2-digit
+        // month/day or 4-digit year), since images/2025/10/17/ is a
+        // completely normal upload structure. A random ID like "648994"
+        // sitting inside that structure does NOT match that pattern and
+        // is still flagged.
+        $parentBasenameForNumericCheck = strtolower(basename(dirname($path)));
+        $parentIsNumericDropFolder = preg_match('/^\d+$/', $parentBasenameForNumericCheck)
+            && !isDateLikeNumericFolderName($parentBasenameForNumericCheck);
+
+        if ($isDir && preg_match('/^\d+$/', $basename) && !isDateLikeNumericFolderName($basename) && ($inTemplatesTree || $inMediaOrImagesTree)) {
+            $flagged = true;
+            $reasons[] = "Folder name is purely numeric (\"{$basename}\") and isn't a standard 2- or 4-digit date component — a common pattern for automated malware-drop directories.";
+            $clusterCount = clusterSiblingCount($path);
+            if ($clusterCount >= 3) {
+                $reasons[] = "Appeared together with {$clusterCount} other new items within the same couple of minutes — consistent with an automated/scripted drop.";
+            }
+        } elseif (!$isDir && $parentIsNumericDropFolder && ($inTemplatesTree || $inMediaOrImagesTree)) {
+            $flagged = true;
+            $reasons[] = "File resides inside a purely-numeric, non-date-like folder (\"{$parentBasenameForNumericCheck}\") — a common automated-malware-drop pattern, regardless of this file's own extension.";
+        }
+
         // ---- Strict allow-list for icon-font asset folders ----
         $inIconfontTree = (stripos($path, '/iconfont/') !== false);
-        if ($inIconfontTree) {
+        if ($inIconfontTree && !$flagged) {
             $parentBase = strtolower(basename(dirname($path)));
             if ($isDir) {
                 if ($parentBase === 'iconfont' && !in_array(strtolower($basename), $ICONFONT_ALLOWED_DIRNAMES, true)) {
@@ -676,6 +753,7 @@ foreach ($scanDirs as $dir) {
         }
 
         // ---- Strict allow-list for JCE file-browser upload roots ----
+
         $inJceUploadPath = false;
         foreach ($JCE_UPLOAD_PATH_FRAGMENTS as $frag) {
             if (stripos($path, $frag) !== false) { $inJceUploadPath = true; break; }
@@ -740,6 +818,29 @@ foreach ($scanDirs as $dir) {
             }
         }
 
+        // ---- NEW: fake index.php stub detection ----
+        $looksLikeJceMvcView = (stripos($path, '/com_jce/') !== false)
+            && (stripos($path, '/views/') !== false);
+
+        if (strtolower($basename) === 'index.php' && !$looksLikeJceMvcView) {
+            $isTopLevelTemplateIndex = false;
+            if ($inTemplatesTree) {
+                $afterTemplates = substr($path, strpos($path, '/templates/') + strlen('/templates/'));
+                $segments = array_values(array_filter(explode('/', $afterTemplates), fn($s) => $s !== ''));
+                // segments looks like: [ "shaper_helixultimate", "index.php" ] for the real layout file
+                if (count($segments) === 2) {
+                    $isTopLevelTemplateIndex = true;
+                }
+            }
+            if (!$isTopLevelTemplateIndex) {
+                $contents = @file_get_contents($path, false, null, 0, 16384);
+                if ($contents !== false && !isStandardJoomlaStub($contents)) {
+                    $flagged = true;
+                    $reasons[] = 'Non-standard index.php — Joomla index.php files outside a template\'s own root should only ever contain the blank "no direct access" guard; this one contains additional code, a classic webshell disguise.';
+                }
+            }
+        }
+
         if (is_file($path) && @filesize($path) !== false && @filesize($path) <= $MAX_FILE_SCAN_SIZE) {
             $textLikeExts = ['php','phtml','php3','php4','php5','php7','phar','pht','js','html','htm','txt','css','xml','gif','png','jpg','jpeg'];
             if (in_array($ext, $textLikeExts, true) || $ext === '') {
@@ -752,7 +853,11 @@ foreach ($scanDirs as $dir) {
             }
         }
 
-        if ($flagged && $inRiskyVendorPath) {
+        // Timestamp-anomaly note: applied to vendor libraries (as in v2) and
+        // now also broadly to anything flagged inside templates/, since a
+        // single recently-touched file in an otherwise untouched template
+        // folder is exactly the "blends in" pattern attackers rely on.
+        if ($flagged && ($inRiskyVendorPath || $inTemplatesTree)) {
             $note = mtimeOutlierNote($path);
             if ($note) $reasons[] = $note;
         }
@@ -771,13 +876,24 @@ foreach ($rootItems as $it) {
     $p = $JOOMLA_ROOT.'/'.$it;
     if (!is_file($p) || isset($seenAbs[$p])) continue;
     if (strtolower($it) === strtolower(basename(__FILE__))) continue;
+    if (strpos($it, '.sppbscan-') === 0) continue; // our own log/lockout files
     if (in_array(strtolower($it), array_map('strtolower', $KNOWN_ROOT_FILES), true)) continue;
 
     $flaggedRoot = false; $reasonsRoot = [];
     foreach ($SUSPICIOUS_FILENAME_REGEXES as $re) {
         if (preg_match($re, $it)) { $flaggedRoot = true; $reasonsRoot[] = 'Filename matches known malicious pattern.'; break; }
     }
+
     $extR = strtolower(pathinfo($p, PATHINFO_EXTENSION));
+
+    // .shtml in the webroot is a known indicator from this campaign —
+    // Joomla never ships .shtml files by default, so presence alone is
+    // flagged, no content match required.
+    if ($extR === 'shtml') {
+        $flaggedRoot = true;
+        $reasonsRoot[] = '.shtml file present in the Joomla webroot — Joomla does not use this file type by default; real-world reports from this campaign flag dropped .shtml files here as malware.';
+    }
+
     if (in_array($extR, $EXEC_EXTS, true) && @filesize($p) <= $MAX_FILE_SCAN_SIZE) {
         $contents = @file_get_contents($p);
         if ($contents) {
@@ -843,7 +959,7 @@ if ($dbCfg) {
     $dbFindings['error']='configuration.php not found — run this script from the Joomla root.';
 }
 
-logLine('Scan run. Files: '.count($fileFindings).'. Susp SU: '.count(array_filter($dbFindings['superusers'],fn($u)=>$u['suspicious'])).'. Menu XSS: '.count($dbFindings['menu_xss']));
+logLine('Scan run. Files: '.count($fileFindings).'. Susp SU: '.count(array_filter($dbFindings['superusers'],function($u){return $u['suspicious'];})).'. Menu XSS: '.count($dbFindings['menu_xss']));
 
 // =====================================================================
 // ACTION: delete
@@ -856,7 +972,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action']??'')==='delete') {
     } else {
         $targets=$_POST['targets']??[];
         $rootReal=realpath($JOOMLA_ROOT);
-        $protectedAbs = array_map(fn($d)=>$rootReal.DIRECTORY_SEPARATOR.$d, $PROTECTED_TOP_DIRS);
+        $protectedAbs = array_map(function($d) use ($rootReal) { return $rootReal.DIRECTORY_SEPARATOR.$d; }, $PROTECTED_TOP_DIRS);
         if (is_array($targets)&&$rootReal!==false) {
             foreach ($targets as $relPath) {
                 $relPath=(string)$relPath;
@@ -888,8 +1004,8 @@ if (!empty($_SESSION['sppbscan_flash'])){$flash=$_SESSION['sppbscan_flash'];unse
 
 $sessionAge = time()-($_SESSION['sppbscan_auth_at']??time());
 $minutesLeft = max(0,ceil(($SESSION_TIMEOUT-$sessionAge)/60));
-$suspiciousSU = array_filter($dbFindings['superusers'],fn($u)=>$u['suspicious']);
-$highCount = count(array_filter($fileFindings, fn($f)=>$f['confidence']==='high'));
+$suspiciousSU = array_filter($dbFindings['superusers'],function($u){return $u['suspicious'];});
+$highCount = count(array_filter($fileFindings, function($f){return $f['confidence']==='high';}));
 $medCount  = count($fileFindings) - $highCount;
 
 ?><!DOCTYPE html>
@@ -1048,6 +1164,8 @@ tr:hover td { background: rgba(255,255,255,0.015); }
 input[type=checkbox] { accent-color: var(--blue); width: 15px; height: 15px; cursor: pointer; }
 </style>
 </head>
+
+
 <body>
 
 <div class="topbar">
@@ -1059,7 +1177,7 @@ input[type=checkbox] { accent-color: var(--blue); width: 15px; height: 15px; cur
     </div>
   </div>
   <div class="topbar-right">
-    <span class="session-pill">⏱ <?= (int)$minutesLeft ?> min remaining</span>
+    <span class="session-pill">⏱ <span id="session-countdown"><?= (int)$minutesLeft ?>:00</span> remaining</span>
     <form method="post" style="display:inline">
       <input type="hidden" name="csrf" value="<?= e($csrfToken) ?>">
       <input type="hidden" name="action" value="logout">
@@ -1110,17 +1228,27 @@ input[type=checkbox] { accent-color: var(--blue); width: 15px; height: 15px; cur
 
   <div class="disclaimer">
     <strong>About this report:</strong> findings are heuristic, not a guarantee. <strong>High confidence</strong> means a known malware
-    content signature, a malicious filename pattern, or an unrecognized item inside a folder that should only ever contain static
-    font/CSS/JS assets. <strong>Medium confidence</strong> means a structural anomaly (e.g. an executable file sitting in an
-    upload path, or a file modified out-of-step with its siblings) that's worth a manual look but isn't confirmed malicious on
-    its own. Always keep a backup before deleting anything.
+    content signature, a malicious filename pattern, a purely-numeric drop folder, a fake index.php, or an unrecognized item inside
+    a folder that should only ever contain static font/CSS/JS assets. <strong>Medium confidence</strong> means a structural anomaly
+    (e.g. an executable file sitting in an upload path, or a file modified out-of-step with its siblings) that's worth a manual look
+    but isn't confirmed malicious on its own. Always keep a backup before deleting anything.
+  </div>
+
+  <div class="disclaimer">
+    <strong>About template scanning:</strong> <code>templates/</code> is now scanned recursively. Two patterns are checked
+    specifically there: (1) a purely-numeric folder name (e.g. <code>features/252692</code>) — never a normal Joomla naming
+    convention, and a common signature of an automated malware drop; and (2) a fake <code>index.php</code> — Joomla places a
+    blank "no direct access" stub in every subfolder by design, so the file existing is normal, but if its content is anything
+    beyond that one-line guard, it's flagged as a likely disguised webshell. The only exempted file is a template's own
+    top-level <code>index.php</code> (e.g. <code>templates/shaper_helixultimate/index.php</code>), which legitimately
+    contains the real template layout code.
   </div>
 
   <div class="disclaimer">
     <strong>A note on JCE:</strong> some hosts have reported malicious files appearing inside the JCE editor component
     (<code>com_jce</code>) on sites that were also hit by the SP Page Builder upload vulnerability — likely the same
     attacker using JCE's own file-browser upload path as a secondary or fallback drop point once they had a foothold.
-    This scanner now also walks <code>media/com_jce</code>, <code>administrator/components/com_jce</code>,
+    This scanner also walks <code>media/com_jce</code>, <code>administrator/components/com_jce</code>,
     <code>components/com_jce</code>, and <code>plugins/editors/jce</code> using the same heuristics. If you don't
     actively need JCE, updating it to the latest release — or removing it entirely if it's unused — is worth doing
     alongside the SPPB fixes below.
@@ -1130,7 +1258,7 @@ input[type=checkbox] { accent-color: var(--blue); width: 15px; height: 15px; cur
   <div class="section">
     <div class="section-header">
       <div class="section-num">1</div>
-      <div class="section-title">Suspicious files &amp; folders <small>media · images · com_sppagebuilder · com_jce · tmp · cache · webroot</small></div>
+      <div class="section-title">Suspicious files &amp; folders <small>templates · media · images · com_sppagebuilder · com_jce · tmp · cache · webroot</small></div>
     </div>
     <div class="panel">
       <?php if (empty($fileFindings)): ?>
@@ -1264,7 +1392,9 @@ input[type=checkbox] { accent-color: var(--blue); width: 15px; height: 15px; cur
       <h4>If something was actually flagged above</h4>
       <ul>
         <li><span><strong>Don't panic-delete first.</strong> Review each High-confidence row, then Medium-confidence rows. If unsure about an item, copy it somewhere safe before removing it.</span></li>
-        <li><span><strong>A cluster of new, randomly-named files/folders created within the same minute</strong> (called out explicitly in the Reason column) is one of the strongest signs of an automated drop via an unauthenticated upload exploit — these should be removed.</span></li>
+        <li><span><strong>A numeric drop folder (e.g. "252692") inside templates/ or media/</strong> is one of the strongest real-world signs of an automated upload exploit — these, and everything inside them, should be removed.</span></li>
+        <li><span><strong>A fake index.php</strong> (anything beyond the one-line "no direct access" guard, outside a template's own root index.php) should be treated as a confirmed webshell and removed immediately.</span></li>
+        <li><span><strong>A cluster of new, randomly-named files/folders created within the same minute</strong> (called out explicitly in the Reason column) is another strong sign of an automated drop.</span></li>
         <li><span><strong>Rotate every credential</strong> readable from <code>configuration.php</code>: database password, SMTP password, any API keys, and Joomla's <code>secret</code> value (Global Configuration → regenerate, or edit the file directly).</span></li>
         <li><span><strong>Force-logout all sessions</strong> after rotating credentials — truncate the <code>#__session</code> table or use Users → Sessions → "Destroy" in Joomla admin.</span></li>
         <li><span><strong>Remove rogue Super Users</strong> flagged in Section 2, and audit every other Super User for ones you don't recognize.</span></li>
@@ -1274,7 +1404,7 @@ input[type=checkbox] { accent-color: var(--blue); width: 15px; height: 15px; cur
       <ul>
         <li><span><strong>Update SP Page Builder immediately</strong> to the latest version — repeated infections in the same upload path almost always mean the underlying upload vulnerability is still unpatched.</span></li>
         <li><span><strong>Update Helix Ultimate and every other extension/template</strong> too — attackers often chain together whichever vulnerable extension is easiest, not just SPPB.</span></li>
-        <li><span><strong>Update or remove the JCE editor.</strong> Some hosts have flagged malicious files appearing inside <code>com_jce</code> on sites also hit by the SPPB exploit — most likely opportunistic reuse of JCE's own upload path once a foothold was established, rather than a new unrelated vulnerability. If you don't actively use JCE's editor or file browser, removing the component entirely is the simplest fix; if you do need it, update to the current release and re-run this scan afterward.</span></li>
+        <li><span><strong>Update or remove the JCE editor.</strong> If you don't actively use JCE's editor or file browser, removing the component entirely is the simplest fix; if you do need it, update to the current release and re-run this scan afterward.</span></li>
         <li>
           <span><strong>Block PHP execution in upload directories</strong> as a stop-gap even after patching, via <code>.htaccess</code>:
           <pre>&lt;DirectoryMatch "/(media|images|uploads|tmp|cache|assets|icons|fonts)(/|$)"&gt;
@@ -1328,5 +1458,29 @@ input[type=checkbox] { accent-color: var(--blue); width: 15px; height: 15px; cur
   </div>
 
 </div><!-- /main -->
+<script>
+(function() {
+  var remainingSeconds = <?= (int)max(0, $SESSION_TIMEOUT - $sessionAge) ?>;
+  var el = document.getElementById('session-countdown');
+  function tick() {
+    if (remainingSeconds <= 0) {
+      el.textContent = 'expired';
+      el.parentElement.style.color = '#f87171';
+      // Give the user a moment to see "expired", then force a reload —
+      // the server will see the session is gone and show the login page.
+      setTimeout(function() {
+        window.location.reload();
+      }, 1500);
+      return;
+    }
+    var m = Math.floor(remainingSeconds / 60);
+    var s = remainingSeconds % 60;
+    el.textContent = m + ':' + (s < 10 ? '0' : '') + s;
+    remainingSeconds--;
+    setTimeout(tick, 1000);
+  }
+  tick();
+})();
+</script>
 </body>
 </html>
