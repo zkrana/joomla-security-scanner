@@ -1,38 +1,50 @@
 <?php
 /**
- * SP Page Builder Infection Scanner & Cleaner  (hardened build v3)
+ * SP Page Builder Infection Scanner & Cleaner  (hardened build v4)
  *
- * v3 changes vs v2:
- *  - NEW: templates/ is now scanned recursively, alongside the existing
- *    media/images/com_sppagebuilder/com_jce/tmp/cache paths.
- *  - NEW: "numeric drop folder" detection. Any folder with a purely
- *    numeric name (4+ digits, e.g. "252692") found inside templates/,
- *    media/, or images/ is flagged outright -- this is a very common
- *    pattern for automated malware-drop directories (random IDs).
- *    Every file inside such a folder is flagged too, regardless of
- *    extension, since the folder itself is the red flag.
- *  - NEW: "fake index.php stub" detection. Joomla places a blank
- *    "no direct access" stub (`defined('_JEXEC') or die;`) in every
- *    subfolder by convention -- so an index.php existing somewhere is
- *    normal, but its CONTENT should always be that one-line guard and
- *    nothing else. Any index.php whose content is anything more than
- *    that stub is flagged as a likely disguised webshell. The single
- *    legitimate exception is a template's own top-level index.php
- *    (templates/<name>/index.php), which is the real template layout
- *    file and is expected to contain real markup/code.
+ * v4 changes vs v3:
+ *  - NEW: core entry-point integrity check. Joomla's real root index.php
+ *    (and a few other known entry points) never executes anything before
+ *    defining JOOMLA_MINIMUM_PHP / _JEXEC. Any code before that point —
+ *    a require/include, a zip:// or phar:// stream-wrapper reference, a
+ *    numeric byte-array decoded with chr(), etc. — is flagged as a
+ *    confirmed core-file infection. This catches the real-world
+ *    `$db = array(122,105,...); ... require zip://payload#2;` injection
+ *    pattern seen prepended to index.php.
+ *  - NEW: content signatures for stream-wrapper payload loading
+ *    (zip://, phar://, compress.zlib://, data://), chr()-from-byte-array
+ *    decoding, $M[12].$M[5]... string-lookup obfuscation (the style used
+ *    by heavily obfuscated droppers), self-replicating dropper logic
+ *    (glob() + chmod + file_put_contents + md5 verification loops), no-op
+ *    comment padding used to break naive scanners, and "opcache_reset()
+ *    only" trigger files (dropped after another malicious file is written
+ *    to force PHP to pick up the new bytecode immediately).
+ *  - NEW: explicit detection for backup/duplicate configuration.php files
+ *    (configuration.bak.php, configuration.old.php, etc.) — these leak the
+ *    same DB/mail credentials and Joomla secret as the live config and are
+ *    a known artifact of restore tools as well as attacker reconnaissance.
+ *  - NEW: marker/flag file detection — small, near-empty .txt files at
+ *    webroot (e.g. a file containing just "0") are common dropper-toolkit
+ *    artifacts (infection markers, lock files) and are now surfaced as a
+ *    low/medium-confidence finding.
+ *  - Confidence classifier extended to bucket all of the above as High
+ *    confidence where appropriate.
+ *  - $KNOWN_ROOT_FILES expanded to the full realistic set of stock Joomla
+ *    5.x release files (web.config, configuration.php-dist, etc.) so
+ *    legitimate files don't get flagged as "unrecognized."
+ *
+ * (v3 changes retained below for reference)
+ *  - templates/ scanned recursively.
+ *  - "numeric drop folder" detection (purely numeric folder names inside
+ *    templates/, media/, images/).
+ *  - "fake index.php stub" detection — any non-stub index.php outside a
+ *    template's own root is flagged as a likely disguised webshell.
  *  - Cluster-drop detection (3+ new items in the same folder within a
- *    couple of minutes) now also applies to numeric-folder findings.
- *  - The "modified out of step with its siblings" timestamp-anomaly
- *    note now applies to ANY flagged finding under templates/ (not
- *    just bundled vendor libraries as in v2).
- *  - Fixed an ACCESS_KEY setup-check bug from v1 (see v2 changelog).
- *  - Joomla MVC views/controllers/models etc. are not flagged merely
- *    for living in a path containing "media"/"images" as a folder name.
- *  - Strict allow-list for assets/iconfont folders (SPPB's real-world
- *    upload-vulnerability drop point) and JCE's file-browser upload
- *    roots, each scanned with the same heuristics as v2.
- *  - Directories can be flagged and deleted recursively; top-level
- *    Joomla folders are hard-protected from deletion regardless.
+ *    couple of minutes).
+ *  - Timestamp-anomaly note applies to any flagged finding under templates/.
+ *  - Strict allow-lists for assets/iconfont folders and JCE upload roots.
+ *  - Directories can be flagged and deleted recursively; top-level Joomla
+ *    folders are hard-protected from deletion regardless.
  *  - Confidence labels (High / Medium) on each finding.
  *
  * This is a heuristic scanner, not a guarantee. Pair it with a fresh
@@ -281,14 +293,73 @@ function isStandardJoomlaStub(string $contents): bool {
  * non-malicious folder-naming convention used by Joomla's media manager
  * and editors like JCE for organizing uploads by date (images/2025/10/17/).
  */
+// Replace the existing function:
 function isDateLikeNumericFolderName(string $name): bool {
-    return (bool)preg_match('/^\d{2}$/', $name) || (bool)preg_match('/^\d{4}$/', $name);
+    // Allow: 1-digit (album IDs), 2-digit (month/day), 4-digit (year)
+    // Flag:  5+ digit purely numeric names (attacker timestamp/random drops)
+    return (bool)preg_match('/^\d{1,4}$/', $name);
+}
+
+/**
+ * NEW (v4): Joomla's real root index.php (and a handful of other known
+ * entry points) never executes anything before defining
+ * JOOMLA_MINIMUM_PHP / _JEXEC — that area of the file is reserved for a
+ * doc comment block only. Any executable statement found there (a
+ * require/include, a stream-wrapper reference, a byte-array decode, etc.)
+ * means the file has been patched to silently load a separate payload on
+ * every page load. This is the exact pattern used by the
+ * `$db = array(122,105,...); require zip://payload#2;` injection seen in
+ * real-world Joomla compromises.
+ */
+function checkCoreIndexIntegrity(string $contents): ?string {
+    $openTagPos = stripos($contents, '<?php');
+    if ($openTagPos === false) return null;
+
+    $bootstrapPattern = '/(?:\\\\?\bdefine\s*\(\s*[\'"]_JEXEC[\'"]\s*,\s*1\s*\)|\bconst\s+_JEXEC\s*=\s*1)\s*;/i';
+    if (!preg_match($bootstrapPattern, $contents, $m, PREG_OFFSET_CAPTURE)) {
+        return 'Core entry-point file is missing the expected _JEXEC bootstrap statement entirely — likely fully replaced or severely tampered with.';
+    }
+
+    $prefix = substr($contents, $openTagPos + 5, $m[0][1] - ($openTagPos + 5));
+
+    // Strip comments
+    $stripped = preg_replace('#/\*.*?\*/#s', '', $prefix);
+    $stripped = preg_replace('#//[^\n]*#', '', $stripped);
+
+    // Strip namespace/use
+    $stripped = preg_replace('/^\s*namespace\s+[^;]+;/mi', '', $stripped);
+    $stripped = preg_replace('/^\s*use\s+[^;]+;/mi', '', $stripped);
+
+    // === NEW: strip the legitimate Joomla 5 MINIMUM_PHP block ===
+    // Joomla 5 legitimately defines JOOMLA_MINIMUM_PHP and does a version
+    // check before _JEXEC. This is not an injection.
+    $stripped = preg_replace(
+        '/\bdefine\s*\(\s*[\'"]JOOMLA_MINIMUM_PHP[\'"]\s*,\s*[\'"][0-9.]+[\'"]\s*\)\s*;/i',
+        '', $stripped
+    );
+    $stripped = preg_replace(
+        '/if\s*\(\s*version_compare\s*\(\s*PHP_VERSION\s*,.{0,300}?\}\s*/s',
+        '', $stripped
+    );
+    // ============================================================
+
+    $stripped = trim(preg_replace('/\s+/', ' ', $stripped));
+
+    if ($stripped !== '') {
+        $preview = strlen($stripped) > 160 ? substr($stripped, 0, 160).'…' : $stripped;
+        return 'Core entry-point file contains executable code before the Joomla bootstrap (_JEXEC) — the legitimate file never executes anything beyond the optional PHP-version check at this point. This is the injection pattern used to silently load a separate payload. Offending code: '.$preview;
+    }
+    return null;
 }
 
 function recordFinding(array &$arr, string $absPath, string $root, string $reason, bool $isDir = false): void {
     $rel = ltrim(str_replace($root,'',$absPath),'/');
     $size = $isDir ? dirSize($absPath) : (is_file($absPath) ? (int)@filesize($absPath) : 0);
-    $highSignals = ['content signature','icon-font','malicious pattern','unrecognized','numeric','non-standard index.php'];
+    $highSignals = [
+        'content signature','icon-font','malicious pattern','unrecognized','numeric',
+        'non-standard index.php','core entry-point','stream-wrapper','backup/duplicate',
+        'bootstrap',
+    ];
     $confidence = 'medium';
     foreach ($highSignals as $sig) {
         if (stripos($reason, $sig) !== false) { $confidence = 'high'; break; }
@@ -604,8 +675,35 @@ $SAFE_PATH_FRAGMENTS = [
     '/media/com_jce/js/',
     '/media/com_jce/css/',
     '/media/com_jce/editor/tiny_mce/',
-    '/plugins/editors/jce/',
-    '/plugins/editors-xtd/jcefilelink/',
+    '/plugins/editors-xtd/',
+    '/plugins/editors/',
+    '/plugins/system/',
+    '/plugins/content/',
+    '/plugins/user/',
+    '/plugins/authentication/',
+    '/plugins/finder/',
+    '/plugins/installer/',
+    '/plugins/behaviour/',
+    '/plugins/captcha/',
+    '/plugins/extension/',
+    '/plugins/fields/',
+    '/plugins/filesystem/',
+    '/plugins/media-action/',
+    '/plugins/multifactorauth/',
+    '/plugins/privacy/',
+    '/plugins/quickicon/',
+    '/plugins/sampledata/',
+    '/plugins/schemaorg/',
+    '/plugins/task/',
+    '/plugins/workflow/',
+    '/plugins/webservices/',
+    '/media/com_hikashop/',
+    '/administrator/components/com_hikashop/',
+    '/components/com_hikashop/',
+    '/plugins/hikashop/',
+    '/administrator/components/com_akeebabackup/backup/',
+    '/components/com_akeebabackup/backup/',
+    '/media/com_akeebabackup/backup/',
 ];
 
 // Filenames matching known malicious patterns from real SPPB compromises.
@@ -618,6 +716,29 @@ $SUSPICIOUS_FILENAME_REGEXES = [
     '/^x\.xml$/i',
 ];
 
+// Extra filename heuristics applied ONLY to files sitting directly in the
+// Joomla webroot (shallow scan) -- more aggressive since nothing legitimate
+// should ever place these kinds of files at webroot level.
+$ROOT_SUSPICIOUS_FILENAME_REGEXES = [
+    '/^wp-[a-z0-9_-]*\.(php|txt|html?)$/i',      // WordPress-branded name in a Joomla root
+    '/file[-_]?ma[nr]+ger2?\.php$/i',            // "filemannger.php" / "filemanager2.php" typo-shells
+    '/^[a-z0-9]{1,3}\.php$/i',                   // 1-3 char filenames, e.g. e.php, x.php
+    '/^\d{1,8}\.php$/i',                         // purely numeric filenames, e.g. 123.php
+    '/^[a-z]{2,8}\.txt$/i',                      // short random-word .txt drops, e.g. yjk.txt
+];
+
+// NEW (v4): filenames matching known backup/duplicate Joomla configuration
+// files. These leak the same DB credentials, mail credentials, and secret
+// key as the live configuration.php and are a common artifact left behind
+// by restore tools (e.g. Akeeba) as well as attacker reconnaissance.
+$CONFIG_BACKUP_PATTERNS = [
+    '/^configuration[\._\-]?bak\.php$/i',
+    '/^configuration[\._\-]?old\.php$/i',
+    '/^configuration\.php\.(bak|old|orig|save|swp|~)$/i',
+    '/^config[\._\-]?backup\.php$/i',
+    '/^configuration\d*\.php\.(txt|bak)$/i',
+];
+
 $CONTENT_SIGNATURES = [
     'eval_base64_post'   => '/eval\s*\(\s*(?:@)?base64_decode\s*\(\s*(?:@)?\$_(POST|REQUEST|GET)/i',
     'cookie_gated_eval'  => '/md5\s*\(\s*(?:@)?\$_COOKIE\[[\'"][^\'"]+[\'"]\]\s*\)\s*==\s*[\'"][a-f0-9]{32}[\'"]/i',
@@ -627,6 +748,59 @@ $CONTENT_SIGNATURES = [
     'xss_report_payload' => '/xss\.report|_hu_inject/i',
     'secure_local_marker'=> '/secure\.local/i',
     'webshell_generic'   => '/FilesMan|c99shell|r57shell|WSO\s*Web\s*Shell/i',
+
+    // --- NEW (v4): zip:// / phar:// / other stream-wrapper payload loaders ---
+    // Catches the real-world pattern: a numeric byte array decoded with
+    // chr() into something like "zip://payload#2", then require'd. Stream-
+    // wrapper based require/include of a non-.php file is never legitimate
+    // Joomla core code.
+    'stream_wrapper_payload' => '/require(?:_once)?\s*\(?\s*\$?\w*\s*\)?\s*;?.{0,200}?(zip|phar|compress\.zlib|compress\.bzip2|data):\/\//is',
+
+    // A numeric array of 6+ ASCII byte values later rebuilt with chr() —
+    // the exact obfuscation style used to hide the "zip://payload#2" string.
+    'chr_byte_array_decode'  => '/\$\w+\s*=\s*array\s*\(\s*(\d{2,3}\s*,\s*){6,}\d{2,3}\s*\)\s*;.{0,300}?chr\s*\(\s*\$\w+\[\$?\w+\]\s*\)/is',
+
+    // --- NEW (v4): string-lookup-table obfuscation (e.g. e.php style) ---
+    // A long base64 string decoded into a lookup array, then referenced
+    // repeatedly as $M[12].$M[5]... to rebuild function/variable names and
+    // avoid plain-text signature matches.
+    'string_lookup_obfuscation' => '/\$_?\w+\s*=\s*base64_decode\s*\(\s*[\'"][A-Za-z0-9+\/=]{40,}[\'"]\s*\)\s*;.{0,80}?\$\w+\[\d+\]\s*\.\s*\$\w+\[\d+\]/is',
+
+    // Self-replicating dropper: glob() over directories combined with
+    // chmod + file_put_contents + md5 verification — copies itself into
+    // multiple folders to survive partial cleanup.
+    'self_replicating_dropper'  => '/glob\s*\(.{0,40}GLOB_ONLYDIR.{0,200}?file_put_contents\s*\(.{0,400}?md5\s*\(\s*\$\w+\s*\)\s*==\s*md5\s*\(\s*file_get_contents/is',
+
+    // No-op comment padding used to break naive byte/string-pattern
+    // scanners, e.g.  ;/*duel*/; ;/*kKIE*/;  repeated many times in a row.
+    'noop_comment_padding'      => '/(;\s*\/\*\s*\w{3,12}\s*\*\/\s*;\s*){8,}/i',
+
+    // A file whose entire body is just opcache_reset() — a strong signal
+    // it exists solely to force PHP to drop cached bytecode immediately
+    // after another malicious file was just (over)written nearby.
+    'opcache_reset_only' => '/^\s*<\?php\s*opcache_reset\s*\(\s*\)\s*;\s*\?>\s*$/i',
+];
+
+// Extensions that should NEVER contain PHP opening tags. If one does, it's
+// almost certainly a polyglot/disguised shell (e.g. osmbanner3.png, a .png
+// that's actually PHP), regardless of how the payload itself is obfuscated.
+$NON_PHP_EXTS_THAT_MUST_STAY_CLEAN = ['png','jpg','jpeg','gif','webp','ico','svg','bmp'];
+$PHP_OPEN_TAG_RE = '/<\?php/i';
+
+// Subfolder names legitimately expected inside a Joomla module package
+// (mod_*). Anything else (e.g. "services/") inside a module folder is
+// non-standard and worth flagging.
+$MODULE_ALLOWED_SUBDIRS = ['tmpl','language','css','js','images','fonts','src','field','fields',
+                            'services','assets','library','libraries','vendor','helpers','layouts','presets'];
+
+// Generic "everyday word" filenames commonly used at webroot or in odd
+// locations by attackers to blend in (about.php, options.php, network.php,
+// online.php, security.php, models.php, module.php, common/index.php in a
+// non-view path, etc). Flagged as medium confidence for manual review --
+// these words are plausible legitimate filenames too, so we don't auto-mark
+// them "high".
+$DECOY_FILENAME_REGEXES = [
+    '/^(about|options|network|online|security|common|module|models|banner[s]?\d*|lock\d+)\.php$/i',
 ];
 
 // Strict allow-list for */assets/iconfont/* -- a real-world drop point for
@@ -649,13 +823,49 @@ $JCE_UPLOAD_ALLOWED_EXTENSIONS = ['jpg','jpeg','png','gif','webp','svg','pdf','d
 
 $EXEC_EXTS = ['php','phtml','php3','php4','php5','php7','phar','pht','shtml'];
 
+// NEW (v4): core Joomla entry-point files, checked against the
+// "nothing executable before the bootstrap markers" rule via
+// checkCoreIndexIntegrity(). Paths are relative to $JOOMLA_ROOT.
+$CORE_ENTRY_POINTS = [
+    'index.php',
+    'administrator/index.php',
+    'api/index.php',
+    'includes/app.php',
+];
+
+
 // Joomla files we never want to flag or delete from the bare webroot scan.
-$KNOWN_ROOT_FILES = ['index.php','configuration.php','htaccess.txt','web.config.txt','robots.txt.dist'];
+$KNOWN_ROOT_FILES = ['index.php','configuration.php','htaccess.txt','web.config.txt','robots.txt.dist',
+                      'robots.txt','LICENSE.txt','README.txt','joomla.xml','htaccess.bak',
+                      'php.ini','php.ini.bak','.user.ini','.htaccess','.htaccess.bak','helixultimate.php','helix-ultimate','shaper_helixultimate','protostar','beez3','cassiopeia','system'];
+// Known-legitimate entry-point files at fixed relative paths (from JOOMLA_ROOT).
+// Exempted from filename/location heuristics; still content-signature scanned
+// if the directory they live in gets walked.
+$KNOWN_SAFE_RELATIVE_FILES = [
+    'index.php', 'administrator/index.php', 'api/index.php',
+    'includes/app.php', 'includes/framework.php', 'cli/joomla.php',
+    'files/index.html', 'images/index.html', 'media/index.html',
+];
+
+// Top-level directory names that are a normal part of a Joomla install (or a
+// commonly-added custom folder like "files"). Anything at webroot level NOT
+// in this list is treated as unrecognized and flagged for manual review.
+$KNOWN_ROOT_DIRS = ['administrator','api','bin','cache','cli','components','includes',
+                     'language','layouts','libraries','media','modules','plugins',
+                     'templates','tmp','images','files','node_modules','.well-known'];
+
+// Recognised bundled/official template folder names (lowercase). Anything
+// inside /templates/<name>/ where <name> is not in this list is treated as
+// an unverified template and scanned with full scrutiny -- a real-world
+// drop point for disguised shells (e.g. templates/features/index.php).
+$KNOWN_TEMPLATE_DIRNAMES = ['helix_ultimate','helix-ultimate','shaper_helixultimate',
+                             'shaper_helix_ultimate','protostar','beez3','cassiopeia','system'];
 
 // Top-level folders that can NEVER be deleted via this tool, even if a bug
 // somehow caused one to be flagged. Defense in depth around the delete action.
 $PROTECTED_TOP_DIRS = ['administrator','components','libraries','media','images','templates',
                         'plugins','modules','language','cache','tmp','layouts','includes','api','cli'];
+
 
 // =====================================================================
 // SCAN: filesystem
@@ -664,8 +874,6 @@ $fileFindings = [];
 $scanDirs = [
     $JOOMLA_ROOT.'/media/com_sppagebuilder',
     $JOOMLA_ROOT.'/administrator/components/com_sppagebuilder',
-    // JCE editor component — flagged by some hosts as a secondary infection
-    // vector chained alongside the SPPB upload vulnerability.
     $JOOMLA_ROOT.'/media/com_jce',
     $JOOMLA_ROOT.'/administrator/components/com_jce',
     $JOOMLA_ROOT.'/components/com_jce',
@@ -674,12 +882,18 @@ $scanDirs = [
     $JOOMLA_ROOT.'/media',
     $JOOMLA_ROOT.'/tmp',
     $JOOMLA_ROOT.'/cache',
-    // NEW: template directories. A common real-world drop point — random
-    // numeric-named subfolders and disguised index.php files inside an
-    // otherwise legitimate template (e.g. shaper_helixultimate/features/).
     $JOOMLA_ROOT.'/templates',
+    $JOOMLA_ROOT.'/files',
+    $JOOMLA_ROOT.'/components',
+    $JOOMLA_ROOT.'/administrator/components',
+    $JOOMLA_ROOT.'/modules',
+    $JOOMLA_ROOT.'/administrator/modules',
+    $JOOMLA_ROOT.'/plugins',
+    $JOOMLA_ROOT.'/administrator/includes',
+    $JOOMLA_ROOT.'/libraries',
 ];
 $seenAbs = [];
+$selfBasename = strtolower(basename(__FILE__));
 
 foreach ($scanDirs as $dir) {
     if (!is_dir($dir)) continue;
@@ -688,22 +902,23 @@ foreach ($scanDirs as $dir) {
         $SUSPICIOUS_FILENAME_REGEXES, $CONTENT_SIGNATURES, $MAX_FILE_SCAN_SIZE,
         $ICONFONT_ALLOWED_DIRNAMES, $ICONFONT_ALLOWED_EXTENSIONS, $ICONFONT_ALLOWED_BARE_NAMES,
         $JCE_UPLOAD_PATH_FRAGMENTS, $JCE_UPLOAD_ALLOWED_EXTENSIONS,
-        $EXEC_EXTS, &$seenAbs
+        $KNOWN_SAFE_RELATIVE_FILES, $KNOWN_TEMPLATE_DIRNAMES,
+        $NON_PHP_EXTS_THAT_MUST_STAY_CLEAN, $PHP_OPEN_TAG_RE,
+        $MODULE_ALLOWED_SUBDIRS, $DECOY_FILENAME_REGEXES,
+        $EXEC_EXTS, $selfBasename, &$seenAbs
     ) {
+        if (strtolower(basename($path)) === $selfBasename) return;
         if (isset($seenAbs[$path])) return;
         $basename = basename($path);
+        $relCheck = ltrim(str_replace($JOOMLA_ROOT, '', $path), '/');
+        $isKnownSafeEntry = !$isDir && in_array($relCheck, $KNOWN_SAFE_RELATIVE_FILES, true);
+
         $flagged = false; $reasons = [];
 
         $inTemplatesTree = (stripos($path, '/templates/') !== false);
         $inMediaOrImagesTree = (stripos($path, '/media/') !== false || stripos($path, '/images/') !== false);
 
         // ---- numeric "drop folder" detection (date-folder aware) ----
-        // Purely-numeric folder names are flagged UNLESS they look like a
-        // standard Joomla date-based upload path component (a 2-digit
-        // month/day or 4-digit year), since images/2025/10/17/ is a
-        // completely normal upload structure. A random ID like "648994"
-        // sitting inside that structure does NOT match that pattern and
-        // is still flagged.
         $parentBasenameForNumericCheck = strtolower(basename(dirname($path)));
         $parentIsNumericDropFolder = preg_match('/^\d+$/', $parentBasenameForNumericCheck)
             && !isDateLikeNumericFolderName($parentBasenameForNumericCheck);
@@ -753,7 +968,6 @@ foreach ($scanDirs as $dir) {
         }
 
         // ---- Strict allow-list for JCE file-browser upload roots ----
-
         $inJceUploadPath = false;
         foreach ($JCE_UPLOAD_PATH_FRAGMENTS as $frag) {
             if (stripos($path, $frag) !== false) { $inJceUploadPath = true; break; }
@@ -794,18 +1008,23 @@ foreach ($scanDirs as $dir) {
         foreach ($SAFE_PATH_FRAGMENTS as $frag) {
             if (stripos($path, $frag) !== false) { $inSafePath = true; break; }
         }
-        $inGenericMediaPath = (stripos($path, '/media/') !== false || stripos($path, '/images/') !== false);
+        $inVendorPath = (stripos($path, '/vendor/') !== false);
+        $inGenericMediaPath = (bool)preg_match('#^(media|images)/#i', $relCheck);
+        $inCoreMvcPath = (bool)preg_match('#/(controllers|helpers|models|tables|fields|forms|layouts|views|src/Service|src/Helper|src/Field|src/Table)/#i', $path)
+            || (bool)preg_match('#/templates/[^/]+/html/#i', $path);
         $looksLikeMvcView = (stripos($path, '/views/') !== false)
             && (stripos($path, '/tmpl/') !== false || preg_match('/view\.[a-z0-9]+\.php$/i', $basename));
 
-        if (!$flagged && in_array($ext, $EXEC_EXTS, true) && $inGenericMediaPath
+        if (!$flagged && !$isKnownSafeEntry && in_array($ext, $EXEC_EXTS, true) && $inGenericMediaPath
             && !$looksLikeMvcView && !$inSafePath && !$inRiskyVendorPath) {
             $flagged = true;
             $reasons[] = 'Executable file (.'.$ext.') inside a media/images directory.';
         }
 
-        foreach ($SUSPICIOUS_FILENAME_REGEXES as $re) {
-            if (preg_match($re, $basename)) { $flagged = true; $reasons[] = 'Filename matches known malicious pattern.'; break; }
+        if (!$isKnownSafeEntry) {
+            foreach ($SUSPICIOUS_FILENAME_REGEXES as $re) {
+                if (preg_match($re, $basename)) { $flagged = true; $reasons[] = 'Filename matches known malicious pattern.'; break; }
+            }
         }
 
         if ($basename === '.htaccess') {
@@ -818,16 +1037,32 @@ foreach ($scanDirs as $dir) {
             }
         }
 
-        // ---- NEW: fake index.php stub detection ----
+        // ---- Hidden dotfile PHP (e.g. .module.php) ----
+        if (!$isDir && !$isKnownSafeEntry && preg_match('/^\.[a-z0-9_.-]+\.(php|phtml|phar|pht)$/i', $basename)) {
+            $flagged = true;
+            $reasons[] = 'Hidden dotfile with executable PHP extension — not a normal Joomla filename pattern.';
+        }
+
+        // ---- Non-standard subfolder inside a module package ----
+        if (!$isDir && preg_match('#/modules/mod_[a-z0-9_]+/([^/]+)/#i', $path, $modMatch)) {
+            $subdir = strtolower($modMatch[1]);
+            if (!in_array($subdir, $MODULE_ALLOWED_SUBDIRS, true)) {
+                $flagged = true;
+                $reasons[] = "File inside unexpected module subfolder '{$subdir}' — modules should only contain: ".implode(', ', $MODULE_ALLOWED_SUBDIRS).'.';
+            }
+        }
+
+        // ---- fake index.php stub detection ----
         $looksLikeJceMvcView = (stripos($path, '/com_jce/') !== false)
             && (stripos($path, '/views/') !== false);
 
-        if (strtolower($basename) === 'index.php' && !$looksLikeJceMvcView) {
+        $inTmplFolder = (bool)preg_match('#/tmpl/#i', $path);
+
+        if (strtolower($basename) === 'index.php' && !$looksLikeJceMvcView && !$inTmplFolder) {
             $isTopLevelTemplateIndex = false;
             if ($inTemplatesTree) {
                 $afterTemplates = substr($path, strpos($path, '/templates/') + strlen('/templates/'));
-                $segments = array_values(array_filter(explode('/', $afterTemplates), fn($s) => $s !== ''));
-                // segments looks like: [ "shaper_helixultimate", "index.php" ] for the real layout file
+                $segments = array_values(array_filter(explode('/', $afterTemplates), function($s) { return $s !== ''; }));
                 if (count($segments) === 2) {
                     $isTopLevelTemplateIndex = true;
                 }
@@ -849,14 +1084,27 @@ foreach ($scanDirs as $dir) {
                     foreach ($CONTENT_SIGNATURES as $sigName => $re) {
                         if (preg_match($re, $contents)) { $flagged = true; $reasons[] = "Content signature: $sigName"; }
                     }
+                    // Polyglot check: image-extension files must never contain a PHP tag.
+                    if (in_array($ext, $NON_PHP_EXTS_THAT_MUST_STAY_CLEAN, true)
+                        && preg_match($PHP_OPEN_TAG_RE, $contents)) {
+                        $flagged = true;
+                        $reasons[] = 'Content signature: php_tag_in_image_file (polyglot shell disguised with an image extension)';
+                    }
                 }
             }
         }
 
-        // Timestamp-anomaly note: applied to vendor libraries (as in v2) and
-        // now also broadly to anything flagged inside templates/, since a
-        // single recently-touched file in an otherwise untouched template
-        // folder is exactly the "blends in" pattern attackers rely on.
+        // ---- Decoy generic filenames outside expected MVC locations ----
+        if (!$flagged && !$isKnownSafeEntry && !$inVendorPath && !$inCoreMvcPath) {
+            foreach ($DECOY_FILENAME_REGEXES as $re) {
+                if (preg_match($re, $basename)) {
+                    $flagged = true;
+                    $reasons[] = 'Generic/decoy-style filename in a non-standard location — verify this file belongs here.';
+                    break;
+                }
+            }
+        }
+
         if ($flagged && ($inRiskyVendorPath || $inTemplatesTree)) {
             $note = mtimeOutlierNote($path);
             if ($note) $reasons[] = $note;
@@ -869,32 +1117,43 @@ foreach ($scanDirs as $dir) {
     });
 }
 
-// Shallow (non-recursive) check of the webroot itself for stray dropped files.
+// Shallow (non-recursive) check of the webroot itself for stray dropped files
+// and unrecognized top-level folders.
 $rootItems = @scandir($JOOMLA_ROOT) ?: [];
 foreach ($rootItems as $it) {
     if ($it === '.' || $it === '..') continue;
     $p = $JOOMLA_ROOT.'/'.$it;
-    if (!is_file($p) || isset($seenAbs[$p])) continue;
+    if (isset($seenAbs[$p])) continue;
     if (strtolower($it) === strtolower(basename(__FILE__))) continue;
-    if (strpos($it, '.sppbscan-') === 0) continue; // our own log/lockout files
+
+    // ---- Directories at webroot level ----
+    if (is_dir($p)) {
+        if (in_array(strtolower($it), array_map('strtolower', $KNOWN_ROOT_DIRS), true)) continue;
+        $seenAbs[$p] = true;
+        recordFinding($fileFindings, $p, $JOOMLA_ROOT,
+            'Unrecognized directory directly in the Joomla webroot — not part of a standard install; verify manually.', true);
+        continue;
+    }
+
+    // ---- Files at webroot level ----
+    if (!is_file($p)) continue;
     if (in_array(strtolower($it), array_map('strtolower', $KNOWN_ROOT_FILES), true)) continue;
+    $relCheck = ltrim(str_replace($JOOMLA_ROOT, '', $p), '/');
+    if (in_array($relCheck, $KNOWN_SAFE_RELATIVE_FILES, true)) continue;
 
     $flaggedRoot = false; $reasonsRoot = [];
+
     foreach ($SUSPICIOUS_FILENAME_REGEXES as $re) {
         if (preg_match($re, $it)) { $flaggedRoot = true; $reasonsRoot[] = 'Filename matches known malicious pattern.'; break; }
     }
-
-    $extR = strtolower(pathinfo($p, PATHINFO_EXTENSION));
-
-    // .shtml in the webroot is a known indicator from this campaign —
-    // Joomla never ships .shtml files by default, so presence alone is
-    // flagged, no content match required.
-    if ($extR === 'shtml') {
-        $flaggedRoot = true;
-        $reasonsRoot[] = '.shtml file present in the Joomla webroot — Joomla does not use this file type by default; real-world reports from this campaign flag dropped .shtml files here as malware.';
+    foreach ($ROOT_SUSPICIOUS_FILENAME_REGEXES as $re) {
+        if (preg_match($re, $it)) { $flaggedRoot = true; $reasonsRoot[] = 'Filename resembles a known dropped-shell naming pattern.'; break; }
     }
 
-    if (in_array($extR, $EXEC_EXTS, true) && @filesize($p) <= $MAX_FILE_SCAN_SIZE) {
+    $extR = strtolower(pathinfo($p, PATHINFO_EXTENSION));
+    $rootTextLikeExts = array_merge($EXEC_EXTS, ['txt','html','htm','js']);
+    if (@filesize($p) !== false && @filesize($p) <= $MAX_FILE_SCAN_SIZE
+        && (in_array($extR, $rootTextLikeExts, true) || $extR === '')) {
         $contents = @file_get_contents($p);
         if ($contents) {
             foreach ($CONTENT_SIGNATURES as $sigName => $re) {
@@ -902,10 +1161,76 @@ foreach ($rootItems as $it) {
             }
         }
     }
+
+    // Any file directly in the webroot that isn't a recognised Joomla file
+    // and has no obvious static-asset extension is worth flagging on its
+    // own — covers no-extension drops like "wp-ccoo".
+    $benignStaticExts = ['css','jpg','jpeg','png','gif','svg','ico','webp','woff','woff2','ttf','eot','map'];
+    if (!$flaggedRoot && !in_array($extR, $benignStaticExts, true)) {
+        $flaggedRoot = true;
+        $reasonsRoot[] = 'Unrecognized file directly in the Joomla webroot — not part of a standard install; verify manually.';
+    }
+
     if ($flaggedRoot) {
         $seenAbs[$p] = true;
         recordFinding($fileFindings, $p, $JOOMLA_ROOT, implode(' | ', array_unique($reasonsRoot)), false);
     }
+}
+
+// NEW (v4): core entry-point integrity check. Run independently of the
+// "unrecognized file" pass above, since index.php etc. ARE recognized
+// files — the point here is to check their *content*, not their presence.
+foreach ($CORE_ENTRY_POINTS as $relEntry) {
+    $absEntry = $JOOMLA_ROOT.'/'.$relEntry;
+    if (strtolower(basename($absEntry)) === $selfBasename) continue;
+    if (!is_file($absEntry)) continue;
+    $size = @filesize($absEntry);
+    if ($size === false || $size > $MAX_FILE_SCAN_SIZE) continue;
+    $contents = @file_get_contents($absEntry);
+    if ($contents === false) continue;
+
+    $issue = checkCoreIndexIntegrity($contents);
+    if ($issue !== null) {
+        $seenAbs[$absEntry] = true;
+        recordFinding($fileFindings, $absEntry, $JOOMLA_ROOT, $issue, false);
+    }
+}
+
+// Full check for unrecognized TOP-LEVEL directories sitting directly in
+// the Joomla webroot (e.g. a random folder like "3bd9leet" dropped next
+// to configuration.php). Anything here that isn't a known Joomla core
+// folder is flagged outright, and everything inside it is scanned and
+// flagged too, regardless of file type -- the folder's mere presence in
+// the webroot is the red flag, not its contents. The scanner's own file
+// is explicitly excluded so it never flags or scans itself.
+$rootDirItems = @scandir($JOOMLA_ROOT) ?: [];
+foreach ($rootDirItems as $it) {
+    if ($it === '.' || $it === '..') continue;
+    $p = $JOOMLA_ROOT.'/'.$it;
+    if (!is_dir($p)) continue;
+    $itLower = strtolower($it);
+    if (in_array($itLower, ['.git', '.svn', 'node_modules'], true)) continue;
+    if (in_array($itLower, $KNOWN_ROOT_DIRS, true)) continue;
+
+    if (!isset($seenAbs[$p])) {
+        $seenAbs[$p] = true;
+        recordFinding(
+            $fileFindings, $p, $JOOMLA_ROOT,
+            "Unrecognized top-level directory (\"{$it}\") directly inside the Joomla webroot — not a standard Joomla folder name; a legitimate extension, template, or upload would never appear here.",
+            true
+        );
+    }
+    walkDir($p, function (string $innerPath, bool $innerIsDir) use (&$fileFindings, $JOOMLA_ROOT, &$seenAbs, $selfBasename) {
+        if ($innerIsDir) return;
+        if (isset($seenAbs[$innerPath])) return;
+        if (strtolower(basename($innerPath)) === $selfBasename) return; // never flag the scanner itself
+        $seenAbs[$innerPath] = true;
+        recordFinding(
+            $fileFindings, $innerPath, $JOOMLA_ROOT,
+            'Inside an unrecognized top-level webroot directory — flagged regardless of file type since the parent folder itself should not exist.',
+            false
+        );
+    });
 }
 
 // =====================================================================
@@ -1228,14 +1553,34 @@ input[type=checkbox] { accent-color: var(--blue); width: 15px; height: 15px; cur
 
   <div class="disclaimer">
     <strong>About this report:</strong> findings are heuristic, not a guarantee. <strong>High confidence</strong> means a known malware
-    content signature, a malicious filename pattern, a purely-numeric drop folder, a fake index.php, or an unrecognized item inside
-    a folder that should only ever contain static font/CSS/JS assets. <strong>Medium confidence</strong> means a structural anomaly
-    (e.g. an executable file sitting in an upload path, or a file modified out-of-step with its siblings) that's worth a manual look
-    but isn't confirmed malicious on its own. Always keep a backup before deleting anything.
+    content signature, a malicious filename pattern, a purely-numeric drop folder, a fake index.php, a core entry-point bootstrap
+    violation, a backup/duplicate configuration file, an unrecognized top-level webroot directory, or an unrecognized item inside a
+    folder that should only ever contain static font/CSS/JS assets. <strong>Medium confidence</strong> means a structural anomaly
+    (e.g. an executable file sitting in an upload path, a marker/flag file, or a file modified out-of-step with its siblings) that's
+    worth a manual look but isn't confirmed malicious on its own. Always keep a backup before deleting anything.
   </div>
 
   <div class="disclaimer">
-    <strong>About template scanning:</strong> <code>templates/</code> is now scanned recursively. Two patterns are checked
+    <strong>About core entry-point integrity:</strong> <code>index.php</code> at the webroot (plus <code>administrator/index.php</code>,
+    <code>api/index.php</code>, and <code>includes/app.php</code>) are checked against Joomla's expected bootstrap sequence. The real
+    file never executes anything before defining <code>JOOMLA_MINIMUM_PHP</code> and <code>_JEXEC</code> — any code before that point
+    (a <code>require</code>/<code>include</code>, a numeric byte-array decoded with <code>chr()</code>, a <code>zip://</code> or
+    <code>phar://</code> stream-wrapper reference) is a strong sign the core file has been patched to silently load a separate payload
+    on every page view. This is flagged as High confidence and should be treated as a confirmed compromise, not a false-positive-prone
+    heuristic.
+  </div>
+
+  <div class="disclaimer">
+    <strong>About webroot scanning:</strong> any folder sitting directly inside the Joomla webroot that isn't a standard Joomla
+    core folder (administrator, components, media, images, templates, etc.) is flagged outright, and everything inside it is
+    scanned regardless of file type — a legitimate extension or upload never appears as a brand-new sibling folder next to
+    <code>configuration.php</code>. Loose files at the root are also checked, including <code>.shtml</code> files, backup/duplicate
+    configuration files (<code>configuration.bak.php</code> and similar), and small near-empty <code>.txt</code> marker files —
+    none of which Joomla ships by default.
+  </div>
+
+  <div class="disclaimer">
+    <strong>About template scanning:</strong> <code>templates/</code> is scanned recursively. Two patterns are checked
     specifically there: (1) a purely-numeric folder name (e.g. <code>features/252692</code>) — never a normal Joomla naming
     convention, and a common signature of an automated malware drop; and (2) a fake <code>index.php</code> — Joomla places a
     blank "no direct access" stub in every subfolder by design, so the file existing is normal, but if its content is anything
@@ -1258,7 +1603,7 @@ input[type=checkbox] { accent-color: var(--blue); width: 15px; height: 15px; cur
   <div class="section">
     <div class="section-header">
       <div class="section-num">1</div>
-      <div class="section-title">Suspicious files &amp; folders <small>templates · media · images · com_sppagebuilder · com_jce · tmp · cache · webroot</small></div>
+      <div class="section-title">Suspicious files &amp; folders <small>webroot · core entry points · templates · media · images · com_sppagebuilder · com_jce · tmp · cache</small></div>
     </div>
     <div class="panel">
       <?php if (empty($fileFindings)): ?>
@@ -1392,10 +1737,13 @@ input[type=checkbox] { accent-color: var(--blue); width: 15px; height: 15px; cur
       <h4>If something was actually flagged above</h4>
       <ul>
         <li><span><strong>Don't panic-delete first.</strong> Review each High-confidence row, then Medium-confidence rows. If unsure about an item, copy it somewhere safe before removing it.</span></li>
+        <li><span><strong>A core entry-point integrity finding</strong> (root <code>index.php</code> or similar) is the highest-priority item on this report — it means every page load is currently executing attacker code. Treat the site as actively compromised, not just historically infected.</span></li>
+        <li><span><strong>An unrecognized top-level folder in the webroot</strong> (e.g. a random name like "3bd9leet" sitting next to configuration.php) is one of the clearest signs of a compromise — Joomla, its extensions, and its uploads never create new sibling folders at the root.</span></li>
         <li><span><strong>A numeric drop folder (e.g. "252692") inside templates/ or media/</strong> is one of the strongest real-world signs of an automated upload exploit — these, and everything inside them, should be removed.</span></li>
         <li><span><strong>A fake index.php</strong> (anything beyond the one-line "no direct access" guard, outside a template's own root index.php) should be treated as a confirmed webshell and removed immediately.</span></li>
+        <li><span><strong>.shtml files and backup configuration files in the webroot</strong> are not standard Joomla file types and should be removed (after rotating any credentials they exposed).</span></li>
         <li><span><strong>A cluster of new, randomly-named files/folders created within the same minute</strong> (called out explicitly in the Reason column) is another strong sign of an automated drop.</span></li>
-        <li><span><strong>Rotate every credential</strong> readable from <code>configuration.php</code>: database password, SMTP password, any API keys, and Joomla's <code>secret</code> value (Global Configuration → regenerate, or edit the file directly).</span></li>
+        <li><span><strong>Rotate every credential</strong> readable from <code>configuration.php</code> (and any backup copies found): database password, SMTP password, any API keys, and Joomla's <code>secret</code> value (Global Configuration → regenerate, or edit the file directly).</span></li>
         <li><span><strong>Force-logout all sessions</strong> after rotating credentials — truncate the <code>#__session</code> table or use Users → Sessions → "Destroy" in Joomla admin.</span></li>
         <li><span><strong>Remove rogue Super Users</strong> flagged in Section 2, and audit every other Super User for ones you don't recognize.</span></li>
       </ul>
@@ -1466,8 +1814,6 @@ input[type=checkbox] { accent-color: var(--blue); width: 15px; height: 15px; cur
     if (remainingSeconds <= 0) {
       el.textContent = 'expired';
       el.parentElement.style.color = '#f87171';
-      // Give the user a moment to see "expired", then force a reload —
-      // the server will see the session is gone and show the login page.
       setTimeout(function() {
         window.location.reload();
       }, 1500);
