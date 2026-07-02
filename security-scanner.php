@@ -349,6 +349,29 @@ function checkCoreIndexIntegrity(string $contents): ?string {
     return null;
 }
 
+function checkHeadTagInjection(string $contents): ?string {
+    // Check for <head> tag followed by obfuscated script
+    if (stripos($contents, '<head') === false) return null;
+    
+    // Look for patterns: <head> followed by script with base64, long hex, etc.
+    $patterns = [
+        // <head> followed by script tag with base64 encoded content
+        '/<head[^>]*>\s*(?:<[^>]*>)*?\s*<script[^>]*>(?:.*?(?:base64|atob|eval|String\.fromCharCode|document\.write).*?)<\/script/is',
+        // Obfuscated script right after <head>
+        '/<head[^>]*>\s*<script[^>]*>(?:[\s\S]{200,}?)<\/script/is'
+    ];
+    
+    foreach ($patterns as $pattern) {
+        if (preg_match($pattern, $contents, $matches)) {
+            $preview = trim(preg_replace('/\s+/', ' ', $matches[0]));
+            $preview = strlen($preview) > 200 ? substr($preview, 0, 200).'…' : $preview;
+            return "Suspicious obfuscated script injected right after <head> tag — this matches the known attack pattern. Preview: {$preview}";
+        }
+    }
+    
+    return null;
+}
+
 function recordFinding(array &$arr, string $absPath, string $root, string $reason, bool $isDir = false): void {
     $rel = ltrim(str_replace($root,'',$absPath),'/');
     $size = $isDir ? dirSize($absPath) : (is_file($absPath) ? (int)@filesize($absPath) : 0);
@@ -653,6 +676,7 @@ $SCAN_CONFIG = [
     'administrator/includes'                     => 'code',
     'libraries'                                   => 'code',
     'templates'                                    => 'code',
+    'administrator/templates'                    => 'code',
 ];
 
 // Strict allow-list for */assets/iconfont/* -- a real-world drop point for
@@ -771,6 +795,14 @@ function scanFileContent(string $path, string $ext, array $CONTENT_SIGNATURES,
         $flagged = true;
         $reasons[] = 'Content signature: php_tag_in_image_file (polyglot shell disguised with an image extension)';
     }
+    
+    // Check for head tag injection
+    $headIssue = checkHeadTagInjection($contents);
+    if ($headIssue !== null) {
+        $flagged = true;
+        $reasons[] = $headIssue;
+    }
+    
     return $flagged;
 }
 
