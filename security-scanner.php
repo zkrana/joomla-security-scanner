@@ -1000,8 +1000,19 @@ if ($dbCfg) {
         $assetsTable = $prefix.'sppagebuilder_assets';
         $res3 = @mysqli_query($mysqli,"SHOW TABLES LIKE '{$assetsTable}'");
         if ($res3 && mysqli_num_rows($res3)>0) {
-            $r3=@mysqli_query($mysqli,"SELECT * FROM `{$assetsTable}` WHERE asset_value LIKE '%xss.report%' OR asset_value LIKE '%base64_decode%' OR asset_value LIKE '%eval(%' LIMIT 100");
+            // Check for injected XSS/eval payloads in asset_value
+            $r3=@mysqli_query($mysqli,"SELECT * FROM `{$assetsTable}`
+                WHERE asset_value LIKE '%xss.report%'
+                  OR asset_value LIKE '%base64_decode%'
+                  OR asset_value LIKE '%eval(%' LIMIT 100");
             if ($r3) while ($row=mysqli_fetch_assoc($r3)) $dbFindings['sppb_assets'][]=$row;
+
+            // Check for rogue iconfont registrations (random-name, created_by=0, not the legit icofont)
+            $r4=@mysqli_query($mysqli,"SELECT * FROM `{$assetsTable}`
+                WHERE type = 'iconfont'
+                  AND name != 'icofont'
+                  AND created_by = 0");
+            if ($r4) while ($row=mysqli_fetch_assoc($r4)) $dbFindings['rogue_iconfont'][]=$row;
         }
         mysqli_close($mysqli);
     } else {
