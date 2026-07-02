@@ -317,37 +317,34 @@ function checkCoreIndexIntegrity(string $contents): ?string {
 
     $bootstrapPattern = '/(?:\\\\?\bdefine\s*\(\s*[\'"]_JEXEC[\'"]\s*,\s*1\s*\)|\bconst\s+_JEXEC\s*=\s*1)\s*;/i';
     if (!preg_match($bootstrapPattern, $contents, $m, PREG_OFFSET_CAPTURE)) {
-        return 'Core entry-point file is missing the expected _JEXEC bootstrap statement entirely — likely fully replaced or severely tampered with.';
+        // Some legitimate Joomla files (e.g. includes/app.php) are included
+        // by the real entry point and never define _JEXEC themselves. Don't
+        // flag on absence -- content-signature scanning (run separately)
+        // still catches actual malware in these files.
+        return null;
     }
 
     $prefix = substr($contents, $openTagPos + 5, $m[0][1] - ($openTagPos + 5));
 
-    // Strip comments
-    $stripped = preg_replace('#/\*.*?\*/#s', '', $prefix);
-    $stripped = preg_replace('#//[^\n]*#', '', $stripped);
+    // Only flag the prefix if it contains a genuinely malicious indicator --
+    // not merely "non-empty". Joomla version-check code, JPATH_BASE guards,
+    // use/namespace statements, etc. all legitimately vary by version and
+    // entry point; trying to whitelist every variant is a losing game.
+    $suspiciousPatterns = [
+        'stream-wrapper reference (zip://, phar://, etc.)' => '/(zip|phar|compress\.zlib|compress\.bzip2|data):\/\//i',
+        'numeric byte-array (chr() decode obfuscation)'    => '/array\s*\(\s*(\d{2,3}\s*,\s*){6,}\d{2,3}\s*\)/i',
+        'eval()'                                            => '/\beval\s*\(/i',
+        'base64_decode()'                                   => '/base64_decode\s*\(/i',
+        'assert()'                                          => '/\bassert\s*\(/i',
+        'shell/process execution function'                 => '/\b(system|exec|shell_exec|passthru|proc_open)\s*\(/i',
+    ];
 
-    // Strip namespace/use
-    $stripped = preg_replace('/^\s*namespace\s+[^;]+;/mi', '', $stripped);
-    $stripped = preg_replace('/^\s*use\s+[^;]+;/mi', '', $stripped);
-
-    // === NEW: strip the legitimate Joomla 5 MINIMUM_PHP block ===
-    // Joomla 5 legitimately defines JOOMLA_MINIMUM_PHP and does a version
-    // check before _JEXEC. This is not an injection.
-    $stripped = preg_replace(
-        '/\bdefine\s*\(\s*[\'"]JOOMLA_MINIMUM_PHP[\'"]\s*,\s*[\'"][0-9.]+[\'"]\s*\)\s*;/i',
-        '', $stripped
-    );
-    $stripped = preg_replace(
-        '/if\s*\(\s*version_compare\s*\(\s*PHP_VERSION\s*,.{0,300}?\}\s*/s',
-        '', $stripped
-    );
-    // ============================================================
-
-    $stripped = trim(preg_replace('/\s+/', ' ', $stripped));
-
-    if ($stripped !== '') {
-        $preview = strlen($stripped) > 160 ? substr($stripped, 0, 160).'…' : $stripped;
-        return 'Core entry-point file contains executable code before the Joomla bootstrap (_JEXEC) — the legitimate file never executes anything beyond the optional PHP-version check at this point. This is the injection pattern used to silently load a separate payload. Offending code: '.$preview;
+    foreach ($suspiciousPatterns as $label => $re) {
+        if (preg_match($re, $prefix)) {
+            $preview = trim(preg_replace('/\s+/', ' ', $prefix));
+            $preview = strlen($preview) > 160 ? substr($preview, 0, 160).'…' : $preview;
+            return "Core entry-point file contains suspicious code before the Joomla bootstrap (_JEXEC) — {$label} detected. This is the injection pattern used to silently load a separate payload on every page load. Offending code: {$preview}";
+        }
     }
     return null;
 }
@@ -631,80 +628,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'selfd
 }
 
 // =====================================================================
-// SIGNATURES
+// SCAN CONFIGURATION — directory-driven, two simple modes
 // =====================================================================
+// 'upload'  = strict mode: executable files are never allowed here, numeric
+//             drop-folders are flagged, and a non-stub index.php is flagged.
+//             Use this ONLY for directories where users/attackers can drop
+//             files (media, images, cache, tmp, custom upload folders).
+// 'code'    = signature-only mode: this is real extension/component/module
+//             code, so .php files are normal and expected everywhere. Only
+//             actual malware content signatures are checked here — no
+//             structural guessing about "should this subfolder exist".
+$SCAN_CONFIG = [
+    'media'                                    => 'upload',   // catches direct-drop attacks
+    'images'                                   => 'upload',
+    'tmp'                                      => 'upload',
+    'cache'                                    => 'upload',
+    'files'                                    => 'upload',
 
-// Paths that are bundled vendor PHP code (legitimate to contain .php files).
-// We no longer flag these merely for containing executable code -- only an
-// actual content-signature match or a timestamp anomaly is reported.
-$KNOWN_VENDOR_PATH_FRAGMENTS = [
-    '/administrator/components/com_sppagebuilder/assets/vendor/facebook/graph-sdk/',
-    '/administrator/components/com_sppagebuilder/assets/vendor/phpseclib/',
+    'components'                               => 'code',
+    'administrator/components'                 => 'code',
+    'modules'                                   => 'code',
+    'administrator/modules'                     => 'code',
+    'plugins'                                    => 'code',
+    'administrator/includes'                     => 'code',
+    'libraries'                                   => 'code',
+    'templates'                                    => 'code',
 ];
 
-// Path fragments that are always legitimate Joomla / SPPB / Helix Ultimate /
-// JCE core code, exempted from the generic "executable file in a media/images
-// path" heuristic (content-signature scanning still applies to all of them).
-$SAFE_PATH_FRAGMENTS = [
-    '/administrator/components/com_sppagebuilder/views/',
-    '/administrator/components/com_sppagebuilder/models/',
-    '/administrator/components/com_sppagebuilder/controllers/',
-    '/administrator/components/com_sppagebuilder/tables/',
-    '/administrator/components/com_sppagebuilder/helpers/',
-    '/administrator/components/com_sppagebuilder/fields/',
-    '/administrator/components/com_sppagebuilder/layouts/',
-    '/administrator/components/com_sppagebuilder/forms/',
-    '/components/com_sppagebuilder/',
-    '/media/com_sppagebuilder/js/',
-    '/media/com_sppagebuilder/css/',
-    '/media/com_sppagebuilder/fonts/',
-    '/media/com_sppagebuilder/images/sample/',
-    '/templates/helix_ultimate/',
-    '/templates/helix-ultimate/',
-    '/templates/shaper_helixultimate/',
-    '/templates/shaper_helix_ultimate/',
-    '/administrator/components/com_jce/views/',
-    '/administrator/components/com_jce/models/',
-    '/administrator/components/com_jce/controllers/',
-    '/administrator/components/com_jce/tables/',
-    '/administrator/components/com_jce/helpers/',
-    '/administrator/components/com_jce/editor/libraries/',
-    '/administrator/components/com_jce/editor/tiny_mce/',
-    '/components/com_jce/',
-    '/components/com_jce/editor/extensions/filesystem/',
-    '/media/com_jce/js/',
-    '/media/com_jce/css/',
-    '/media/com_jce/editor/tiny_mce/',
-    '/plugins/editors-xtd/',
-    '/plugins/editors/',
-    '/plugins/system/',
-    '/plugins/content/',
-    '/plugins/user/',
-    '/plugins/authentication/',
-    '/plugins/finder/',
-    '/plugins/installer/',
-    '/plugins/behaviour/',
-    '/plugins/captcha/',
-    '/plugins/extension/',
-    '/plugins/fields/',
-    '/plugins/filesystem/',
-    '/plugins/media-action/',
-    '/plugins/multifactorauth/',
-    '/plugins/privacy/',
-    '/plugins/quickicon/',
-    '/plugins/sampledata/',
-    '/plugins/schemaorg/',
-    '/plugins/task/',
-    '/plugins/workflow/',
-    '/plugins/webservices/',
-    '/media/com_hikashop/',
-    '/administrator/components/com_hikashop/',
-    '/components/com_hikashop/',
-    '/plugins/hikashop/',
-    '/administrator/components/com_akeebabackup/backup/',
-    '/components/com_akeebabackup/backup/',
-    '/media/com_akeebabackup/backup/',
+// Strict allow-list for */assets/iconfont/* -- a real-world drop point for
+// the SPPB unauthenticated upload vulnerability. Anything here that isn't a
+// recognised font/icon asset is flagged, regardless of content.
+$ICONFONT_ALLOWED_DIRNAMES   = ['css','font','fonts','demo','docs','demo-files'];
+$ICONFONT_ALLOWED_EXTENSIONS = ['woff','woff2','ttf','eot','otf','svg','css','json','html','htm','txt','md'];
+$ICONFONT_ALLOWED_BARE_NAMES = ['license','readme','changelog'];
+
+// Strict allow-list for JCE's file browser upload path.
+$JCE_UPLOAD_PATH_FRAGMENTS = [
+    '/media/com_jce/editor/tiny_mce/plugins/filemanager/',
 ];
+$JCE_UPLOAD_ALLOWED_EXTENSIONS = ['jpg','jpeg','png','gif','webp','svg','pdf','doc','docx','xls','xlsx','zip','css','js','json','html','htm'];
+
+$EXEC_EXTS = ['php','phtml','php3','php4','php5','php7','phar','pht','shtml'];
 
 // Filenames matching known malicious patterns from real SPPB compromises.
 $SUSPICIOUS_FILENAME_REGEXES = [
@@ -717,20 +681,15 @@ $SUSPICIOUS_FILENAME_REGEXES = [
 ];
 
 // Extra filename heuristics applied ONLY to files sitting directly in the
-// Joomla webroot (shallow scan) -- more aggressive since nothing legitimate
-// should ever place these kinds of files at webroot level.
+// Joomla webroot (shallow scan).
 $ROOT_SUSPICIOUS_FILENAME_REGEXES = [
-    '/^wp-[a-z0-9_-]*\.(php|txt|html?)$/i',      // WordPress-branded name in a Joomla root
-    '/file[-_]?ma[nr]+ger2?\.php$/i',            // "filemannger.php" / "filemanager2.php" typo-shells
-    '/^[a-z0-9]{1,3}\.php$/i',                   // 1-3 char filenames, e.g. e.php, x.php
-    '/^\d{1,8}\.php$/i',                         // purely numeric filenames, e.g. 123.php
-    '/^[a-z]{2,8}\.txt$/i',                      // short random-word .txt drops, e.g. yjk.txt
+    '/^wp-[a-z0-9_-]*\.(php|txt|html?)$/i',
+    '/file[-_]?ma[nr]+ger2?\.php$/i',
+    '/^[a-z0-9]{1,3}\.php$/i',
+    '/^\d{1,8}\.php$/i',
+    '/^[a-z]{2,8}\.txt$/i',
 ];
 
-// NEW (v4): filenames matching known backup/duplicate Joomla configuration
-// files. These leak the same DB credentials, mail credentials, and secret
-// key as the live configuration.php and are a common artifact left behind
-// by restore tools (e.g. Akeeba) as well as attacker reconnaissance.
 $CONFIG_BACKUP_PATTERNS = [
     '/^configuration[\._\-]?bak\.php$/i',
     '/^configuration[\._\-]?old\.php$/i',
@@ -748,84 +707,17 @@ $CONTENT_SIGNATURES = [
     'xss_report_payload' => '/xss\.report|_hu_inject/i',
     'secure_local_marker'=> '/secure\.local/i',
     'webshell_generic'   => '/FilesMan|c99shell|r57shell|WSO\s*Web\s*Shell/i',
-
-    // --- NEW (v4): zip:// / phar:// / other stream-wrapper payload loaders ---
-    // Catches the real-world pattern: a numeric byte array decoded with
-    // chr() into something like "zip://payload#2", then require'd. Stream-
-    // wrapper based require/include of a non-.php file is never legitimate
-    // Joomla core code.
     'stream_wrapper_payload' => '/require(?:_once)?\s*\(?\s*\$?\w*\s*\)?\s*;?.{0,200}?(zip|phar|compress\.zlib|compress\.bzip2|data):\/\//is',
-
-    // A numeric array of 6+ ASCII byte values later rebuilt with chr() —
-    // the exact obfuscation style used to hide the "zip://payload#2" string.
     'chr_byte_array_decode'  => '/\$\w+\s*=\s*array\s*\(\s*(\d{2,3}\s*,\s*){6,}\d{2,3}\s*\)\s*;.{0,300}?chr\s*\(\s*\$\w+\[\$?\w+\]\s*\)/is',
-
-    // --- NEW (v4): string-lookup-table obfuscation (e.g. e.php style) ---
-    // A long base64 string decoded into a lookup array, then referenced
-    // repeatedly as $M[12].$M[5]... to rebuild function/variable names and
-    // avoid plain-text signature matches.
     'string_lookup_obfuscation' => '/\$_?\w+\s*=\s*base64_decode\s*\(\s*[\'"][A-Za-z0-9+\/=]{40,}[\'"]\s*\)\s*;.{0,80}?\$\w+\[\d+\]\s*\.\s*\$\w+\[\d+\]/is',
-
-    // Self-replicating dropper: glob() over directories combined with
-    // chmod + file_put_contents + md5 verification — copies itself into
-    // multiple folders to survive partial cleanup.
     'self_replicating_dropper'  => '/glob\s*\(.{0,40}GLOB_ONLYDIR.{0,200}?file_put_contents\s*\(.{0,400}?md5\s*\(\s*\$\w+\s*\)\s*==\s*md5\s*\(\s*file_get_contents/is',
-
-    // No-op comment padding used to break naive byte/string-pattern
-    // scanners, e.g.  ;/*duel*/; ;/*kKIE*/;  repeated many times in a row.
     'noop_comment_padding'      => '/(;\s*\/\*\s*\w{3,12}\s*\*\/\s*;\s*){8,}/i',
-
-    // A file whose entire body is just opcache_reset() — a strong signal
-    // it exists solely to force PHP to drop cached bytecode immediately
-    // after another malicious file was just (over)written nearby.
     'opcache_reset_only' => '/^\s*<\?php\s*opcache_reset\s*\(\s*\)\s*;\s*\?>\s*$/i',
 ];
 
-// Extensions that should NEVER contain PHP opening tags. If one does, it's
-// almost certainly a polyglot/disguised shell (e.g. osmbanner3.png, a .png
-// that's actually PHP), regardless of how the payload itself is obfuscated.
 $NON_PHP_EXTS_THAT_MUST_STAY_CLEAN = ['png','jpg','jpeg','gif','webp','ico','svg','bmp'];
 $PHP_OPEN_TAG_RE = '/<\?php/i';
 
-// Subfolder names legitimately expected inside a Joomla module package
-// (mod_*). Anything else (e.g. "services/") inside a module folder is
-// non-standard and worth flagging.
-$MODULE_ALLOWED_SUBDIRS = ['tmpl','language','css','js','images','fonts','src','field','fields',
-                            'services','assets','library','libraries','vendor','helpers','layouts','presets'];
-
-// Generic "everyday word" filenames commonly used at webroot or in odd
-// locations by attackers to blend in (about.php, options.php, network.php,
-// online.php, security.php, models.php, module.php, common/index.php in a
-// non-view path, etc). Flagged as medium confidence for manual review --
-// these words are plausible legitimate filenames too, so we don't auto-mark
-// them "high".
-$DECOY_FILENAME_REGEXES = [
-    '/^(about|options|network|online|security|common|module|models|banner[s]?\d*|lock\d+)\.php$/i',
-];
-
-// Strict allow-list for */assets/iconfont/* -- a real-world drop point for
-// the SPPB unauthenticated upload vulnerability. Anything here that isn't a
-// recognised font/icon asset is flagged, regardless of content.
-$ICONFONT_ALLOWED_DIRNAMES   = ['css','font','fonts','demo','docs','demo-files'];
-$ICONFONT_ALLOWED_EXTENSIONS = ['woff','woff2','ttf','eot','otf','svg','css','json','html','htm','txt','md'];
-$ICONFONT_ALLOWED_BARE_NAMES = ['license','readme','changelog'];
-
-// Strict allow-list for JCE's file browser upload roots (images/, media/jce/,
-// the "jce" file-browser connector folder). Several real-world JCE
-// compromises have dropped shells through the file browser's upload path,
-// the same way SPPB's iconfont path gets abused. Bare extension-less files
-// and any executable extension inside these folders are flagged.
-$JCE_UPLOAD_PATH_FRAGMENTS = [
-    '/media/com_jce/editor/tiny_mce/plugins/filemanager/',
-];
-
-$JCE_UPLOAD_ALLOWED_EXTENSIONS = ['jpg','jpeg','png','gif','webp','svg','pdf','doc','docx','xls','xlsx','zip','css','js','json','html','htm'];
-
-$EXEC_EXTS = ['php','phtml','php3','php4','php5','php7','phar','pht','shtml'];
-
-// NEW (v4): core Joomla entry-point files, checked against the
-// "nothing executable before the bootstrap markers" rule via
-// checkCoreIndexIntegrity(). Paths are relative to $JOOMLA_ROOT.
 $CORE_ENTRY_POINTS = [
     'index.php',
     'administrator/index.php',
@@ -833,36 +725,20 @@ $CORE_ENTRY_POINTS = [
     'includes/app.php',
 ];
 
-
-// Joomla files we never want to flag or delete from the bare webroot scan.
 $KNOWN_ROOT_FILES = ['index.php','configuration.php','htaccess.txt','web.config.txt','robots.txt.dist',
                       'robots.txt','LICENSE.txt','README.txt','joomla.xml','htaccess.bak',
-                      'php.ini','php.ini.bak','.user.ini','.htaccess','.htaccess.bak','helixultimate.php','helix-ultimate','shaper_helixultimate','protostar','beez3','cassiopeia','system'];
-// Known-legitimate entry-point files at fixed relative paths (from JOOMLA_ROOT).
-// Exempted from filename/location heuristics; still content-signature scanned
-// if the directory they live in gets walked.
+                      'php.ini','php.ini.bak','.user.ini','.htaccess','.htaccess.bak'];
+
 $KNOWN_SAFE_RELATIVE_FILES = [
     'index.php', 'administrator/index.php', 'api/index.php',
     'includes/app.php', 'includes/framework.php', 'cli/joomla.php',
     'files/index.html', 'images/index.html', 'media/index.html',
 ];
 
-// Top-level directory names that are a normal part of a Joomla install (or a
-// commonly-added custom folder like "files"). Anything at webroot level NOT
-// in this list is treated as unrecognized and flagged for manual review.
 $KNOWN_ROOT_DIRS = ['administrator','api','bin','cache','cli','components','includes',
                      'language','layouts','libraries','media','modules','plugins',
                      'templates','tmp','images','files','node_modules','.well-known'];
 
-// Recognised bundled/official template folder names (lowercase). Anything
-// inside /templates/<name>/ where <name> is not in this list is treated as
-// an unverified template and scanned with full scrutiny -- a real-world
-// drop point for disguised shells (e.g. templates/features/index.php).
-$KNOWN_TEMPLATE_DIRNAMES = ['helix_ultimate','helix-ultimate','shaper_helixultimate',
-                             'shaper_helix_ultimate','protostar','beez3','cassiopeia','system'];
-
-// Top-level folders that can NEVER be deleted via this tool, even if a bug
-// somehow caused one to be flagged. Defense in depth around the delete action.
 $PROTECTED_TOP_DIRS = ['administrator','components','libraries','media','images','templates',
                         'plugins','modules','language','cache','tmp','layouts','includes','api','cli'];
 
@@ -871,304 +747,186 @@ $PROTECTED_TOP_DIRS = ['administrator','components','libraries','media','images'
 // SCAN: filesystem
 // =====================================================================
 $fileFindings = [];
-$scanDirs = [
-    $JOOMLA_ROOT.'/media/com_sppagebuilder',
-    $JOOMLA_ROOT.'/administrator/components/com_sppagebuilder',
-    $JOOMLA_ROOT.'/media/com_jce',
-    $JOOMLA_ROOT.'/administrator/components/com_jce',
-    $JOOMLA_ROOT.'/components/com_jce',
-    $JOOMLA_ROOT.'/plugins/editors/jce',
-    $JOOMLA_ROOT.'/images',
-    $JOOMLA_ROOT.'/media',
-    $JOOMLA_ROOT.'/tmp',
-    $JOOMLA_ROOT.'/cache',
-    $JOOMLA_ROOT.'/templates',
-    $JOOMLA_ROOT.'/files',
-    $JOOMLA_ROOT.'/components',
-    $JOOMLA_ROOT.'/administrator/components',
-    $JOOMLA_ROOT.'/modules',
-    $JOOMLA_ROOT.'/administrator/modules',
-    $JOOMLA_ROOT.'/plugins',
-    $JOOMLA_ROOT.'/administrator/includes',
-    $JOOMLA_ROOT.'/libraries',
-];
 $seenAbs = [];
 $selfBasename = strtolower(basename(__FILE__));
 
-foreach ($scanDirs as $dir) {
+/**
+ * Scan a single file for content signatures + polyglot check.
+ * Runs in BOTH 'upload' and 'code' modes — this is the core malware detector.
+ */
+function scanFileContent(string $path, string $ext, array $CONTENT_SIGNATURES,
+                          array $NON_PHP_EXTS_THAT_MUST_STAY_CLEAN, string $PHP_OPEN_TAG_RE,
+                          int $maxSize, array &$reasons): bool {
+    if (!is_file($path) || @filesize($path) === false || @filesize($path) > $maxSize) return false;
+    $textLikeExts = ['php','phtml','php3','php4','php5','php7','phar','pht','js','html','htm','txt','css','xml','gif','png','jpg','jpeg'];
+    if (!in_array($ext, $textLikeExts, true) && $ext !== '') return false;
+    $contents = @file_get_contents($path);
+    if ($contents === false || $contents === '') return false;
+
+    $flagged = false;
+    foreach ($CONTENT_SIGNATURES as $sigName => $re) {
+        if (preg_match($re, $contents)) { $flagged = true; $reasons[] = "Content signature: $sigName"; }
+    }
+    if (in_array($ext, $NON_PHP_EXTS_THAT_MUST_STAY_CLEAN, true) && preg_match($PHP_OPEN_TAG_RE, $contents)) {
+        $flagged = true;
+        $reasons[] = 'Content signature: php_tag_in_image_file (polyglot shell disguised with an image extension)';
+    }
+    return $flagged;
+}
+
+foreach ($SCAN_CONFIG as $relDir => $mode) {
+    $dir = $JOOMLA_ROOT.'/'.$relDir;
     if (!is_dir($dir)) continue;
+
     walkDir($dir, function(string $path, bool $isDir) use (
-        &$fileFindings, $JOOMLA_ROOT, $KNOWN_VENDOR_PATH_FRAGMENTS, $SAFE_PATH_FRAGMENTS,
+        &$fileFindings, $JOOMLA_ROOT, $mode,
         $SUSPICIOUS_FILENAME_REGEXES, $CONTENT_SIGNATURES, $MAX_FILE_SCAN_SIZE,
         $ICONFONT_ALLOWED_DIRNAMES, $ICONFONT_ALLOWED_EXTENSIONS, $ICONFONT_ALLOWED_BARE_NAMES,
         $JCE_UPLOAD_PATH_FRAGMENTS, $JCE_UPLOAD_ALLOWED_EXTENSIONS,
-        $KNOWN_SAFE_RELATIVE_FILES, $KNOWN_TEMPLATE_DIRNAMES,
         $NON_PHP_EXTS_THAT_MUST_STAY_CLEAN, $PHP_OPEN_TAG_RE,
-        $MODULE_ALLOWED_SUBDIRS, $DECOY_FILENAME_REGEXES,
-        $EXEC_EXTS, $selfBasename, &$seenAbs
+        $KNOWN_SAFE_RELATIVE_FILES, $EXEC_EXTS, $selfBasename, &$seenAbs
     ) {
         if (strtolower(basename($path)) === $selfBasename) return;
         if (isset($seenAbs[$path])) return;
+
         $basename = basename($path);
         $relCheck = ltrim(str_replace($JOOMLA_ROOT, '', $path), '/');
         $isKnownSafeEntry = !$isDir && in_array($relCheck, $KNOWN_SAFE_RELATIVE_FILES, true);
-
         $flagged = false; $reasons = [];
 
-        $inTemplatesTree = (stripos($path, '/templates/') !== false);
-        $inMediaOrImagesTree = (stripos($path, '/media/') !== false || stripos($path, '/images/') !== false);
-
-        // ---- numeric "drop folder" detection (date-folder aware) ----
-        $parentBasenameForNumericCheck = strtolower(basename(dirname($path)));
-        $parentIsNumericDropFolder = preg_match('/^\d+$/', $parentBasenameForNumericCheck)
-            && !isDateLikeNumericFolderName($parentBasenameForNumericCheck);
-
-        if ($isDir && preg_match('/^\d+$/', $basename) && !isDateLikeNumericFolderName($basename) && ($inTemplatesTree || $inMediaOrImagesTree)) {
-            $flagged = true;
-            $reasons[] = "Folder name is purely numeric (\"{$basename}\") and isn't a standard 2- or 4-digit date component — a common pattern for automated malware-drop directories.";
-            $clusterCount = clusterSiblingCount($path);
-            if ($clusterCount >= 3) {
-                $reasons[] = "Appeared together with {$clusterCount} other new items within the same couple of minutes — consistent with an automated/scripted drop.";
-            }
-        } elseif (!$isDir && $parentIsNumericDropFolder && ($inTemplatesTree || $inMediaOrImagesTree)) {
-            $flagged = true;
-            $reasons[] = "File resides inside a purely-numeric, non-date-like folder (\"{$parentBasenameForNumericCheck}\") — a common automated-malware-drop pattern, regardless of this file's own extension.";
-        }
-
-        // ---- Strict allow-list for icon-font asset folders ----
-        $inIconfontTree = (stripos($path, '/iconfont/') !== false);
-        if ($inIconfontTree && !$flagged) {
+        // ---- iconfont strict allow-list (applies regardless of mode) ----
+        if (stripos($path, '/iconfont/') !== false) {
             $parentBase = strtolower(basename(dirname($path)));
             if ($isDir) {
                 if ($parentBase === 'iconfont' && !in_array(strtolower($basename), $ICONFONT_ALLOWED_DIRNAMES, true)) {
                     $flagged = true;
-                    $reasons[] = 'Unrecognized folder inside icon-font asset directory (expected only: '.implode(', ', $ICONFONT_ALLOWED_DIRNAMES).').';
+                    $reasons[] = 'Unrecognized folder inside icon-font asset directory.';
                 }
             } else {
                 $extL = strtolower(pathinfo($path, PATHINFO_EXTENSION));
                 if (in_array($extL, $EXEC_EXTS, true)) {
                     $flagged = true;
-                    $reasons[] = 'Executable file inside icon-font asset folder — this folder should never contain runnable code.';
+                    $reasons[] = 'Executable file inside icon-font asset folder.';
                 } elseif ($parentBase === 'iconfont') {
                     $baseNoExt = strtolower(pathinfo($basename, PATHINFO_FILENAME));
-                    $okExt  = in_array($extL, $ICONFONT_ALLOWED_EXTENSIONS, true);
-                    $okBare = ($extL === '' && in_array($baseNoExt, $ICONFONT_ALLOWED_BARE_NAMES, true));
-                    if (!$okExt && !$okBare) {
+                    if (!in_array($extL, $ICONFONT_ALLOWED_EXTENSIONS, true)
+                        && !($extL === '' && in_array($baseNoExt, $ICONFONT_ALLOWED_BARE_NAMES, true))) {
                         $flagged = true;
                         $reasons[] = 'Unrecognized file type inside icon-font asset directory.';
                     }
                 }
             }
-            if ($flagged) {
-                $clusterCount = clusterSiblingCount($path);
-                if ($clusterCount >= 3) {
-                    $reasons[] = "Appeared together with {$clusterCount} other new items within the same couple of minutes — consistent with an automated/scripted drop.";
-                }
-            }
         }
 
-        // ---- Strict allow-list for JCE file-browser upload roots ----
-        $inJceUploadPath = false;
-        foreach ($JCE_UPLOAD_PATH_FRAGMENTS as $frag) {
-            if (stripos($path, $frag) !== false) { $inJceUploadPath = true; break; }
-        }
-        if (!$isDir && $inJceUploadPath && !$flagged) {
-            $extL = strtolower(pathinfo($path, PATHINFO_EXTENSION));
-            if (in_array($extL, $EXEC_EXTS, true)) {
-                $flagged = true;
-                $reasons[] = 'Executable file inside JCE file-browser upload path — this folder should never contain runnable code.';
-            } elseif ($extL !== '' && !in_array($extL, $JCE_UPLOAD_ALLOWED_EXTENSIONS, true)) {
-                $flagged = true;
-                $reasons[] = 'Unrecognized file type inside JCE file-browser upload path.';
-            }
-            if ($flagged) {
-                $clusterCount = clusterSiblingCount($path);
-                if ($clusterCount >= 3) {
-                    $reasons[] = "Appeared together with {$clusterCount} other new items within the same couple of minutes — consistent with an automated/scripted drop.";
-                }
-            }
-        }
-
-        if ($isDir) {
-            if ($flagged) {
-                $seenAbs[$path] = true;
-                recordFinding($fileFindings, $path, $JOOMLA_ROOT, implode(' | ', array_unique($reasons)), true);
-            }
-            return;
-        }
-
-        // ---- File-only checks below ----
-        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
-
-        $inRiskyVendorPath = false;
-        foreach ($KNOWN_VENDOR_PATH_FRAGMENTS as $frag) {
-            if (stripos($path, $frag) !== false) { $inRiskyVendorPath = true; break; }
-        }
-        $inSafePath = false;
-        foreach ($SAFE_PATH_FRAGMENTS as $frag) {
-            if (stripos($path, $frag) !== false) { $inSafePath = true; break; }
-        }
-        $inVendorPath = (stripos($path, '/vendor/') !== false);
-        $inGenericMediaPath = (bool)preg_match('#^(media|images)/#i', $relCheck);
-        $inCoreMvcPath = (bool)preg_match('#/(controllers|helpers|models|tables|fields|forms|layouts|views|src/Service|src/Helper|src/Field|src/Table)/#i', $path)
-            || (bool)preg_match('#/templates/[^/]+/html/#i', $path);
-        $looksLikeMvcView = (stripos($path, '/views/') !== false)
-            && (stripos($path, '/tmpl/') !== false || preg_match('/view\.[a-z0-9]+\.php$/i', $basename));
-
-        if (!$flagged && !$isKnownSafeEntry && in_array($ext, $EXEC_EXTS, true) && $inGenericMediaPath
-            && !$looksLikeMvcView && !$inSafePath && !$inRiskyVendorPath) {
-            $flagged = true;
-            $reasons[] = 'Executable file (.'.$ext.') inside a media/images directory.';
-        }
-
-        if (!$isKnownSafeEntry) {
-            foreach ($SUSPICIOUS_FILENAME_REGEXES as $re) {
-                if (preg_match($re, $basename)) { $flagged = true; $reasons[] = 'Filename matches known malicious pattern.'; break; }
-            }
-        }
-
-        if ($basename === '.htaccess') {
-            $contents = @file_get_contents($path, false, null, 0, 4096);
-            if ($contents !== false
-                && preg_match('/Allow\s+from\s+all|Require\s+all\s+granted|RewriteEngine\s+Off/i', $contents)
-                && !preg_match('/FilesMatch.*php/i', $contents)) {
-                $flagged = true;
-                $reasons[] = 'Suspicious .htaccess: permissively allows access in sensitive folder.';
-            }
-        }
-
-        // ---- Hidden dotfile PHP (e.g. .module.php) ----
-        if (!$isDir && !$isKnownSafeEntry && preg_match('/^\.[a-z0-9_.-]+\.(php|phtml|phar|pht)$/i', $basename)) {
-            $flagged = true;
-            $reasons[] = 'Hidden dotfile with executable PHP extension — not a normal Joomla filename pattern.';
-        }
-
-        // ---- Non-standard subfolder inside a module package ----
-        if (!$isDir && preg_match('#/modules/mod_[a-z0-9_]+/([^/]+)/#i', $path, $modMatch)) {
-            $subdir = strtolower($modMatch[1]);
-            if (!in_array($subdir, $MODULE_ALLOWED_SUBDIRS, true)) {
-                $flagged = true;
-                $reasons[] = "File inside unexpected module subfolder '{$subdir}' — modules should only contain: ".implode(', ', $MODULE_ALLOWED_SUBDIRS).'.';
-            }
-        }
-
-        // ---- fake index.php stub detection ----
-        $looksLikeJceMvcView = (stripos($path, '/com_jce/') !== false)
-            && (stripos($path, '/views/') !== false);
-
-        $inTmplFolder = (bool)preg_match('#/tmpl/#i', $path);
-
-        if (strtolower($basename) === 'index.php' && !$looksLikeJceMvcView && !$inTmplFolder) {
-            $isTopLevelTemplateIndex = false;
-            if ($inTemplatesTree) {
-                $afterTemplates = substr($path, strpos($path, '/templates/') + strlen('/templates/'));
-                $segments = array_values(array_filter(explode('/', $afterTemplates), function($s) { return $s !== ''; }));
-                if (count($segments) === 2) {
-                    $isTopLevelTemplateIndex = true;
-                }
-            }
-            if (!$isTopLevelTemplateIndex) {
-                $contents = @file_get_contents($path, false, null, 0, 16384);
-                if ($contents !== false && !isStandardJoomlaStub($contents)) {
+        // ---- JCE upload strict allow-list (applies regardless of mode) ----
+        if (!$isDir && !$flagged) {
+            foreach ($JCE_UPLOAD_PATH_FRAGMENTS as $frag) {
+                if (stripos($path, $frag) === false) continue;
+                $extL = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+                if (in_array($extL, $EXEC_EXTS, true)) {
                     $flagged = true;
-                    $reasons[] = 'Non-standard index.php — Joomla index.php files outside a template\'s own root should only ever contain the blank "no direct access" guard; this one contains additional code, a classic webshell disguise.';
+                    $reasons[] = 'Executable file inside JCE file-browser upload path.';
+                } elseif ($extL !== '' && !in_array($extL, $JCE_UPLOAD_ALLOWED_EXTENSIONS, true)) {
+                    $flagged = true;
+                    $reasons[] = 'Unrecognized file type inside JCE file-browser upload path.';
                 }
+                break;
             }
         }
 
-        if (is_file($path) && @filesize($path) !== false && @filesize($path) <= $MAX_FILE_SCAN_SIZE) {
-            $textLikeExts = ['php','phtml','php3','php4','php5','php7','phar','pht','js','html','htm','txt','css','xml','gif','png','jpg','jpeg'];
-            if (in_array($ext, $textLikeExts, true) || $ext === '') {
-                $contents = @file_get_contents($path);
-                if ($contents !== false && $contents !== '') {
-                    foreach ($CONTENT_SIGNATURES as $sigName => $re) {
-                        if (preg_match($re, $contents)) { $flagged = true; $reasons[] = "Content signature: $sigName"; }
+        // ---- 'upload' mode: strict structural checks ----
+        if ($mode === 'upload') {
+            if ($isDir) {
+                if (preg_match('/^\d+$/', $basename) && !isDateLikeNumericFolderName($basename)) {
+                    $flagged = true;
+                    $reasons[] = "Folder name is purely numeric (\"{$basename}\") and isn't a normal date/ID component — a common automated-malware-drop pattern.";
+                }
+            } else {
+                $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+                if (!$isKnownSafeEntry && in_array($ext, $EXEC_EXTS, true)) {
+                    $flagged = true;
+                    $reasons[] = "Executable file (.$ext) inside an upload directory (media/images/cache/tmp/files) — these should never contain runnable code.";
+                }
+                if (!$isKnownSafeEntry) {
+                    foreach ($SUSPICIOUS_FILENAME_REGEXES as $re) {
+                        if (preg_match($re, $basename)) { $flagged = true; $reasons[] = 'Filename matches known malicious pattern.'; break; }
                     }
-                    // Polyglot check: image-extension files must never contain a PHP tag.
-                    if (in_array($ext, $NON_PHP_EXTS_THAT_MUST_STAY_CLEAN, true)
-                        && preg_match($PHP_OPEN_TAG_RE, $contents)) {
+                }
+                if ($basename === '.htaccess') {
+                    $contents = @file_get_contents($path, false, null, 0, 4096);
+                    if ($contents !== false
+                        && preg_match('/Allow\s+from\s+all|Require\s+all\s+granted|RewriteEngine\s+Off/i', $contents)
+                        && !preg_match('/FilesMatch.*php/i', $contents)) {
                         $flagged = true;
-                        $reasons[] = 'Content signature: php_tag_in_image_file (polyglot shell disguised with an image extension)';
+                        $reasons[] = 'Suspicious .htaccess: permissively allows access in an upload folder.';
                     }
                 }
             }
         }
 
-        // ---- Decoy generic filenames outside expected MVC locations ----
-        if (!$flagged && !$isKnownSafeEntry && !$inVendorPath && !$inCoreMvcPath) {
-            foreach ($DECOY_FILENAME_REGEXES as $re) {
-                if (preg_match($re, $basename)) {
-                    $flagged = true;
-                    $reasons[] = 'Generic/decoy-style filename in a non-standard location — verify this file belongs here.';
-                    break;
-                }
+        // ---- content signature scan: runs in BOTH modes, on files only ----
+        if (!$isDir) {
+            $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+            if (scanFileContent($path, $ext, $CONTENT_SIGNATURES, $NON_PHP_EXTS_THAT_MUST_STAY_CLEAN, $PHP_OPEN_TAG_RE, $MAX_FILE_SCAN_SIZE, $reasons)) {
+                $flagged = true;
             }
-        }
-
-        if ($flagged && ($inRiskyVendorPath || $inTemplatesTree)) {
-            $note = mtimeOutlierNote($path);
-            if ($note) $reasons[] = $note;
         }
 
         if ($flagged) {
             $seenAbs[$path] = true;
-            recordFinding($fileFindings, $path, $JOOMLA_ROOT, implode(' | ', array_unique($reasons)), false);
+            recordFinding($fileFindings, $path, $JOOMLA_ROOT, implode(' | ', array_unique($reasons)), $isDir);
         }
     });
 }
 
 // Shallow (non-recursive) check of the webroot itself for stray dropped files
-// and unrecognized top-level folders.
+// and unrecognized top-level folders/files.
 $rootItems = @scandir($JOOMLA_ROOT) ?: [];
 foreach ($rootItems as $it) {
     if ($it === '.' || $it === '..') continue;
     $p = $JOOMLA_ROOT.'/'.$it;
     if (isset($seenAbs[$p])) continue;
-    if (strtolower($it) === strtolower(basename(__FILE__))) continue;
+    if (strtolower($it) === $selfBasename) continue;
 
-    // ---- Directories at webroot level ----
     if (is_dir($p)) {
-        if (in_array(strtolower($it), array_map('strtolower', $KNOWN_ROOT_DIRS), true)) continue;
-        $seenAbs[$p] = true;
-        recordFinding($fileFindings, $p, $JOOMLA_ROOT,
-            'Unrecognized directory directly in the Joomla webroot — not part of a standard install; verify manually.', true);
+        if (!in_array(strtolower($it), array_map('strtolower', $KNOWN_ROOT_DIRS), true)) {
+            $seenAbs[$p] = true;
+            recordFinding($fileFindings, $p, $JOOMLA_ROOT,
+                'Unrecognized directory directly in the Joomla webroot — not part of a standard install.', true);
+            walkDir($p, function(string $innerPath, bool $innerIsDir) use (&$fileFindings, $JOOMLA_ROOT, &$seenAbs, $selfBasename) {
+                if ($innerIsDir || isset($seenAbs[$innerPath]) || strtolower(basename($innerPath)) === $selfBasename) return;
+                $seenAbs[$innerPath] = true;
+                recordFinding($fileFindings, $innerPath, $JOOMLA_ROOT,
+                    'Inside an unrecognized top-level webroot directory.', false);
+            });
+        }
         continue;
     }
 
-    // ---- Files at webroot level ----
     if (!is_file($p)) continue;
     if (in_array(strtolower($it), array_map('strtolower', $KNOWN_ROOT_FILES), true)) continue;
     $relCheck = ltrim(str_replace($JOOMLA_ROOT, '', $p), '/');
     if (in_array($relCheck, $KNOWN_SAFE_RELATIVE_FILES, true)) continue;
 
     $flaggedRoot = false; $reasonsRoot = [];
-
     foreach ($SUSPICIOUS_FILENAME_REGEXES as $re) {
         if (preg_match($re, $it)) { $flaggedRoot = true; $reasonsRoot[] = 'Filename matches known malicious pattern.'; break; }
     }
     foreach ($ROOT_SUSPICIOUS_FILENAME_REGEXES as $re) {
         if (preg_match($re, $it)) { $flaggedRoot = true; $reasonsRoot[] = 'Filename resembles a known dropped-shell naming pattern.'; break; }
     }
-
-    $extR = strtolower(pathinfo($p, PATHINFO_EXTENSION));
-    $rootTextLikeExts = array_merge($EXEC_EXTS, ['txt','html','htm','js']);
-    if (@filesize($p) !== false && @filesize($p) <= $MAX_FILE_SCAN_SIZE
-        && (in_array($extR, $rootTextLikeExts, true) || $extR === '')) {
-        $contents = @file_get_contents($p);
-        if ($contents) {
-            foreach ($CONTENT_SIGNATURES as $sigName => $re) {
-                if (preg_match($re, $contents)) { $flaggedRoot = true; $reasonsRoot[] = "Content signature: $sigName"; }
-            }
-        }
+    foreach ($CONFIG_BACKUP_PATTERNS as $re) {
+        if (preg_match($re, $it)) { $flaggedRoot = true; $reasonsRoot[] = 'Backup/duplicate configuration file — leaks the same credentials as configuration.php.'; break; }
     }
 
-    // Any file directly in the webroot that isn't a recognised Joomla file
-    // and has no obvious static-asset extension is worth flagging on its
-    // own — covers no-extension drops like "wp-ccoo".
+    $extR = strtolower(pathinfo($p, PATHINFO_EXTENSION));
+    scanFileContent($p, $extR, $CONTENT_SIGNATURES, $NON_PHP_EXTS_THAT_MUST_STAY_CLEAN, $PHP_OPEN_TAG_RE, $MAX_FILE_SCAN_SIZE, $reasonsRoot);
+    if (count($reasonsRoot) > (($flaggedRoot ? 1 : 0))) $flaggedRoot = true; // scanFileContent added a signature reason
+
     $benignStaticExts = ['css','jpg','jpeg','png','gif','svg','ico','webp','woff','woff2','ttf','eot','map'];
     if (!$flaggedRoot && !in_array($extR, $benignStaticExts, true)) {
         $flaggedRoot = true;
-        $reasonsRoot[] = 'Unrecognized file directly in the Joomla webroot — not part of a standard install; verify manually.';
+        $reasonsRoot[] = 'Unrecognized file directly in the Joomla webroot — not part of a standard install.';
     }
 
     if ($flaggedRoot) {
@@ -1177,9 +935,9 @@ foreach ($rootItems as $it) {
     }
 }
 
-// NEW (v4): core entry-point integrity check. Run independently of the
-// "unrecognized file" pass above, since index.php etc. ARE recognized
-// files — the point here is to check their *content*, not their presence.
+// Core entry-point integrity check (unchanged logic from before, still needs
+// the checkCoreIndexIntegrity() function defined earlier in the file).
+// Core entry-point integrity check + content-signature scan.
 foreach ($CORE_ENTRY_POINTS as $relEntry) {
     $absEntry = $JOOMLA_ROOT.'/'.$relEntry;
     if (strtolower(basename($absEntry)) === $selfBasename) continue;
@@ -1189,48 +947,17 @@ foreach ($CORE_ENTRY_POINTS as $relEntry) {
     $contents = @file_get_contents($absEntry);
     if ($contents === false) continue;
 
+    $reasonsEntry = [];
     $issue = checkCoreIndexIntegrity($contents);
-    if ($issue !== null) {
+    if ($issue !== null) $reasonsEntry[] = $issue;
+
+    $ext = strtolower(pathinfo($absEntry, PATHINFO_EXTENSION));
+    scanFileContent($absEntry, $ext, $CONTENT_SIGNATURES, $NON_PHP_EXTS_THAT_MUST_STAY_CLEAN, $PHP_OPEN_TAG_RE, $MAX_FILE_SCAN_SIZE, $reasonsEntry);
+
+    if (!empty($reasonsEntry)) {
         $seenAbs[$absEntry] = true;
-        recordFinding($fileFindings, $absEntry, $JOOMLA_ROOT, $issue, false);
+        recordFinding($fileFindings, $absEntry, $JOOMLA_ROOT, implode(' | ', array_unique($reasonsEntry)), false);
     }
-}
-
-// Full check for unrecognized TOP-LEVEL directories sitting directly in
-// the Joomla webroot (e.g. a random folder like "3bd9leet" dropped next
-// to configuration.php). Anything here that isn't a known Joomla core
-// folder is flagged outright, and everything inside it is scanned and
-// flagged too, regardless of file type -- the folder's mere presence in
-// the webroot is the red flag, not its contents. The scanner's own file
-// is explicitly excluded so it never flags or scans itself.
-$rootDirItems = @scandir($JOOMLA_ROOT) ?: [];
-foreach ($rootDirItems as $it) {
-    if ($it === '.' || $it === '..') continue;
-    $p = $JOOMLA_ROOT.'/'.$it;
-    if (!is_dir($p)) continue;
-    $itLower = strtolower($it);
-    if (in_array($itLower, ['.git', '.svn', 'node_modules'], true)) continue;
-    if (in_array($itLower, $KNOWN_ROOT_DIRS, true)) continue;
-
-    if (!isset($seenAbs[$p])) {
-        $seenAbs[$p] = true;
-        recordFinding(
-            $fileFindings, $p, $JOOMLA_ROOT,
-            "Unrecognized top-level directory (\"{$it}\") directly inside the Joomla webroot — not a standard Joomla folder name; a legitimate extension, template, or upload would never appear here.",
-            true
-        );
-    }
-    walkDir($p, function (string $innerPath, bool $innerIsDir) use (&$fileFindings, $JOOMLA_ROOT, &$seenAbs, $selfBasename) {
-        if ($innerIsDir) return;
-        if (isset($seenAbs[$innerPath])) return;
-        if (strtolower(basename($innerPath)) === $selfBasename) return; // never flag the scanner itself
-        $seenAbs[$innerPath] = true;
-        recordFinding(
-            $fileFindings, $innerPath, $JOOMLA_ROOT,
-            'Inside an unrecognized top-level webroot directory — flagged regardless of file type since the parent folder itself should not exist.',
-            false
-        );
-    });
 }
 
 // =====================================================================
