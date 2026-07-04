@@ -4,7 +4,7 @@ A self-contained PHP scanner for Joomla sites that detects and helps remove malw
 
 No dependencies. No installation. Upload one file, scan, clean up, delete.
 
-Need Help? <a href="https://www.linkedin.com/in/zkranadevs/">Reach Me</a> or Email me at <a href="mailto:zkranao@gmail.com">zkrana@gmail.com</a>
+Need Help? <a href="https://www.linkedin.com/in/zkranadevs/">Reach Me</a> or Email me at <a href="mailto:zkranao@gmail.com">zkranao@gmail.com</a>
 
 ---
 
