@@ -739,6 +739,21 @@ $CONTENT_SIGNATURES = [
     'opcache_reset_only' => '/^\s*<\?php\s*opcache_reset\s*\(\s*\)\s*;\s*\?>\s*$/i',
 ];
 
+// Defacement patterns to check in template styles params
+$DEFACEMENT_PATTERNS = [
+    '/Hacked\s+by/i',
+    '/Owned\s+by/i',
+    '/Pwned\s+by/i',
+    '/Defaced\s+by/i',
+    '/H4cked/i',
+    '/0wned/i',
+    '/w4s\s+here/i',
+    '/was\s+here/i',
+    '/greetz\s+to/i',
+    '/shell\s+by/i',
+    '/r00ted/i',
+];
+
 $NON_PHP_EXTS_THAT_MUST_STAY_CLEAN = ['png','jpg','jpeg','gif','webp','ico','svg','bmp'];
 $PHP_OPEN_TAG_RE = '/<\?php/i';
 
@@ -995,7 +1010,7 @@ foreach ($CORE_ENTRY_POINTS as $relEntry) {
 // =====================================================================
 // SCAN: database
 // =====================================================================
-$dbFindings = ['superusers'=>[],'menu_xss'=>[],'sppb_assets'=>[],'connected'=>false,'error'=>null];
+$dbFindings = ['superusers'=>[],'menu_xss'=>[],'sppb_assets'=>[],'rogue_iconfont'=>[],'template_defacement'=>[],'connected'=>false,'error'=>null];
 $dbCfg = readJoomlaDbConfig($JOOMLA_ROOT);
 if ($dbCfg) {
     $mysqli = dbConnect($dbCfg);
@@ -1045,6 +1060,32 @@ if ($dbCfg) {
                   AND name != 'icofont'
                   AND created_by = 0");
             if ($r4) while ($row=mysqli_fetch_assoc($r4)) $dbFindings['rogue_iconfont'][]=$row;
+        }
+
+        // Check template styles for defacement
+        $templateStylesTable = $prefix.'template_styles';
+        $res4 = @mysqli_query($mysqli,"SHOW TABLES LIKE '{$templateStylesTable}'");
+        if ($res4 && mysqli_num_rows($res4)>0) {
+            $r5=@mysqli_query($mysqli,"SELECT id, template, title, params FROM `{$templateStylesTable}`");
+            if ($r5) {
+                while ($row=mysqli_fetch_assoc($r5)) {
+                    $params = $row['params'];
+                    $matches = [];
+                    foreach ($DEFACEMENT_PATTERNS as $pattern) {
+                        if (preg_match($pattern, $params, $match)) {
+                            $matches[] = $match[0];
+                        }
+                    }
+                    if (!empty($matches)) {
+                        $dbFindings['template_defacement'][] = [
+                            'id' => $row['id'],
+                            'template' => $row['template'],
+                            'title' => $row['title'],
+                            'matches' => $matches,
+                        ];
+                    }
+                }
+            }
         }
         mysqli_close($mysqli);
     } else {
@@ -1294,6 +1335,7 @@ input[type=checkbox] { accent-color: var(--blue); width: 15px; height: 15px; cur
     $sc = count($suspiciousSU);
     $mc = count($dbFindings['menu_xss']);
     $ac = count($dbFindings['sppb_assets']);
+    $tc = count($dbFindings['template_defacement']);
     function statClass($n){ return $n>0?'dirty':'clean'; }
     function statIcon($n){ return $n>0?'⚠️':'✅'; }
     ?>
@@ -1312,6 +1354,10 @@ input[type=checkbox] { accent-color: var(--blue); width: 15px; height: 15px; cur
     <div class="stat <?= statClass($ac) ?>">
       <div class="stat-icon"><?= statIcon($ac) ?></div>
       <div><div class="stat-num"><?= $ac ?></div><div class="stat-label">Rogue asset rows</div></div>
+    </div>
+    <div class="stat <?= statClass($tc) ?>">
+      <div class="stat-icon"><?= statIcon($tc) ?></div>
+      <div><div class="stat-num"><?= $tc ?></div><div class="stat-label">Template defacement</div></div>
     </div>
     <?php if (!$dbFindings['connected']): ?>
     <div class="stat warn">
@@ -1496,10 +1542,38 @@ input[type=checkbox] { accent-color: var(--blue); width: 15px; height: 15px; cur
     </div>
   </div>
 
-  <!-- 5. Hardening / tips -->
+  <!-- 5. Template defacement -->
   <div class="section">
     <div class="section-header">
       <div class="section-num">5</div>
+      <div class="section-title">Template styles defacement</div>
+    </div>
+    <div class="panel">
+      <?php if (!$dbFindings['connected']): ?>
+        <div class="empty-state"><span class="empty-icon">⚡</span> Database not checked.</div>
+      <?php elseif (empty($dbFindings['template_defacement'])): ?>
+        <div class="empty-state"><span class="empty-icon">✅</span> No defacement messages found in <code>template_styles</code> params.</div>
+      <?php else: ?>
+      <table>
+        <tr><th>ID</th><th>Template</th><th>Title</th><th>Matches</th></tr>
+        <?php foreach ($dbFindings['template_defacement'] as $row): ?>
+        <tr>
+          <td class="muted-cell"><?= e($row['id']) ?></td>
+          <td class="path-cell"><?= e($row['template']) ?></td>
+          <td><?= e($row['title']) ?></td>
+          <td class="reason-cell"><?= e(implode(', ', $row['matches'])) ?></td>
+        </tr>
+        <?php endforeach; ?>
+      </table>
+      <div class="toolbar"><span class="toolbar-hint">Review and clean the <code>params</code> field for these rows via phpMyAdmin/SQL.</span></div>
+      <?php endif; ?>
+    </div>
+  </div>
+
+  <!-- 6. Hardening / tips -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-num">6</div>
       <div class="section-title">Cleanup &amp; hardening checklist</div>
     </div>
     <div class="checklist">
@@ -1555,10 +1629,10 @@ input[type=checkbox] { accent-color: var(--blue); width: 15px; height: 15px; cur
     </div>
   </div>
 
-  <!-- 6. Self-destruct -->
+  <!-- 7. Self-destruct -->
   <div class="section">
     <div class="section-header">
-      <div class="section-num">6</div>
+      <div class="section-num">7</div>
       <div class="section-title">Remove this scanner</div>
     </div>
     <div class="finish-box">
