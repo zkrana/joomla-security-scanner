@@ -32,7 +32,7 @@ In June 2026, a critical unauthenticated RCE was disclosed in SP Page Builder ve
 | 🎯 Confidence scoring | Every finding is labeled **High** or **Medium** so you can triage quickly instead of guessing |
 | 🧩 JCE coverage | Same heuristics applied to `media/com_jce`, `administrator/components/com_jce`, `components/com_jce`, and `plugins/editors/jce`, with allow-lists tuned to avoid flagging JCE's own legitimate core/MVC files |
 | 👤 Rogue Super Users | Flags accounts with attacker-pattern usernames (`webmanager83`, `codex*`) or `@secure.local` email domains |
-| 🗄 Database scan | Checks `#__menu` for the Helix Ultimate mega-menu XSS payload and `#__sppagebuilder_assets` for injected `eval`/`base64_decode` content |
+| 🗄 Database scan | Checks `#__menu` for the Helix Ultimate mega-menu XSS payload, `#__sppagebuilder_assets` for injected `eval`/`base64_decode` content, and `#__template_styles` for defacement messages |
 | 🧹 Guided cleanup | Built-in delete action (scoped only to items flagged in the current scan run) plus a self-destruct button to remove the tool when you're done |
 
 This is a **heuristic scanner**, not a guarantee. Pair it with a fresh extension download + checksum comparison, and a full server-side malware scan (ClamAV, Imunify360, or your host's scanner) before declaring victory.
@@ -96,6 +96,7 @@ You'll land on a login screen. Enter the key from step 1 — you'll be redirecte
 
 - `#__menu` rows containing the Helix Ultimate mega-menu Stored XSS payload
 - `#__sppagebuilder_assets` rows containing `eval(`, `base64_decode`, or known exfiltration domains
+- `#__template_styles` rows with defacement messages (e.g., "Hacked by", "Owned by") in the `params` field
 
 ---
 
@@ -106,7 +107,7 @@ If the scan finds something:
 1. **Don't panic-delete.** Review High-confidence findings first, then Medium. If unsure, copy a file elsewhere before removing it.
 2. **Delete confirmed malware** using the checkboxes and the Delete button — only files flagged by the current scan run can be removed, and top-level Joomla folders are hard-protected regardless of what gets flagged.
 3. **Remove rogue Super Users** manually via Joomla Admin → Users → Manage.
-4. **Clear injected menu/asset rows** directly via phpMyAdmin/SQL, not through the Joomla admin UI (which may try to render an XSS payload while you're editing it).
+4. **Clear injected menu/asset rows and template styles defacement** directly via phpMyAdmin/SQL, not through the Joomla admin UI.
 5. **Rotate every credential** readable from `configuration.php`: database password, SMTP password, API keys, and Joomla's `secret` value.
 6. **Force-logout all sessions** by truncating `#__session` or using Users → Sessions → Destroy.
 7. **Check cron jobs** (`crontab -l` via SSH, or your hosting panel) for anything you didn't add.
