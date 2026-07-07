@@ -85,7 +85,7 @@ header('Content-Type: text/html; charset=UTF-8');
 
 if ($DISABLED) { http_response_code(404); echo 'Not found.'; exit; }
 
-if (strlen($ACCESS_KEY) < 32 || stripos($ACCESS_KEY, 'CHANGE_ME') !== false || stripos($ACCESS_KEY, 'REPLACE_THIS') !== false) {
+if (strlen($ACCESS_KEY) < 32 || stripos($ACCESS_KEY, 'CHANGE_ME') !== false || stripos($ACCESS_KEY, 'REPLACE_THIS') !== false || stripos($ACCESS_KEY, 'PASTE_YOUR') !== false) {
     http_response_code(403);
     echo "Setup required: open this file and set \$ACCESS_KEY to a unique random secret (min 32 chars).\n";
     echo "Generate one: php -r \"echo bin2hex(random_bytes(32));\"\n";
@@ -562,14 +562,14 @@ if (!$authed) {
 
   <div class="card">
     <h1>Authentication required</h1>
-    <p class="sub">Enter the secret key you configured in this scanner to continue.</p>
+    <p class="sub" style="color:#bbc7d8">Enter the secret key you configured in this scanner to continue.</p>
 
     <?php if ($loginError): ?>
     <div class="error"><span>⚠️</span> <?= e($loginError) ?></div>
     <?php endif; ?>
 
     <form method="post" autocomplete="off">
-      <label for="login_key">Secret Key</label>
+      <label for="login_key" style="color: #bbc7d8;">Secret Key</label>
       <div class="input-wrap">
         <input type="password" id="login_key" name="login_key"
                placeholder="Paste your secret key…"
@@ -584,7 +584,7 @@ if (!$authed) {
     </form>
 
     <hr class="divider">
-    <p class="hint">
+    <p class="hint" style="color: #c3c3c3ff;">
       After verification you'll be redirected with the key in the URL,<br>
       which is then stripped from your browser history automatically.
     </p>
@@ -766,17 +766,25 @@ $CORE_ENTRY_POINTS = [
 
 $KNOWN_ROOT_FILES = ['index.php','configuration.php','htaccess.txt','web.config.txt','robots.txt.dist',
                       'robots.txt','LICENSE.txt','README.txt','joomla.xml','htaccess.bak',
-                      'php.ini','php.ini.bak','.user.ini','.htaccess','.htaccess.bak'];
+                      'php.ini','php.ini.bak','.user.ini','.htaccess','.htaccess.bak','sitemap.xml', 'sitemap.xml.gz',];
 
 $KNOWN_SAFE_RELATIVE_FILES = [
-    'index.php', 'administrator/index.php', 'api/index.php',
+    'index.php', 'administrator/index.php', '', 'api/index.php',
     'includes/app.php', 'includes/framework.php', 'cli/joomla.php',
     'files/index.html', 'images/index.html', 'media/index.html',
 ];
 
+// Components that are known-legitimate security tools — skip content scanning
+$SAFE_COMPONENT_PATHS = [
+    '/administrator/components/com_rsfirewall/',
+    '/administrator/components/com_htprotect/',
+    '/administrator/components/com_akeeba/',
+    '/administrator/components/com_admintools/',
+];
+
 $KNOWN_ROOT_DIRS = ['administrator','api','bin','cache','cli','components','includes',
                      'language','layouts','libraries','media','modules','plugins',
-                     'templates','tmp','images','files','node_modules','.well-known'];
+                     'templates','tmp','images','files','node_modules','.well-known','logs',];
 
 $PROTECTED_TOP_DIRS = ['administrator','components','libraries','media','images','templates',
                         'plugins','modules','language','cache','tmp','layouts','includes','api','cli'];
@@ -788,6 +796,8 @@ $PROTECTED_TOP_DIRS = ['administrator','components','libraries','media','images'
 $fileFindings = [];
 $seenAbs = [];
 $selfBasename = strtolower(basename(__FILE__));
+$selfLogBase   = strtolower(basename($LOG_FILE));
+$selfLockBase  = strtolower(basename($LOCKOUT_FILE));
 
 /**
  * Scan a single file for content signatures + polyglot check.
@@ -831,9 +841,14 @@ foreach ($SCAN_CONFIG as $relDir => $mode) {
         $ICONFONT_ALLOWED_DIRNAMES, $ICONFONT_ALLOWED_EXTENSIONS, $ICONFONT_ALLOWED_BARE_NAMES,
         $JCE_UPLOAD_PATH_FRAGMENTS, $JCE_UPLOAD_ALLOWED_EXTENSIONS,
         $NON_PHP_EXTS_THAT_MUST_STAY_CLEAN, $PHP_OPEN_TAG_RE,
-        $KNOWN_SAFE_RELATIVE_FILES, $EXEC_EXTS, $selfBasename, &$seenAbs
+        $KNOWN_SAFE_RELATIVE_FILES, $SAFE_COMPONENT_PATHS, $EXEC_EXTS, $selfBasename, &$seenAbs
     ) {
         if (strtolower(basename($path)) === $selfBasename) return;
+        // Skip known-legitimate security components
+        foreach ($SAFE_COMPONENT_PATHS as $safeFrag) {
+            if (stripos($path, $safeFrag) !== false) return;
+        }
+
         if (isset($seenAbs[$path])) return;
 
         $basename = basename($path);
@@ -934,6 +949,8 @@ foreach ($rootItems as $it) {
     $p = $JOOMLA_ROOT.'/'.$it;
     if (isset($seenAbs[$p])) continue;
     if (strtolower($it) === $selfBasename) continue;
+    if (strtolower($it) === $selfLogBase) continue;
+    if (strtolower($it) === $selfLockBase) continue;
 
     if (is_dir($p)) {
         if (!in_array(strtolower($it), array_map('strtolower', $KNOWN_ROOT_DIRS), true)) {
@@ -1007,6 +1024,31 @@ foreach ($CORE_ENTRY_POINTS as $relEntry) {
     }
 }
 
+// Delete rogue sppagebuilder_assets
+
+if (
+    $_SERVER['REQUEST_METHOD'] === 'POST'
+    && ($_POST['action'] ?? '') === 'delete_rogue_assets'
+) {
+    $ids = array_map('intval', $_POST['rogue_asset_ids'] ?? []);
+    if ($ids) {
+        $dbCfg = readJoomlaDbConfig($JOOMLA_ROOT);
+        if ($dbCfg) {
+            $mysqli = dbConnect($dbCfg);
+            if ($mysqli) {
+                $prefix = $dbCfg['dbprefix'] ?: 'jos_';
+                $assetsTable = $prefix . 'sppagebuilder_assets';
+                $list = implode(',', $ids);
+                mysqli_query(
+                    $mysqli,
+                    "DELETE FROM `{$assetsTable}` WHERE id IN ($list)"
+                );
+                mysqli_close($mysqli);
+            }
+        }
+    }
+}
+
 // =====================================================================
 // SCAN: database
 // =====================================================================
@@ -1055,10 +1097,12 @@ if ($dbCfg) {
             if ($r3) while ($row=mysqli_fetch_assoc($r3)) $dbFindings['sppb_assets'][]=$row;
 
             // Check for rogue iconfont registrations (random-name, created_by=0, not the legit icofont)
-            $r4=@mysqli_query($mysqli,"SELECT * FROM `{$assetsTable}`
-                WHERE type = 'iconfont'
-                  AND name != 'icofont'
-                  AND created_by = 0");
+           $r4=@mysqli_query($mysqli,"SELECT *
+            FROM `{$assetsTable}`
+            WHERE type='iconfont'
+            AND name NOT IN ('icofont')
+            AND created_by=0
+            ORDER BY created DESC");
             if ($r4) while ($row=mysqli_fetch_assoc($r4)) $dbFindings['rogue_iconfont'][]=$row;
         }
 
@@ -1158,8 +1202,8 @@ $medCount  = count($fileFindings) - $highCount;
   --border: #162033;
   --border2: #1e2f47;
   --text: #e2e8f0;
-  --muted: #4a5e7a;
-  --muted2: #2d3f58;
+  --muted: #8c9db5ff;
+  --muted2: #8190a2ff;
   --danger: #ef4444;
   --danger-soft: rgba(239,68,68,0.08);
   --danger-border: rgba(239,68,68,0.2);
@@ -1244,12 +1288,13 @@ th {
   text-transform: uppercase; color: var(--muted); padding: 10px 16px; text-align: left;
   border-bottom: 1px solid var(--border);
 }
-td { padding: 11px 16px; border-bottom: 1px solid var(--border); vertical-align: top; font-size: 13px; }
+td { padding: 12px 16px; border-bottom: 1px solid var(--border); vertical-align: top; font-size: 13px; }
 tr:last-child td { border-bottom: none; }
 tr:hover td { background: rgba(255,255,255,0.015); }
 .path-cell { font-family: var(--mono); font-size: 12px; color: #60a5fa; word-break: break-all; }
 .reason-cell { font-size: 12px; color: var(--warn); }
-.muted-cell { color: var(--muted); font-size: 12px; }
+.muted-cell { color: #8fa8c4; font-size: 12px; }
+.muted-cell { color: #8fa8c4; font-size: 12px; font-variant-numeric: tabular-nums; }
 
 .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; }
 .badge.ok      { background: var(--ok-soft); color: var(--ok); border: 1px solid rgba(34,197,94,0.2); }
@@ -1334,7 +1379,7 @@ input[type=checkbox] { accent-color: var(--blue); width: 15px; height: 15px; cur
     $fc = count($fileFindings);
     $sc = count($suspiciousSU);
     $mc = count($dbFindings['menu_xss']);
-    $ac = count($dbFindings['sppb_assets']);
+    $ac = count($dbFindings['sppb_assets']) + count($dbFindings['rogue_iconfont']);
     $tc = count($dbFindings['template_defacement']);
     function statClass($n){ return $n>0?'dirty':'clean'; }
     function statIcon($n){ return $n>0?'⚠️':'✅'; }
@@ -1521,26 +1566,107 @@ input[type=checkbox] { accent-color: var(--blue); width: 15px; height: 15px; cur
   </div>
 
   <!-- 4. Asset rows -->
-  <div class="section">
-    <div class="section-header">
-      <div class="section-num">4</div>
-      <div class="section-title">SP Page Builder asset table</div>
-    </div>
-    <div class="panel">
-      <?php if (!$dbFindings['connected']): ?>
-        <div class="empty-state"><span class="empty-icon">⚡</span> Database not checked.</div>
-      <?php elseif (empty($dbFindings['sppb_assets'])): ?>
-        <div class="empty-state"><span class="empty-icon">✅</span> No suspicious rows in <code>sppagebuilder_assets</code>.</div>
-      <?php else: ?>
-      <table>
-        <tr><th>Row data</th></tr>
-        <?php foreach ($dbFindings['sppb_assets'] as $row): ?>
-        <tr><td><pre><?= e(json_encode($row,JSON_PRETTY_PRINT)) ?></pre></td></tr>
-        <?php endforeach; ?>
-      </table>
-      <?php endif; ?>
-    </div>
+<!-- 4. Asset rows -->
+<div class="section">
+  <div class="section-header">
+    <div class="section-num">4</div>
+    <div class="section-title">SP Page Builder asset table</div>
   </div>
+
+  <div class="panel">
+
+    <?php if (!$dbFindings['connected']): ?>
+
+      <div class="empty-state">
+        <span class="empty-icon">⚡</span>
+        Database not checked.
+      </div>
+
+    <?php elseif (empty($dbFindings['sppb_assets']) && empty($dbFindings['rogue_iconfont'])): ?>
+
+      <div class="empty-state">
+        <span class="empty-icon">✅</span>
+        No suspicious rows found in <code><?= e($assetsTable ?? 'sppagebuilder_assets') ?></code>.
+      </div>
+
+    <?php else: ?>
+
+      <?php if (!empty($dbFindings['sppb_assets'])): ?>
+
+        <h4>Injected asset_value payloads</h4>
+
+        <table>
+          <tr>
+            <th>Row data</th>
+          </tr>
+          <?php foreach ($dbFindings['sppb_assets'] as $row): ?>
+          <tr>
+            <td><pre><?= e(json_encode($row, JSON_PRETTY_PRINT)) ?></pre></td>
+          </tr>
+          <?php endforeach; ?>
+        </table>
+
+      <?php endif; ?>
+
+
+    <?php if (!empty($dbFindings['rogue_iconfont'])): ?>
+        <form method="post" onsubmit="return confirm('Delete selected rogue SP Page Builder asset rows?');">
+            <input type="hidden" name="action" value="delete_rogue_assets">
+            <div class="legend" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                <h4 style="margin:0;">
+                    Suspicious iconfont registrations
+                    (<?= count($dbFindings['rogue_iconfont']) ?>)
+                </h4>
+                <button type="submit" class="btn btn-danger">
+                    🗑 Delete Selected
+                </button>
+            </div>
+            <table>
+                <tr>
+                    <th style="width:32px">
+                        <input
+                            type="checkbox"
+                            onclick="document.querySelectorAll('.rogueAssetChk').forEach(cb=>cb.checked=this.checked);">
+                    </th>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Title</th>
+                    <th>Created</th>
+                    <th>Created By</th>
+                    <th>Assets</th>
+
+                </tr>
+                <?php foreach ($dbFindings['rogue_iconfont'] as $row): ?>
+                <tr>
+                    <td>
+                        <input
+                            type="checkbox"
+                            class="rogueAssetChk"
+                            name="rogue_asset_ids[]"
+                            value="<?= (int)$row['id'] ?>">
+                    </td>
+                    <td><?= (int)$row['id'] ?></td>
+                    <td><code><?= e($row['name']) ?></code></td>
+                    <td><?= e($row['title']) ?></td>
+                    <td><?= e($row['created']) ?></td>
+                    <td><?= (int)$row['created_by'] ?></td>
+                    <td><code><?= e($row['assets']) ?></code></td>
+                </tr>
+                <?php endforeach; ?>
+            </table>
+            <div style="margin-top:12px;text-align:right;">
+                <button type="submit" class="btn btn-danger">
+                    🗑 Delete Selected
+                </button>
+            </div>
+
+        </form>
+    <?php endif; ?>
+
+    <?php endif; ?>
+
+  </div>
+</div>
 
   <!-- 5. Template defacement -->
   <div class="section">
