@@ -372,6 +372,86 @@ function checkHeadTagInjection(string $contents): ?string {
     return null;
 }
 
+/**
+ * Surgically strips known XSS injection markers out of a Joomla menu
+ * "params" JSON blob, without touching any other legitimate setting.
+ * Helix Ultimate / SPPB store layout data as JSON-encoded-strings nested
+ * inside JSON (sometimes several levels deep), so this recurses through
+ * every level it can decode and only sanitizes the leaf string values.
+ *
+ * Returns ['cleaned' => string, 'changed' => bool]. If the params blob
+ * isn't valid JSON at all, 'changed' is false and the caller should skip
+ * that row rather than risk corrupting it.
+ */
+function cleanMenuParamsXss(string $paramsJson, array $patterns): array {
+    $decoded = json_decode($paramsJson, true);
+    if ($decoded === null && trim($paramsJson) !== 'null') {
+        return ['cleaned' => $paramsJson, 'changed' => false];
+    }
+    $changed = false;
+
+    $sanitizeLeaf = function (string $key, string $value) use ($patterns, &$changed): string {
+        // item_id must always be a plain integer — enforce this unconditionally,
+        // independent of whether it still matches a known attack signature.
+        // This is what catches residue left behind by an earlier, less
+        // thorough clean (e.g. a partially-stripped payload that no longer
+        // matches any signature but is still garbage, not a valid ID).
+        if (strcasecmp($key, 'item_id') === 0) {
+            if (preg_match('/^\d+$/', trim($value))) return $value;
+            $changed = true;
+            return '';
+        }
+
+        $hit = false;
+        foreach ($patterns as $re) { if (preg_match($re, $value)) { $hit = true; break; } }
+        if (!$hit) return $value;
+        $changed = true;
+
+        $clean = $value;
+        $clean = preg_replace('/<script\b[^>]*>.*?<\/script\s*>/is', '', $clean);
+        $clean = preg_replace('/<img\b[^>]*>/is', '', $clean);
+        $clean = preg_replace('/\bon[a-z]+\s*=\s*(".*?"|\'.*?\'|[^\s>]+)/is', '', $clean);
+        $clean = preg_replace('/javascript\s*:/i', '', $clean);
+        $clean = preg_replace('/localStorage\s*\.\s*(setItem|getItem)\s*\([^)]*\)/i', '', $clean);
+        $clean = preg_replace('/MutationObserver/i', '', $clean);
+        $clean = preg_replace('/xss\.report[^\s\'"<>]*/i', '', $clean);
+
+        // Fail-safe: if anything still matches after the targeted removals
+        // (e.g. an unusual encoding, or leftover fragments from an even
+        // older partial clean), don't ship half-stripped garbage — blank
+        // the whole field instead. Losing an unrelated setting is a far
+        // smaller cost than leaving live payload fragments behind.
+        foreach ($patterns as $re) {
+            if (preg_match($re, $clean)) return '';
+        }
+        return $clean;
+    };
+
+    $walk = function (&$node, $key = '') use (&$walk, &$sanitizeLeaf) {
+        if (is_array($node)) {
+            foreach ($node as $k => &$v) { $walk($v, is_string($k) ? $k : $key); }
+            unset($v);
+            return;
+        }
+        if (!is_string($node)) return;
+
+        // Try one level deeper — helixultimatemenulayout-style fields are
+        // themselves JSON-encoded strings.
+        $inner = json_decode($node, true);
+        if (is_array($inner)) {
+            $walk($inner, $key);
+            $node = json_encode($inner, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            return;
+        }
+        $node = $sanitizeLeaf($key, $node);
+    };
+
+    $walk($decoded);
+
+    if (!$changed) return ['cleaned' => $paramsJson, 'changed' => false];
+    return ['cleaned' => json_encode($decoded, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), 'changed' => true];
+}
+
 function recordFinding(array &$arr, string $absPath, string $root, string $reason, bool $isDir = false): void {
     $rel = ltrim(str_replace($root,'',$absPath),'/');
     $size = $isDir ? dirSize($absPath) : (is_file($absPath) ? (int)@filesize($absPath) : 0);
@@ -739,6 +819,17 @@ $CONTENT_SIGNATURES = [
     'opcache_reset_only' => '/^\s*<\?php\s*opcache_reset\s*\(\s*\)\s*;\s*\?>\s*$/i',
 ];
 
+$MENU_XSS_PATTERNS = [
+    'xss.report domain'             => '/xss\.report/i',
+    '_hu_inject marker'              => '/_hu_inject/i',
+    'secure.local marker'            => '/secure\.local/i',
+    'onerror/onload event handler'   => '/on(error|load|mouseover|focus)\s*=/i',
+    'inline <script> tag'            => '/<script[\s>]/i',
+    'localStorage exfil/inject'      => '/localStorage\s*\.\s*(setItem|getItem)/i',
+    'MutationObserver persistence'   => '/MutationObserver/i',
+    'img src=x XSS payload'          => '/<img[^>]+src\s*=\s*["\']?x["\']?/i',
+];
+
 // Defacement patterns to check in template styles params
 $DEFACEMENT_PATTERNS = [
     '/Hacked\s+by/i',
@@ -952,6 +1043,13 @@ foreach ($rootItems as $it) {
     if (strtolower($it) === $selfLogBase) continue;
     if (strtolower($it) === $selfLockBase) continue;
 
+    // Any scanner session's own log/lock file (not just the currently-loaded
+    // instance's) — these are created by this tool itself, never an attacker.
+    if (preg_match('/^\.sppbscan-[a-f0-9]{16}\.(log|lock)$/i', $it)) continue;
+
+    // Google Search Console site-verification file — legitimate, safe to ignore.
+    if (preg_match('/^google[a-f0-9]{16,}\.html$/i', $it)) continue;
+
     if (is_dir($p)) {
         if (!in_array(strtolower($it), array_map('strtolower', $KNOWN_ROOT_DIRS), true)) {
             $seenAbs[$p] = true;
@@ -1049,6 +1147,50 @@ if (
     }
 }
 
+// Clean menu XSS injections (surgical — keeps the rest of params intact)
+if (
+    $_SERVER['REQUEST_METHOD'] === 'POST'
+    && ($_POST['action'] ?? '') === 'delete_menu_xss'
+) {
+    if (!csrfValid($csrfToken)) {
+        $_SESSION['sppbscan_flash'] = ['Security check failed. Reload the page and try again.'];
+        logLine('MENU XSS CLEAN BLOCKED: bad CSRF');
+    } else {
+        $ids = array_map('intval', $_POST['menu_xss_ids'] ?? []);
+        $flashMsg = [];
+        if ($ids) {
+            $dbCfgMenu = readJoomlaDbConfig($JOOMLA_ROOT);
+            if ($dbCfgMenu) {
+                $mysqliMenu = dbConnect($dbCfgMenu);
+                if ($mysqliMenu) {
+                    $prefixMenu = $dbCfgMenu['dbprefix'] ?: 'jos_';
+                    $menuTableClean = $prefixMenu . 'menu';
+                    foreach ($ids as $id) {
+                        $r = mysqli_query($mysqliMenu, "SELECT params FROM `{$menuTableClean}` WHERE id = " . (int)$id);
+                        if (!$r || mysqli_num_rows($r) === 0) { $flashMsg[] = "SKIPPED (row not found): id $id"; continue; }
+                        $row = mysqli_fetch_assoc($r);
+                        $result = cleanMenuParamsXss((string)$row['params'], array_values($MENU_XSS_PATTERNS));
+                        if (!$result['changed']) {
+                            $flashMsg[] = "SKIPPED (couldn't safely parse params — clean manually): id $id";
+                            continue;
+                        }
+                        $escaped = mysqli_real_escape_string($mysqliMenu, $result['cleaned']);
+                        mysqli_query($mysqliMenu, "UPDATE `{$menuTableClean}` SET params = '{$escaped}' WHERE id = " . (int)$id);
+                        $flashMsg[] = "CLEANED injection from params, rest of settings kept: id $id";
+                        logLine("MENU XSS PARAMS CLEANED: id $id");
+                    }
+                    mysqli_close($mysqliMenu);
+                } else {
+                    $flashMsg[] = 'Could not connect to database to clean params.';
+                }
+            }
+        }
+        $_SESSION['sppbscan_flash'] = $flashMsg;
+    }
+    $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+    header("Location: $path", true, 302); exit;
+}
+
 // =====================================================================
 // SCAN: database
 // =====================================================================
@@ -1082,8 +1224,22 @@ if ($dbCfg) {
         $menuTable = $prefix.'menu';
         $res2 = @mysqli_query($mysqli,"SHOW TABLES LIKE '{$menuTable}'");
         if ($res2 && mysqli_num_rows($res2)>0) {
-            $r2=@mysqli_query($mysqli,"SELECT id,title,link FROM `{$menuTable}` WHERE params LIKE '%xss.report%' OR params LIKE '%_hu_inject%' OR params LIKE '%secure.local%'");
-            if ($r2) while ($row=mysqli_fetch_assoc($r2)) $dbFindings['menu_xss'][]=$row;
+            $r2 = @mysqli_query($mysqli, "SELECT id,title,link,params FROM `{$menuTable}`");
+            if ($r2) {
+                while ($row = mysqli_fetch_assoc($r2)) {
+                    $params = (string)($row['params'] ?? '');
+                    $matches = [];
+                    foreach ($MENU_XSS_PATTERNS as $label => $re) {
+                        if (preg_match($re, $params)) $matches[] = $label;
+                    }
+                    if (!empty($matches)) {
+                        $dbFindings['menu_xss'][] = [
+                            'id' => $row['id'], 'title' => $row['title'],
+                            'link' => $row['link'], 'matches' => $matches,
+                        ];
+                    }
+                }
+            }
         }
 
         $assetsTable = $prefix.'sppagebuilder_assets';
@@ -1538,6 +1694,7 @@ input[type=checkbox] { accent-color: var(--blue); width: 15px; height: 15px; cur
     </div>
   </div>
 
+
   <!-- 3. Menu XSS -->
   <div class="section">
     <div class="section-header">
@@ -1550,123 +1707,135 @@ input[type=checkbox] { accent-color: var(--blue); width: 15px; height: 15px; cur
       <?php elseif (empty($dbFindings['menu_xss'])): ?>
         <div class="empty-state"><span class="empty-icon">✅</span> No injected menu items found.</div>
       <?php else: ?>
-      <table>
-        <tr><th>Menu ID</th><th>Title</th><th>Link</th></tr>
-        <?php foreach ($dbFindings['menu_xss'] as $m): ?>
-        <tr>
-          <td class="muted-cell"><?= e($m['id']) ?></td>
-          <td><?= e($m['title']) ?></td>
-          <td class="path-cell"><?= e($m['link']) ?></td>
-        </tr>
-        <?php endforeach; ?>
-      </table>
-      <div class="toolbar"><span class="toolbar-hint">Clear the <code>params</code> field for these rows via phpMyAdmin/SQL — not through the Joomla menu editor, which may render the payload.</span></div>
+      <form method="post" onsubmit="return confirm('Clean the injected XSS payload out of selected menu items? Other params settings are preserved.');">
+        <input type="hidden" name="csrf" value="<?= e($csrfToken) ?>">
+        <input type="hidden" name="action" value="delete_menu_xss">
+        <table>
+          <tr>
+            <th style="width:32px"><input type="checkbox" onclick="document.querySelectorAll('.menuXssChk').forEach(c=>c.checked=this.checked)"></th>
+            <th>Menu ID</th><th>Title</th><th>Link</th><th>Matched signatures</th>
+          </tr>
+          <?php foreach ($dbFindings['menu_xss'] as $m): ?>
+          <tr>
+            <td><input type="checkbox" class="menuXssChk" name="menu_xss_ids[]" value="<?= (int)$m['id'] ?>"></td>
+            <td class="muted-cell"><?= e($m['id']) ?></td>
+            <td><?= e($m['title']) ?></td>
+            <td class="path-cell"><?= e($m['link']) ?></td>
+            <td class="reason-cell"><?= e(implode(', ', $m['matches'] ?? [])) ?></td>
+          </tr>
+          <?php endforeach; ?>
+        </table>
+        
+        <div class="toolbar">
+          <button type="submit" class="btn btn-danger">🧹 Clean selected</button>
+          <span class="toolbar-hint">Surgically strips the known injection markers from <code>params</code> for selected rows, preserving every other setting.</span>
+        </div>
+      </form>
       <?php endif; ?>
     </div>
   </div>
 
   <!-- 4. Asset rows -->
-<!-- 4. Asset rows -->
-<div class="section">
-  <div class="section-header">
-    <div class="section-num">4</div>
-    <div class="section-title">SP Page Builder asset table</div>
-  </div>
+  <div class="section">
+    <div class="section-header">
+      <div class="section-num">4</div>
+      <div class="section-title">SP Page Builder asset table</div>
+    </div>
 
-  <div class="panel">
+    <div class="panel">
 
-    <?php if (!$dbFindings['connected']): ?>
+      <?php if (!$dbFindings['connected']): ?>
 
-      <div class="empty-state">
-        <span class="empty-icon">⚡</span>
-        Database not checked.
-      </div>
+        <div class="empty-state">
+          <span class="empty-icon">⚡</span>
+          Database not checked.
+        </div>
 
-    <?php elseif (empty($dbFindings['sppb_assets']) && empty($dbFindings['rogue_iconfont'])): ?>
+      <?php elseif (empty($dbFindings['sppb_assets']) && empty($dbFindings['rogue_iconfont'])): ?>
 
-      <div class="empty-state">
-        <span class="empty-icon">✅</span>
-        No suspicious rows found in <code><?= e($assetsTable ?? 'sppagebuilder_assets') ?></code>.
-      </div>
+        <div class="empty-state">
+          <span class="empty-icon">✅</span>
+          No suspicious rows found in <code><?= e($assetsTable ?? 'sppagebuilder_assets') ?></code>.
+        </div>
 
-    <?php else: ?>
+      <?php else: ?>
 
-      <?php if (!empty($dbFindings['sppb_assets'])): ?>
+        <?php if (!empty($dbFindings['sppb_assets'])): ?>
 
-        <h4>Injected asset_value payloads</h4>
+          <h4>Injected asset_value payloads</h4>
 
-        <table>
-          <tr>
-            <th>Row data</th>
-          </tr>
-          <?php foreach ($dbFindings['sppb_assets'] as $row): ?>
-          <tr>
-            <td><pre><?= e(json_encode($row, JSON_PRETTY_PRINT)) ?></pre></td>
-          </tr>
-          <?php endforeach; ?>
-        </table>
+          <table>
+            <tr>
+              <th>Row data</th>
+            </tr>
+            <?php foreach ($dbFindings['sppb_assets'] as $row): ?>
+            <tr>
+              <td><pre><?= e(json_encode($row, JSON_PRETTY_PRINT)) ?></pre></td>
+            </tr>
+            <?php endforeach; ?>
+          </table>
+
+        <?php endif; ?>
+
+
+      <?php if (!empty($dbFindings['rogue_iconfont'])): ?>
+          <form method="post" onsubmit="return confirm('Delete selected rogue SP Page Builder asset rows?');">
+              <input type="hidden" name="action" value="delete_rogue_assets">
+              <div class="legend" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                  <h4 style="margin:0;">
+                      Suspicious iconfont registrations
+                      (<?= count($dbFindings['rogue_iconfont']) ?>)
+                  </h4>
+                  <button type="submit" class="btn btn-danger">
+                      🗑 Delete Selected
+                  </button>
+              </div>
+              <table>
+                  <tr>
+                      <th style="width:32px">
+                          <input
+                              type="checkbox"
+                              onclick="document.querySelectorAll('.rogueAssetChk').forEach(cb=>cb.checked=this.checked);">
+                      </th>
+                      <th>ID</th>
+                      <th>Name</th>
+                      <th>Title</th>
+                      <th>Created</th>
+                      <th>Created By</th>
+                      <th>Assets</th>
+
+                  </tr>
+                  <?php foreach ($dbFindings['rogue_iconfont'] as $row): ?>
+                  <tr>
+                      <td>
+                          <input
+                              type="checkbox"
+                              class="rogueAssetChk"
+                              name="rogue_asset_ids[]"
+                              value="<?= (int)$row['id'] ?>">
+                      </td>
+                      <td><?= (int)$row['id'] ?></td>
+                      <td><code><?= e($row['name']) ?></code></td>
+                      <td><?= e($row['title']) ?></td>
+                      <td><?= e($row['created']) ?></td>
+                      <td><?= (int)$row['created_by'] ?></td>
+                      <td><code><?= e($row['assets']) ?></code></td>
+                  </tr>
+                  <?php endforeach; ?>
+              </table>
+              <div style="margin-top:12px;text-align:right;">
+                  <button type="submit" class="btn btn-danger">
+                      🗑 Delete Selected
+                  </button>
+              </div>
+
+          </form>
+      <?php endif; ?>
 
       <?php endif; ?>
 
-
-    <?php if (!empty($dbFindings['rogue_iconfont'])): ?>
-        <form method="post" onsubmit="return confirm('Delete selected rogue SP Page Builder asset rows?');">
-            <input type="hidden" name="action" value="delete_rogue_assets">
-            <div class="legend" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-                <h4 style="margin:0;">
-                    Suspicious iconfont registrations
-                    (<?= count($dbFindings['rogue_iconfont']) ?>)
-                </h4>
-                <button type="submit" class="btn btn-danger">
-                    🗑 Delete Selected
-                </button>
-            </div>
-            <table>
-                <tr>
-                    <th style="width:32px">
-                        <input
-                            type="checkbox"
-                            onclick="document.querySelectorAll('.rogueAssetChk').forEach(cb=>cb.checked=this.checked);">
-                    </th>
-                    <th>ID</th>
-                    <th>Name</th>
-                    <th>Title</th>
-                    <th>Created</th>
-                    <th>Created By</th>
-                    <th>Assets</th>
-
-                </tr>
-                <?php foreach ($dbFindings['rogue_iconfont'] as $row): ?>
-                <tr>
-                    <td>
-                        <input
-                            type="checkbox"
-                            class="rogueAssetChk"
-                            name="rogue_asset_ids[]"
-                            value="<?= (int)$row['id'] ?>">
-                    </td>
-                    <td><?= (int)$row['id'] ?></td>
-                    <td><code><?= e($row['name']) ?></code></td>
-                    <td><?= e($row['title']) ?></td>
-                    <td><?= e($row['created']) ?></td>
-                    <td><?= (int)$row['created_by'] ?></td>
-                    <td><code><?= e($row['assets']) ?></code></td>
-                </tr>
-                <?php endforeach; ?>
-            </table>
-            <div style="margin-top:12px;text-align:right;">
-                <button type="submit" class="btn btn-danger">
-                    🗑 Delete Selected
-                </button>
-            </div>
-
-        </form>
-    <?php endif; ?>
-
-    <?php endif; ?>
-
+    </div>
   </div>
-</div>
 
   <!-- 5. Template defacement -->
   <div class="section">
