@@ -23,8 +23,12 @@ jobs:
 
       - name: Sanity-check manifest version matches tag
         run: |
-          manifest_version=$(grep -oPm1 "(?<=<version>)[^<]+" sppbscan.xml || true)
+          manifest_version=$(grep -oPm1 "(?<=<version>)[^<]+" com_sppbscan/sppbscan.xml || true)
           tag_version="${{ steps.version.outputs.version }}"
+          if [ -z "$manifest_version" ]; then
+            echo "::error::Could not find com_sppbscan/sppbscan.xml or its <version> tag."
+            exit 1
+          fi
           if [ "$manifest_version" != "$tag_version" ]; then
             echo "::warning::Tag is v$tag_version but sppbscan.xml <version> is $manifest_version -- update the manifest before releasing."
           fi
@@ -32,8 +36,17 @@ jobs:
       - name: Build installable zip
         run: |
           mkdir -p dist
-          zip -r "dist/com_sppbscan-${{ steps.version.outputs.version }}.zip" . \
-            -x ".git/*" ".github/*" "dist/*" ".*"
+          cd com_sppbscan
+          zip -r "../dist/com_sppbscan-${{ steps.version.outputs.version }}.zip" . -x ".*"
+          cd ..
+
+      - name: Verify manifest sits at zip root
+        run: |
+          zip_file="dist/com_sppbscan-${{ steps.version.outputs.version }}.zip"
+          if ! unzip -l "$zip_file" | grep -qE '^\s*[0-9]+.*\ssppbscan\.xml$'; then
+            echo "::error::sppbscan.xml is not at the root of the built zip. Joomla install will fail."
+            exit 1
+          fi
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
