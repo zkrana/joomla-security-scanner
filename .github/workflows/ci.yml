@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  php-lint:
+    name: PHP syntax check (PHP ${{ matrix.php-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php-version: ['8.1', '8.2', '8.3']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up PHP ${{ matrix.php-version }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php-version }}
+          tools: none
+
+      - name: Lint every PHP file
+        run: |
+          set -e
+          error=0
+          while IFS= read -r -d '' file; do
+            if ! php -l "$file" > /tmp/lint_output.txt 2>&1; then
+              echo "::error file=$file::Syntax error"
+              cat /tmp/lint_output.txt
+              error=1
+            fi
+          done < <(find . -type f -name '*.php' -not -path './.git/*' -print0)
+          exit $error
+
+  xml-validate:
+    name: Validate XML files (manifest, access, config)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install xmllint
+        run: sudo apt-get update -y && sudo apt-get install -y libxml2-utils
+
+      - name: Validate every .xml file is well-formed
+        run: |
+          set -e
+          error=0
+          while IFS= read -r -d '' file; do
+            if ! xmllint --noout "$file" 2> /tmp/xml_error.txt; then
+              echo "::error file=$file::Malformed XML"
+              cat /tmp/xml_error.txt
+              error=1
+            fi
+          done < <(find . -type f -name '*.xml' -not -path './.git/*' -print0)
+          exit $error
+
+  phpcs:
+    name: PHP CodeSniffer (PSR-12)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: phpcs
+
+      - name: Run PHPCS
+        run: phpcs --standard=PSR12 --extensions=php --ignore=*/language/* admin/ || true
+        # "|| true" keeps this job informational (won't fail the build) while
+        # you're still getting the codebase into shape. Remove it once the
+        # component is clean if you want style violations to fail CI.

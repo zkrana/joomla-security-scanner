@@ -1,0 +1,42 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build package and publish release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Sanity-check manifest version matches tag
+        run: |
+          manifest_version=$(grep -oPm1 "(?<=<version>)[^<]+" sppbscan.xml || true)
+          tag_version="${{ steps.version.outputs.version }}"
+          if [ "$manifest_version" != "$tag_version" ]; then
+            echo "::warning::Tag is v$tag_version but sppbscan.xml <version> is $manifest_version -- update the manifest before releasing."
+          fi
+
+      - name: Build installable zip
+        run: |
+          mkdir -p dist
+          zip -r "dist/com_sppbscan-${{ steps.version.outputs.version }}.zip" . \
+            -x ".git/*" ".github/*" "dist/*" ".*"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/com_sppbscan-${{ steps.version.outputs.version }}.zip
+          generate_release_notes: true
