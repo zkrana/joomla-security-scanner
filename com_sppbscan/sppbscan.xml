@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<extension type="component" method="upgrade">
+    <name>com_sppbscan</name>
+    <author>ZKRANA</author>
+    <creationDate>2026-07</creationDate>
+    <copyright>MIT</copyright>
+    <license>MIT</license>
+    <authorEmail>zkranao@gmail.com</authorEmail>
+    <authorUrl>https://www.linkedin.com/in/zkranadevs/</authorUrl>
+    <version>1.0.0</version>
+    <description>SP Page Builder Infection Scanner &amp; Cleaner. Detects and helps clean malware left behind by the SP Page Builder uploadCustomIcon RCE and related JCE / Helix Ultimate compromises.</description>
+
+    <administration>
+        <menu img="class:shield">SPPB Scanner</menu>
+
+        <files folder="admin">
+            <folder>controllers</folder>
+            <folder>models</folder>
+            <folder>views</folder>
+            <folder>helpers</folder>
+            <folder>language</folder>
+            <file>access.xml</file>
+            <file>config.xml</file>
+            <file>controller.php</file>
+            <file>sppbscan.php</file>
+            <file>index.html</file>
+        </files>
+
+        <languages folder="admin/language">
+            <language tag="en-GB">en-GB/en-GB.com_sppbscan.ini</language>
+            <language tag="en-GB">en-GB/en-GB.com_sppbscan.sys.ini</language>
+        </languages>
+    </administration>
+</extension>

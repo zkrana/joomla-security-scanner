@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<access component="com_sppbscan">
+    <section name="component">
+        <action name="core.admin" title="JACTION_ADMIN" description="JACTION_ADMIN_COMPONENT_DESC" />
+        <action name="core.manage" title="JACTION_MANAGE" description="JACTION_MANAGE_COMPONENT_DESC" />
+        <!-- Anyone without core.manage on this component never even reaches the controller. -->
+    </section>
+</access>
