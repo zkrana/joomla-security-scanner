@@ -22,400 +22,528 @@ $scanUrl    = 'index.php?option=com_sppbscan&task=scanner.scan';
 $rescanUrl  = 'index.php?option=com_sppbscan&task=scanner.scan&rescan=1';
 ?>
 
+<script src="https://cdn.tailwindcss.com"></script>
 <style>
-/* ── Scan gate / loading overlay ── */
-.sppbscan-gate {
-    display:flex; flex-direction:column; align-items:center; justify-content:center;
-    min-height:340px; gap:20px; text-align:center;
-}
-.sppbscan-gate .gate-icon  { font-size:56px; line-height:1; }
-.sppbscan-gate h2          { font-size:22px; font-weight:700; margin:0; }
-.sppbscan-gate p           { color:#666; max-width:480px; margin:0; font-size:14px; line-height:1.6; }
-.sppbscan-gate .btn-scan   { font-size:15px; padding:10px 28px; }
-
-#sppbscan-overlay {
-    display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55);
-    z-index:9999; flex-direction:column; align-items:center; justify-content:center; gap:18px;
-}
-#sppbscan-overlay.active { display:flex; }
-.sppbscan-spinner {
-    width:52px; height:52px; border:5px solid rgba(255,255,255,0.25);
-    border-top-color:#fff; border-radius:50%; animation:sppb-spin 0.8s linear infinite;
-}
-@keyframes sppb-spin { to { transform:rotate(360deg); } }
-.sppbscan-overlay-text { color:#fff; font-size:15px; font-weight:600; letter-spacing:0.02em; }
-.sppbscan-overlay-sub  { color:rgba(255,255,255,0.65); font-size:13px; margin-top:-10px; }
-
-/* ── Stats row ── */
-.sppbscan-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; margin-bottom:24px; }
-.sppbscan-stat  { background:#fff; border:1px solid #ddd; border-radius:8px; padding:16px 18px; }
-.sppbscan-stat .num       { font-size:26px; font-weight:700; line-height:1; margin-bottom:4px; }
-.sppbscan-stat.dirty .num { color:#dc3545; }
-.sppbscan-stat.clean .num { color:#28a745; }
-.sppbscan-stat .label     { font-size:12px; color:#666; }
-
-/* ── Re-scan bar ── */
-.sppbscan-rescan-bar {
-    display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;
-    background:#f8f9fa; border:1px solid #dee2e6; border-radius:6px;
-    padding:10px 16px; margin-bottom:20px; font-size:13px; color:#555;
-}
-.sppbscan-rescan-bar .scan-time { font-weight:600; color:#333; }
-
-/* ── Tables ── */
-.sppbscan-reason { font-size:12px; color:#b45309; }
-.sppbscan-path   { font-family:monospace; font-size:12px; word-break:break-all; }
-
-/* ── Support widget ── */
-.sppbscan-support { position:fixed; top:72px; right:20px; z-index:1000; }
-.sppbscan-support summary {
-    list-style:none; cursor:pointer; user-select:none;
-    background:#fff; border:1px solid #ccc; border-radius:6px;
-    padding:6px 14px; font-size:13px; font-weight:600; color:#333;
-    box-shadow:0 1px 3px rgba(0,0,0,.1);
-}
-.sppbscan-support summary::-webkit-details-marker { display:none; }
-.sppbscan-support summary::after  { content:" ▾"; }
-.sppbscan-support[open] summary::after { content:" ▴"; }
-.sppbscan-support-panel {
-    position:absolute; right:0; margin-top:6px; min-width:200px;
-    background:#fff; border:1px solid #ccc; border-radius:6px;
-    box-shadow:0 4px 12px rgba(0,0,0,.15); overflow:hidden;
-}
-.sppbscan-support-panel a {
-    display:block; padding:10px 14px; font-size:13px; color:#333;
-    text-decoration:none; border-bottom:1px solid #eee;
-}
-.sppbscan-support-panel a:last-child { border-bottom:none; }
-.sppbscan-support-panel a:hover { background:#f5f5f5; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes fadeSlideUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes pulse-ring { 0%,100%{opacity:.4;transform:scale(1)} 50%{opacity:.8;transform:scale(1.08)} }
+  .spinner { animation: spin 0.8s linear infinite; }
+  .anim-in { animation: fadeSlideUp 0.4s ease both; }
+  .shield-pulse { animation: pulse-ring 2.5s ease-in-out infinite; }
+  /* keep Joomla admin from resetting our colours */
+  #sppbscan-root * { box-sizing: border-box; }
+  #sppbscan-root table { border-collapse: collapse; width: 100%; }
+  #sppbscan-root pre  { white-space: pre-wrap; word-break: break-all; }
+  #sppbscan-root code { font-family: ui-monospace, monospace; }
+  /* scrollable table wrapper */
+  .tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 </style>
 
+<div id="sppbscan-root" class="font-sans text-gray-800">
+
 <?php
-// ── SPPB version warning banner ─────────────────────────────────────
+/* ── SPPB version warning banner ───────────────────────────────── */
 $w = $this->sppbWarning ?? null;
 if ($w !== null && $w['safe'] !== true):
     $version = htmlspecialchars($w['version']);
     $major   = (int)($w['major'] ?? 0);
     if ($w['safe'] === false && $major === 5):
-        // 5.x — vulnerable major series, no patch available
-        $bannerClass = 'danger';
-        $icon        = '🚨';
-        $headline    = "SP Page Builder {$version} is installed — this major version is vulnerable and has no patch.";
-        $detail      = 'The <code>uploadCustomIcon</code> unauthenticated RCE only affects SPPB 6.x, but SPPB 5.x has its own separate known vulnerabilities. <strong>Update to SPPB 6.6.2+ immediately</strong>, or remove the component if you no longer use it.';
+        $borderColor = '#dc2626'; $bgColor = '#fef2f2'; $textColor = '#991b1b';
+        $icon = '🚨'; $badgeClass = 'bg-red-600';
+        $headline = "SP Page Builder {$version} is installed — this major version is vulnerable and has no patch.";
+        $detail   = 'SPPB 5.x has its own separate known vulnerabilities. <strong>Update to SPPB 6.6.2+ immediately</strong>, or remove the component if you no longer use it.';
+        $btnClass = 'bg-red-600 hover:bg-red-700';
     elseif ($w['safe'] === false):
-        // 6.x older than 6.6.2
-        $bannerClass = 'danger';
-        $icon        = '🚨';
-        $headline    = "SP Page Builder {$version} is installed — this version is vulnerable to the uploadCustomIcon RCE.";
-        $detail      = 'Unauthenticated attackers can upload PHP webshells via the Custom Icons feature in SPPB 6.x &lt; 6.6.2. <strong>Update to 6.6.2 immediately</strong> via the Joomla Extension Manager before doing anything else — scanning a still-vulnerable site just means cleaning up the same infection again.';
+        $borderColor = '#dc2626'; $bgColor = '#fef2f2'; $textColor = '#991b1b';
+        $icon = '🚨'; $badgeClass = 'bg-red-600';
+        $headline = "SP Page Builder {$version} is installed — vulnerable to the uploadCustomIcon RCE.";
+        $detail   = 'Unauthenticated attackers can upload PHP webshells via Custom Icons in SPPB 6.x &lt; 6.6.2. <strong>Update to 6.6.2 immediately</strong> before doing anything else.';
+        $btnClass = 'bg-red-600 hover:bg-red-700';
     else:
-        // version string unreadable
-        $bannerClass = 'warning';
-        $icon        = '⚠️';
-        $headline    = "SP Page Builder is installed but its version could not be determined.";
-        $detail      = 'Check the installed version manually under <strong>Extensions → Manage → Manage</strong> and confirm it is 6.6.2 or newer before proceeding.';
+        $borderColor = '#d97706'; $bgColor = '#fffbeb'; $textColor = '#78350f';
+        $icon = '⚠️'; $badgeClass = 'bg-amber-500';
+        $headline = "SP Page Builder is installed but its version could not be determined.";
+        $detail   = 'Check manually under <strong>Extensions → Manage → Manage</strong> and confirm it is 6.6.2 or newer.';
+        $btnClass = 'bg-amber-500 hover:bg-amber-600';
     endif;
 ?>
-<div class="alert alert-<?= $bannerClass ?> d-flex gap-3 align-items-start mb-3" role="alert" style="border-left:4px solid <?= $bannerClass === 'danger' ? '#dc3545' : '#ffc107' ?>">
-    <div style="font-size:24px;line-height:1;flex-shrink:0"><?= $icon ?></div>
-    <div>
-        <strong><?= $headline ?></strong><br>
-        <span style="font-size:13px"><?= $detail ?></span><br>
-        <a href="index.php?option=com_installer&view=update" class="btn btn-<?= $bannerClass ?> btn-sm mt-2">
-            Go to Extension Manager → Update
+<div class="anim-in flex gap-4 items-start rounded-xl border-l-4 p-4 mb-5 shadow-sm"
+     style="background:<?= $bgColor ?>; border-color:<?= $borderColor ?>; color:<?= $textColor ?>">
+    <div class="text-3xl flex-shrink-0 mt-0.5"><?= $icon ?></div>
+    <div class="flex-1 min-w-0">
+        <p class="font-bold text-sm leading-snug mb-1"><?= $headline ?></p>
+        <p class="text-xs leading-relaxed opacity-90"><?= $detail ?></p>
+        <a href="index.php?option=com_installer&view=update"
+           class="inline-flex items-center gap-1.5 mt-3 px-4 py-1.5 rounded-lg text-white text-xs font-semibold shadow <?= $btnClass ?> transition-colors">
+            🔧 Go to Extension Manager → Update
         </a>
     </div>
 </div>
 <?php endif; ?>
 
-<!-- Loading overlay (shown while scan POST is in flight) -->
-<div id="sppbscan-overlay">
-    <div class="sppbscan-spinner"></div>
-    <div class="sppbscan-overlay-text">Scanning your Joomla installation…</div>
-    <div class="sppbscan-overlay-sub">This may take 10–30 seconds depending on site size.</div>
+<!-- ── Loading overlay ────────────────────────────────────────── -->
+<div id="sppbscan-overlay"
+     class="hidden fixed inset-0 z-50 flex-col items-center justify-content-center gap-5"
+     style="background:rgba(15,23,42,0.75); backdrop-filter:blur(4px); display:none;">
+    <div class="w-14 h-14 rounded-full border-4 border-white/20 border-t-white spinner"></div>
+    <div class="text-center">
+        <p class="text-white font-bold text-base">Scanning your Joomla installation…</p>
+        <p class="text-white/60 text-sm mt-1">This may take 10–30 seconds depending on site size.</p>
+    </div>
 </div>
 
-<!-- Support widget -->
-<details class="sppbscan-support">
-    <summary>Support</summary>
-    <div class="sppbscan-support-panel">
-        <a href="mailto:zkranao@gmail.com" target="_blank" rel="noopener">☕ Buy me a coffee(Via Payoneer or PayPal Zoom)</a>
-        <a href="mailto:zkranao@gmail.com" target="_blank" rel="noopener">✉️ Need help? Email me</a>
-        <a href="https://www.linkedin.com/in/zkranadevs/" target="_blank" rel="noopener">💬 Reach me on LinkedIn</a>
+<!-- ── Support widget ─────────────────────────────────────────── -->
+<details class="fixed top-16 right-5 z-40 group" id="support-widget">
+    <summary class="list-none cursor-pointer select-none flex items-center gap-2
+                    bg-white border border-gray-200 rounded-xl px-4 py-2 text-sm font-semibold
+                    shadow-md hover:shadow-lg transition-all text-gray-700">
+        💬 Support
+        <span class="text-gray-400 group-open:rotate-180 transition-transform text-xs">▾</span>
+    </summary>
+    <div class="absolute right-0 mt-2 w-56 bg-white border border-gray-100 rounded-xl shadow-xl overflow-hidden">
+        <a href="mailto:zkranao@gmail.com" target="_blank" rel="noopener"
+           class="flex items-center gap-2 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 border-b border-gray-50 transition-colors">
+            ☕ Buy me a coffee
+        </a>
+        <a href="mailto:zkranao@gmail.com" target="_blank" rel="noopener"
+           class="flex items-center gap-2 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 border-b border-gray-50 transition-colors">
+            ✉️ Email support
+        </a>
+        <a href="https://www.linkedin.com/in/zkranadevs/" target="_blank" rel="noopener"
+           class="flex items-center gap-2 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
+            💼 LinkedIn
+        </a>
     </div>
 </details>
 
 <?php if (!$this->scanned): ?>
-<!-- ═══════════════════════════════════════════════════════════════════
-     SCAN GATE — no cached results yet, show the "Run Scan" screen
-     ═══════════════════════════════════════════════════════════════════ -->
-<div class="sppbscan-gate">
-    <div class="gate-icon">🛡️</div>
-    <h2>SP Page Builder Infection Scanner</h2>
-    <p>
-        Click <strong>Run Scan</strong> to walk the filesystem and check the database
-        for malware, rogue admin accounts, XSS injections, and defacement markers
-        left behind by the SPPB <code>uploadCustomIcon</code> RCE (pre-6.6.2).
-        The scan typically takes 10–30 seconds.
-    </p>
+<!-- ══════════════════════════════════════════════════════════════
+     SCAN GATE
+     ══════════════════════════════════════════════════════════════ -->
+<div class="anim-in flex flex-col items-center justify-center min-h-80 gap-8 py-16">
+    <!-- Animated shield -->
+    <div class="relative flex items-center justify-center">
+        <div class="absolute w-32 h-32 rounded-full bg-indigo-100 shield-pulse"></div>
+        <div class="relative text-7xl">🛡️</div>
+    </div>
+
+    <div class="text-center max-w-lg">
+        <h2 class="text-2xl font-extrabold text-gray-900 mb-3">SP Page Builder Infection Scanner</h2>
+        <p class="text-gray-500 text-sm leading-relaxed">
+            Click <strong class="text-gray-700">Run Scan</strong> to walk the filesystem and check the database
+            for malware, rogue admin accounts, XSS injections, and defacement markers
+            left behind by the SPPB <code class="bg-gray-100 px-1.5 py-0.5 rounded text-xs">uploadCustomIcon</code> RCE (pre-6.6.2).
+        </p>
+    </div>
+
     <form action="<?= Route::_($scanUrl) ?>" method="post" id="sppbscan-form">
         <?= HTMLHelper::_('form.token') ?>
-        <button type="submit" class="btn btn-primary btn-scan">
+        <button type="submit"
+                class="inline-flex items-center gap-2 px-8 py-3.5 bg-indigo-600 hover:bg-indigo-700
+                       text-white font-bold rounded-xl shadow-lg hover:shadow-xl
+                       transition-all duration-200 hover:-translate-y-0.5 text-base">
             🔍 Run Scan
         </button>
     </form>
-    <p class="text-muted" style="font-size:12px;">
-        Results are cached for 5 minutes. Use <strong>Re-scan</strong> to force a fresh run.
-    </p>
+
+    <div class="flex items-center gap-2 text-xs text-gray-400 bg-gray-50 border border-gray-100 rounded-lg px-4 py-2">
+        <span>⏱</span>
+        <span>Typically takes 10–30 seconds &nbsp;·&nbsp; Results cached for 5 minutes</span>
+    </div>
 </div>
 
 <?php else: ?>
-<!-- ═══════════════════════════════════════════════════════════════════
-     RESULTS — cached scan available
-     ═══════════════════════════════════════════════════════════════════ -->
+<!-- ══════════════════════════════════════════════════════════════
+     RESULTS
+     ══════════════════════════════════════════════════════════════ -->
 
 <!-- Re-scan bar -->
-<div class="sppbscan-rescan-bar">
-    <span>
+<div class="anim-in flex flex-wrap items-center justify-between gap-3
+            bg-white border border-gray-200 rounded-xl px-5 py-3 mb-6 shadow-sm">
+    <div class="flex items-center gap-2 text-sm text-gray-600">
+        <span class="text-lg">🕐</span>
         Last scanned:
-        <span class="scan-time"><?= date('Y-m-d H:i:s', $this->scanStartedAt) ?></span>
-        · Results cached for 5 minutes
-    </span>
+        <span class="font-bold text-gray-900"><?= date('Y-m-d H:i:s', $this->scanStartedAt) ?></span>
+        <span class="text-gray-300">·</span>
+        <span class="text-gray-400">Cached for 5 min</span>
+    </div>
     <form action="<?= Route::_($rescanUrl) ?>" method="post" id="sppbscan-rescan-form" style="margin:0">
         <?= HTMLHelper::_('form.token') ?>
-        <button type="submit" class="btn btn-sm btn-outline-secondary">
+        <button type="submit"
+                class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-gray-300
+                       rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50
+                       transition-colors shadow-sm">
             🔄 Re-scan now
         </button>
     </form>
 </div>
 
-<!-- Stats -->
-<div class="sppbscan-stats">
-    <?php $fc = count($fileFindings); ?>
-    <div class="sppbscan-stat <?= $fc > 0 ? 'dirty' : 'clean' ?>">
-        <div class="num"><?= (int)$fc ?></div>
-        <div class="label">
-            Suspicious files
-            <?php if ($fc > 0): ?>(<?= $this->highCount ?> high · <?= $this->medCount ?> medium)<?php endif; ?>
+<!-- Stats grid -->
+<?php
+$fc = count($fileFindings);
+$suCount = count($suspiciousSU);
+$menuCount = count($dbFindings['menu_xss'] ?? []);
+$assetCount = count($dbFindings['sppb_assets'] ?? []) + count($dbFindings['rogue_iconfont'] ?? []);
+$deface = count($dbFindings['template_defacement'] ?? []);
+$stats = [
+    ['icon'=>'📁', 'num'=>$fc,         'label'=>'Suspicious Files',
+     'sub'=>$fc>0 ? "{$this->highCount} high · {$this->medCount} medium" : 'filesystem clean',
+     'danger'=>$fc>0],
+    ['icon'=>'👤', 'num'=>$suCount,    'label'=>'Rogue Super Users',
+     'sub'=>$suCount>0 ? 'needs immediate review' : 'all accounts normal',
+     'danger'=>$suCount>0],
+    ['icon'=>'🔗', 'num'=>$menuCount,  'label'=>'Menu XSS Rows',
+     'sub'=>$menuCount>0 ? 'injected payloads found' : 'menu table clean',
+     'danger'=>$menuCount>0],
+    ['icon'=>'🗄',  'num'=>$assetCount,'label'=>'Rogue Asset Rows',
+     'sub'=>$assetCount>0 ? 'asset table tainted' : 'asset table clean',
+     'danger'=>$assetCount>0],
+    ['icon'=>'🖼',  'num'=>$deface,    'label'=>'Template Defacement',
+     'sub'=>$deface>0 ? 'template styles modified' : 'templates intact',
+     'danger'=>$deface>0],
+];
+?>
+<div class="anim-in grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
+    <?php foreach ($stats as $i => $s): ?>
+    <div class="bg-white rounded-xl border <?= $s['danger'] ? 'border-red-200 shadow-red-50' : 'border-green-100' ?> shadow-sm p-4"
+         style="animation-delay:<?= $i * 60 ?>ms">
+        <div class="flex items-start justify-between mb-2">
+            <span class="text-2xl"><?= $s['icon'] ?></span>
+            <span class="<?= $s['danger'] ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600' ?> text-xs font-bold px-2 py-0.5 rounded-full">
+                <?= $s['danger'] ? '⚠ ALERT' : '✓ OK' ?>
+            </span>
         </div>
+        <div class="text-3xl font-extrabold <?= $s['danger'] ? 'text-red-600' : 'text-green-600' ?> leading-none mb-1">
+            <?= (int)$s['num'] ?>
+        </div>
+        <div class="text-xs font-semibold text-gray-700 mb-0.5"><?= $s['label'] ?></div>
+        <div class="text-[11px] text-gray-400"><?= $s['sub'] ?></div>
     </div>
-    <div class="sppbscan-stat <?= count($suspiciousSU) > 0 ? 'dirty' : 'clean' ?>">
-        <div class="num"><?= count($suspiciousSU) ?></div>
-        <div class="label">Rogue super users</div>
-    </div>
-    <div class="sppbscan-stat <?= count($dbFindings['menu_xss']) > 0 ? 'dirty' : 'clean' ?>">
-        <div class="num"><?= count($dbFindings['menu_xss']) ?></div>
-        <div class="label">Menu XSS rows</div>
-    </div>
-    <div class="sppbscan-stat <?= (count($dbFindings['sppb_assets']) + count($dbFindings['rogue_iconfont'])) > 0 ? 'dirty' : 'clean' ?>">
-        <div class="num"><?= count($dbFindings['sppb_assets']) + count($dbFindings['rogue_iconfont']) ?></div>
-        <div class="label">Rogue asset rows</div>
-    </div>
-    <div class="sppbscan-stat <?= count($dbFindings['template_defacement']) > 0 ? 'dirty' : 'clean' ?>">
-        <div class="num"><?= count($dbFindings['template_defacement']) ?></div>
-        <div class="label">Template defacement</div>
-    </div>
+    <?php endforeach; ?>
 </div>
 
-<div class="alert alert-info">
-    This is a heuristic scanner. Pair it with a full server-side malware scan (ClamAV / Imunify360) before declaring the site clean.
+<!-- Heuristic notice -->
+<div class="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-xl px-5 py-3 mb-6 text-sm text-blue-800">
+    <span class="text-xl flex-shrink-0">ℹ️</span>
+    <span>This is a heuristic scanner. Pair it with a full server-side malware scan <strong>(ClamAV / Imunify360)</strong> before declaring the site clean.</span>
 </div>
 
-<!-- 1. Files -->
-<h3>1. Suspicious files &amp; folders</h3>
-<div class="card mb-3">
-    <div class="card-body">
-    <?php if (empty($fileFindings)): ?>
-        <p class="text-success">✅ No suspicious files detected.</p>
-    <?php else: ?>
-        <form action="index.php?option=com_sppbscan&task=scanner.delete" method="post"
-              onsubmit="return confirm('Delete selected files/folders? This cannot be undone.');">
-            <table class="table table-striped">
-                <thead><tr>
-                    <th style="width:2%"><input type="checkbox" onclick="document.querySelectorAll('.sppb-file-chk').forEach(c=>c.checked=this.checked)"></th>
-                    <th>Path</th><th>Type</th><th>Confidence</th><th>Reason</th><th>Size</th><th>Modified</th>
-                </tr></thead>
-                <tbody>
+<?php
+/* ── Helper: section card wrapper ── */
+function sppb_section_open(string $id, string $emoji, string $title, int $count): void {
+    $dot = $count > 0
+        ? '<span class="inline-flex items-center justify-center w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full ml-2">' . $count . '</span>'
+        : '<span class="inline-flex items-center justify-center w-5 h-5 bg-green-500 text-white text-[10px] font-bold rounded-full ml-2">✓</span>';
+    echo '<details id="' . $id . '" ' . ($count > 0 ? 'open' : '') . ' class="group bg-white border border-gray-200 rounded-xl shadow-sm mb-4 overflow-hidden anim-in">';
+    echo '<summary class="list-none cursor-pointer select-none flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors">';
+    echo '<span class="flex items-center gap-2 font-bold text-gray-800">' . $emoji . ' <span>' . $title . '</span>' . $dot . '</span>';
+    echo '<span class="text-gray-400 group-open:rotate-180 transition-transform duration-200 text-sm">▾</span>';
+    echo '</summary>';
+    echo '<div class="border-t border-gray-100 px-5 py-5">';
+}
+function sppb_section_close(): void {
+    echo '</div></details>';
+}
+?>
+
+<!-- ── 1. Files ──────────────────────────────────────────────── -->
+<?php sppb_section_open('sec-files', '📁', 'Suspicious Files &amp; Folders', $fc); ?>
+<?php if (empty($fileFindings)): ?>
+    <div class="flex items-center gap-3 text-green-700 bg-green-50 rounded-xl px-5 py-4">
+        <span class="text-2xl">✅</span>
+        <span class="font-medium">No suspicious files detected.</span>
+    </div>
+<?php else: ?>
+    <form action="index.php?option=com_sppbscan&task=scanner.delete" method="post"
+          onsubmit="return confirm('Delete selected files/folders? This cannot be undone.');">
+        <div class="flex items-center justify-between mb-3">
+            <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                <input type="checkbox" class="w-4 h-4 rounded border-gray-300"
+                       onclick="document.querySelectorAll('.sppb-file-chk').forEach(c=>c.checked=this.checked)">
+                Select all
+            </label>
+            <div class="flex items-center gap-2 text-xs text-gray-500">
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-red-100 text-red-700 rounded-full font-semibold">🔴 <?= $this->highCount ?> high</span>
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full font-semibold">🟡 <?= $this->medCount ?> medium</span>
+            </div>
+        </div>
+        <div class="tbl-wrap rounded-xl border border-gray-100 overflow-hidden mb-4">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="bg-gray-50 border-b border-gray-100">
+                        <th class="w-10 px-4 py-3"></th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Path</th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Type</th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Severity</th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Reason</th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Size</th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Modified</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-50">
                 <?php foreach ($fileFindings as $f): ?>
-                    <tr>
-                        <td><input type="checkbox" class="sppb-file-chk" name="targets[]" value="<?= htmlspecialchars($f['rel']) ?>"></td>
-                        <td class="sppbscan-path"><?= htmlspecialchars($f['rel']) ?></td>
-                        <td><span class="badge bg-secondary"><?= $f['type'] === 'dir' ? 'DIR' : 'FILE' ?></span></td>
-                        <td><span class="badge bg-<?= $f['confidence'] === 'high' ? 'danger' : 'warning' ?>"><?= $f['confidence'] === 'high' ? 'High' : 'Medium' ?></span></td>
-                        <td class="sppbscan-reason"><?= htmlspecialchars($f['reason']) ?></td>
-                        <td><?= \SppbscanHelper::humanSize($f['size']) ?></td>
-                        <td><?= $f['mtime'] ? date('Y-m-d H:i', $f['mtime']) : '—' ?></td>
+                    <tr class="hover:bg-gray-50/60 transition-colors <?= $f['confidence']==='high' ? 'bg-red-50/30' : '' ?>">
+                        <td class="px-4 py-3">
+                            <input type="checkbox" class="sppb-file-chk w-4 h-4 rounded border-gray-300"
+                                   name="targets[]" value="<?= htmlspecialchars($f['rel']) ?>">
+                        </td>
+                        <td class="px-4 py-3">
+                            <code class="text-xs text-gray-600 break-all"><?= htmlspecialchars($f['rel']) ?></code>
+                        </td>
+                        <td class="px-4 py-3">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-gray-100 text-gray-600">
+                                <?= $f['type']==='dir' ? '📂 DIR' : '📄 FILE' ?>
+                            </span>
+                        </td>
+                        <td class="px-4 py-3">
+                            <?php if ($f['confidence']==='high'): ?>
+                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700">🔴 High</span>
+                            <?php else: ?>
+                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700">🟡 Medium</span>
+                            <?php endif; ?>
+                        </td>
+                        <td class="px-4 py-3 text-xs text-amber-700"><?= htmlspecialchars($f['reason']) ?></td>
+                        <td class="px-4 py-3 text-xs text-gray-500"><?= \SppbscanHelper::humanSize($f['size']) ?></td>
+                        <td class="px-4 py-3 text-xs text-gray-400"><?= $f['mtime'] ? date('Y-m-d H:i',$f['mtime']) : '—' ?></td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>
             </table>
-            <?= HTMLHelper::_('form.token') ?>
-            <button type="submit" class="btn btn-danger">🗑 Delete selected</button>
-            <span class="text-muted small ms-2">Only items flagged in this scan run can be deleted.</span>
-        </form>
-    <?php endif; ?>
-    </div>
-</div>
+        </div>
+        <?= HTMLHelper::_('form.token') ?>
+        <div class="flex items-center gap-3">
+            <button type="submit"
+                    class="inline-flex items-center gap-2 px-5 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-xl shadow transition-colors">
+                🗑 Delete selected
+            </button>
+            <span class="text-xs text-gray-400">Only items flagged in this scan run can be deleted.</span>
+        </div>
+    </form>
+<?php endif; ?>
+<?php sppb_section_close(); ?>
 
-<!-- 2. Super Users -->
-<h3>2. Super User accounts</h3>
-<div class="card mb-3">
-    <div class="card-body">
-    <?php if (empty($dbFindings['superusers'])): ?>
-        <p class="text-success">✅ No super user accounts found.</p>
-    <?php else: ?>
-        <table class="table table-striped">
-            <thead><tr><th>ID</th><th>Name</th><th>Username</th><th>Email</th><th>Registered</th><th>Last Visit</th><th>Status</th></tr></thead>
-            <tbody>
+<!-- ── 2. Super Users ─────────────────────────────────────────── -->
+<?php sppb_section_open('sec-users', '👤', 'Super User Accounts', $suCount); ?>
+<?php if (empty($dbFindings['superusers'])): ?>
+    <div class="flex items-center gap-3 text-green-700 bg-green-50 rounded-xl px-5 py-4">
+        <span class="text-2xl">✅</span><span class="font-medium">No super user accounts found.</span>
+    </div>
+<?php else: ?>
+    <div class="tbl-wrap rounded-xl border border-gray-100 overflow-hidden mb-3">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="bg-gray-50 border-b border-gray-100">
+                    <?php foreach (['ID','Name','Username','Email','Registered','Last Visit','Status'] as $h): ?>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= $h ?></th>
+                    <?php endforeach; ?>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-50">
             <?php foreach ($dbFindings['superusers'] as $u): ?>
-                <tr>
-                    <td><?= (int)$u['id'] ?></td>
-                    <td><?= htmlspecialchars($u['name']) ?></td>
-                    <td class="sppbscan-path"><?= htmlspecialchars($u['username']) ?></td>
-                    <td><?= htmlspecialchars($u['email']) ?></td>
-                    <td><?= htmlspecialchars($u['registered']) ?></td>
-                    <td><?= htmlspecialchars($u['lastvisit']) ?></td>
-                    <td>
+                <tr class="hover:bg-gray-50/60 transition-colors <?= $u['suspicious'] ? 'bg-red-50/40' : '' ?>">
+                    <td class="px-4 py-3 text-xs font-mono text-gray-500"><?= (int)$u['id'] ?></td>
+                    <td class="px-4 py-3 font-medium"><?= htmlspecialchars($u['name']) ?></td>
+                    <td class="px-4 py-3"><code class="text-xs bg-gray-100 px-1.5 py-0.5 rounded"><?= htmlspecialchars($u['username']) ?></code></td>
+                    <td class="px-4 py-3 text-xs text-gray-500"><?= htmlspecialchars($u['email']) ?></td>
+                    <td class="px-4 py-3 text-xs text-gray-400"><?= htmlspecialchars($u['registered']) ?></td>
+                    <td class="px-4 py-3 text-xs text-gray-400"><?= htmlspecialchars($u['lastvisit']) ?></td>
+                    <td class="px-4 py-3">
                         <?php if ($u['suspicious']): ?>
-                            <span class="badge bg-danger">⚠ Suspicious</span>
-                            <div class="small text-danger"><?= htmlspecialchars($u['why']) ?></div>
+                            <div class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-bold mb-1">⚠ Suspicious</div>
+                            <div class="text-xs text-red-600"><?= htmlspecialchars($u['why']) ?></div>
                         <?php else: ?>
-                            <span class="badge bg-success">✓ Normal</span>
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-bold">✓ Normal</span>
                         <?php endif; ?>
                     </td>
                 </tr>
             <?php endforeach; ?>
             </tbody>
         </table>
-        <p class="text-muted small">Remove rogue accounts via Users → Manage — do not delete your own account.</p>
-    <?php endif; ?>
     </div>
-</div>
+    <p class="text-xs text-gray-400">Remove rogue accounts via <strong>Users → Manage</strong> — do not delete your own account.</p>
+<?php endif; ?>
+<?php sppb_section_close(); ?>
 
-<!-- 3. Menu XSS -->
-<h3>3. Menu XSS injections</h3>
-<div class="card mb-3">
-    <div class="card-body">
-    <?php if (empty($dbFindings['menu_xss'])): ?>
-        <p class="text-success">✅ No injected menu items found.</p>
-    <?php else: ?>
-        <form action="index.php?option=com_sppbscan&task=scanner.cleanmenu" method="post"
-              onsubmit="return confirm('Surgically clean XSS from the selected menu rows?');">
-            <table class="table table-striped">
-                <thead><tr>
-                    <th style="width:2%"><input type="checkbox" onclick="document.querySelectorAll('.sppb-menu-chk').forEach(c=>c.checked=this.checked)"></th>
-                    <th>ID</th><th>Title</th><th>Link</th><th>Matched signatures</th>
-                </tr></thead>
-                <tbody>
+<!-- ── 3. Menu XSS ───────────────────────────────────────────── -->
+<?php sppb_section_open('sec-menu', '🔗', 'Menu XSS Injections', $menuCount); ?>
+<?php if (empty($dbFindings['menu_xss'])): ?>
+    <div class="flex items-center gap-3 text-green-700 bg-green-50 rounded-xl px-5 py-4">
+        <span class="text-2xl">✅</span><span class="font-medium">No injected menu items found.</span>
+    </div>
+<?php else: ?>
+    <form action="index.php?option=com_sppbscan&task=scanner.cleanmenu" method="post"
+          onsubmit="return confirm('Surgically clean XSS from the selected menu rows?');">
+        <div class="flex items-center justify-between mb-3">
+            <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                <input type="checkbox" class="w-4 h-4 rounded border-gray-300"
+                       onclick="document.querySelectorAll('.sppb-menu-chk').forEach(c=>c.checked=this.checked)">
+                Select all
+            </label>
+        </div>
+        <div class="tbl-wrap rounded-xl border border-gray-100 overflow-hidden mb-4">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="bg-gray-50 border-b border-gray-100">
+                        <th class="w-10 px-4 py-3"></th>
+                        <?php foreach (['ID','Title','Link','Matched Signatures'] as $h): ?>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= $h ?></th>
+                        <?php endforeach; ?>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-50">
                 <?php foreach ($dbFindings['menu_xss'] as $m): ?>
-                    <tr>
-                        <td><input type="checkbox" class="sppb-menu-chk" name="menu_xss_ids[]" value="<?= (int)$m['id'] ?>"></td>
-                        <td><?= (int)$m['id'] ?></td>
-                        <td><?= htmlspecialchars($m['title']) ?></td>
-                        <td class="sppbscan-path"><?= htmlspecialchars($m['link']) ?></td>
-                        <td class="sppbscan-reason"><?= htmlspecialchars(implode(', ', $m['matches'] ?? [])) ?></td>
+                    <tr class="hover:bg-red-50/40 bg-red-50/20 transition-colors">
+                        <td class="px-4 py-3"><input type="checkbox" class="sppb-menu-chk w-4 h-4 rounded border-gray-300" name="menu_xss_ids[]" value="<?= (int)$m['id'] ?>"></td>
+                        <td class="px-4 py-3 text-xs font-mono text-gray-500"><?= (int)$m['id'] ?></td>
+                        <td class="px-4 py-3 font-medium"><?= htmlspecialchars($m['title']) ?></td>
+                        <td class="px-4 py-3"><code class="text-xs break-all text-gray-600"><?= htmlspecialchars($m['link']) ?></code></td>
+                        <td class="px-4 py-3 text-xs text-amber-700 font-medium"><?= htmlspecialchars(implode(', ', $m['matches'] ?? [])) ?></td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>
             </table>
-            <?= HTMLHelper::_('form.token') ?>
-            <button type="submit" class="btn btn-danger">🧹 Clean selected rows</button>
-            <span class="text-muted small ms-2">Surgically removes XSS payload from params — legitimate menu settings are preserved.</span>
-        </form>
-    <?php endif; ?>
-    </div>
-</div>
+        </div>
+        <?= HTMLHelper::_('form.token') ?>
+        <div class="flex items-center gap-3">
+            <button type="submit"
+                    class="inline-flex items-center gap-2 px-5 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-xl shadow transition-colors">
+                🧹 Clean selected rows
+            </button>
+            <span class="text-xs text-gray-400">Surgically removes XSS payload — legitimate menu settings are preserved.</span>
+        </div>
+    </form>
+<?php endif; ?>
+<?php sppb_section_close(); ?>
 
-<!-- 4. SP Page Builder assets -->
-<h3>4. SP Page Builder asset table</h3>
-<div class="card mb-3">
-    <div class="card-body">
-    <?php if (empty($dbFindings['sppb_assets']) && empty($dbFindings['rogue_iconfont'])): ?>
-        <p class="text-success">✅ No suspicious rows found in sppagebuilder_assets.</p>
-    <?php else: ?>
-        <?php if (!empty($dbFindings['sppb_assets'])): ?>
-            <h4>Injected payload rows</h4>
-            <table class="table table-striped">
-                <thead><tr><th>Row data</th></tr></thead>
-                <tbody>
-                <?php foreach ($dbFindings['sppb_assets'] as $row): ?>
-                    <tr><td><pre style="white-space:pre-wrap;font-size:11px;"><?= htmlspecialchars(json_encode($row, JSON_PRETTY_PRINT)) ?></pre></td></tr>
-                <?php endforeach; ?>
-                </tbody>
-            </table>
-        <?php endif; ?>
-        <?php if (!empty($dbFindings['rogue_iconfont'])): ?>
-            <form action="index.php?option=com_sppbscan&task=scanner.deleteassets" method="post"
-                  onsubmit="return confirm('Delete selected rogue iconfont rows?');">
-                <h4>Rogue iconfont registrations (<?= count($dbFindings['rogue_iconfont']) ?>)</h4>
-                <table class="table table-striped">
-                    <thead><tr>
-                        <th style="width:2%"><input type="checkbox" onclick="document.querySelectorAll('.sppb-asset-chk').forEach(c=>c.checked=this.checked)"></th>
-                        <th>ID</th><th>Name</th><th>Title</th><th>Created</th><th>Created By</th><th>Assets</th>
-                    </tr></thead>
-                    <tbody>
+<!-- ── 4. SPPB Assets ────────────────────────────────────────── -->
+<?php sppb_section_open('sec-assets', '🗄', 'SP Page Builder Asset Table', $assetCount); ?>
+<?php if (empty($dbFindings['sppb_assets']) && empty($dbFindings['rogue_iconfont'])): ?>
+    <div class="flex items-center gap-3 text-green-700 bg-green-50 rounded-xl px-5 py-4">
+        <span class="text-2xl">✅</span><span class="font-medium">No suspicious rows found in sppagebuilder_assets.</span>
+    </div>
+<?php else: ?>
+    <?php if (!empty($dbFindings['sppb_assets'])): ?>
+        <h4 class="font-bold text-gray-700 mb-3">Injected payload rows</h4>
+        <div class="space-y-2 mb-5">
+            <?php foreach ($dbFindings['sppb_assets'] as $row): ?>
+                <div class="bg-red-50 border border-red-100 rounded-xl p-4">
+                    <pre class="text-xs text-red-800 overflow-x-auto"><?= htmlspecialchars(json_encode($row, JSON_PRETTY_PRINT)) ?></pre>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    <?php endif; ?>
+    <?php if (!empty($dbFindings['rogue_iconfont'])): ?>
+        <form action="index.php?option=com_sppbscan&task=scanner.deleteassets" method="post"
+              onsubmit="return confirm('Delete selected rogue iconfont rows?');">
+            <div class="flex items-center justify-between mb-3">
+                <h4 class="font-bold text-gray-700">Rogue iconfont registrations
+                    <span class="ml-1 inline-flex items-center justify-center w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full">
+                        <?= count($dbFindings['rogue_iconfont']) ?>
+                    </span>
+                </h4>
+                <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                    <input type="checkbox" class="w-4 h-4 rounded border-gray-300"
+                           onclick="document.querySelectorAll('.sppb-asset-chk').forEach(c=>c.checked=this.checked)">
+                    Select all
+                </label>
+            </div>
+            <div class="tbl-wrap rounded-xl border border-gray-100 overflow-hidden mb-4">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="bg-gray-50 border-b border-gray-100">
+                            <th class="w-10 px-4 py-3"></th>
+                            <?php foreach (['ID','Name','Title','Created','By','Assets'] as $h): ?>
+                                <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= $h ?></th>
+                            <?php endforeach; ?>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-50">
                     <?php foreach ($dbFindings['rogue_iconfont'] as $row): ?>
-                        <tr>
-                            <td><input type="checkbox" class="sppb-asset-chk" name="rogue_asset_ids[]" value="<?= (int)$row['id'] ?>"></td>
-                            <td><?= (int)$row['id'] ?></td>
-                            <td><code><?= htmlspecialchars($row['name']) ?></code></td>
-                            <td><?= htmlspecialchars($row['title']) ?></td>
-                            <td><?= htmlspecialchars($row['created']) ?></td>
-                            <td><?= (int)$row['created_by'] ?></td>
-                            <td><code><?= htmlspecialchars($row['assets']) ?></code></td>
+                        <tr class="hover:bg-red-50/40 bg-red-50/20 transition-colors">
+                            <td class="px-4 py-3"><input type="checkbox" class="sppb-asset-chk w-4 h-4 rounded border-gray-300" name="rogue_asset_ids[]" value="<?= (int)$row['id'] ?>"></td>
+                            <td class="px-4 py-3 text-xs font-mono text-gray-500"><?= (int)$row['id'] ?></td>
+                            <td class="px-4 py-3"><code class="text-xs bg-gray-100 px-1.5 py-0.5 rounded"><?= htmlspecialchars($row['name']) ?></code></td>
+                            <td class="px-4 py-3 text-sm"><?= htmlspecialchars($row['title']) ?></td>
+                            <td class="px-4 py-3 text-xs text-gray-400"><?= htmlspecialchars($row['created']) ?></td>
+                            <td class="px-4 py-3 text-xs text-gray-500"><?= (int)$row['created_by'] ?></td>
+                            <td class="px-4 py-3"><code class="text-xs text-red-600 break-all"><?= htmlspecialchars($row['assets']) ?></code></td>
                         </tr>
                     <?php endforeach; ?>
                     </tbody>
                 </table>
-                <?= HTMLHelper::_('form.token') ?>
-                <button type="submit" class="btn btn-danger">🗑 Delete selected</button>
-            </form>
-        <?php endif; ?>
+            </div>
+            <?= HTMLHelper::_('form.token') ?>
+            <button type="submit"
+                    class="inline-flex items-center gap-2 px-5 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-xl shadow transition-colors">
+                🗑 Delete selected
+            </button>
+        </form>
     <?php endif; ?>
-    </div>
-</div>
+<?php endif; ?>
+<?php sppb_section_close(); ?>
 
-<!-- 5. Template defacement -->
-<h3>5. Template styles defacement</h3>
-<div class="card mb-3">
-    <div class="card-body">
-    <?php if (empty($dbFindings['template_defacement'])): ?>
-        <p class="text-success">✅ No defacement markers found in template_styles.</p>
-    <?php else: ?>
-        <table class="table table-striped">
-            <thead><tr><th>ID</th><th>Template</th><th>Title</th><th>Matches</th></tr></thead>
-            <tbody>
+<!-- ── 5. Template defacement ────────────────────────────────── -->
+<?php sppb_section_open('sec-template', '🖼', 'Template Styles Defacement', $deface); ?>
+<?php if (empty($dbFindings['template_defacement'])): ?>
+    <div class="flex items-center gap-3 text-green-700 bg-green-50 rounded-xl px-5 py-4">
+        <span class="text-2xl">✅</span><span class="font-medium">No defacement markers found in template_styles.</span>
+    </div>
+<?php else: ?>
+    <div class="tbl-wrap rounded-xl border border-gray-100 overflow-hidden mb-3">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="bg-gray-50 border-b border-gray-100">
+                    <?php foreach (['ID','Template','Title','Matches'] as $h): ?>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= $h ?></th>
+                    <?php endforeach; ?>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-50">
             <?php foreach ($dbFindings['template_defacement'] as $row): ?>
-                <tr>
-                    <td><?= (int)$row['id'] ?></td>
-                    <td class="sppbscan-path"><?= htmlspecialchars($row['template']) ?></td>
-                    <td><?= htmlspecialchars($row['title']) ?></td>
-                    <td class="sppbscan-reason"><?= htmlspecialchars(implode(', ', $row['matches'])) ?></td>
+                <tr class="hover:bg-amber-50/40 bg-amber-50/20 transition-colors">
+                    <td class="px-4 py-3 text-xs font-mono text-gray-500"><?= (int)$row['id'] ?></td>
+                    <td class="px-4 py-3"><code class="text-xs text-gray-600"><?= htmlspecialchars($row['template']) ?></code></td>
+                    <td class="px-4 py-3 font-medium"><?= htmlspecialchars($row['title']) ?></td>
+                    <td class="px-4 py-3 text-xs text-amber-700 font-medium"><?= htmlspecialchars(implode(', ', $row['matches'])) ?></td>
                 </tr>
             <?php endforeach; ?>
             </tbody>
         </table>
-        <p class="text-muted small">Review and restore these template styles from a clean backup.</p>
-    <?php endif; ?>
     </div>
-</div>
+    <p class="text-xs text-gray-400">Review and restore these template styles from a clean backup.</p>
+<?php endif; ?>
+<?php sppb_section_close(); ?>
 
-<div class="alert alert-secondary">
-    When you're done, uninstall this component via <strong>Extensions → Manage → Manage</strong> to remove it from your site completely.
+<!-- Footer notice -->
+<div class="flex items-center gap-3 bg-gray-50 border border-gray-200 rounded-xl px-5 py-4 mt-2 text-sm text-gray-500">
+    <span class="text-xl">🧹</span>
+    <span>When you're done, uninstall this component via
+        <strong class="text-gray-700">Extensions → Manage → Manage</strong>
+        to remove it from your site completely.
+    </span>
 </div>
 
 <?php endif; // end $this->scanned ?>
 
+</div><!-- #sppbscan-root -->
+
 <script>
 (function () {
-    // Show the loading overlay when either scan form is submitted
-    var forms = [document.getElementById('sppbscan-form'), document.getElementById('sppbscan-rescan-form')];
+    var forms   = [document.getElementById('sppbscan-form'), document.getElementById('sppbscan-rescan-form')];
     var overlay = document.getElementById('sppbscan-overlay');
     forms.forEach(function (form) {
         if (!form) return;
         form.addEventListener('submit', function () {
-            overlay.classList.add('active');
+            overlay.style.display = 'flex';
         });
+    });
+
+    // Close support widget when clicking outside
+    document.addEventListener('click', function(e) {
+        var widget = document.getElementById('support-widget');
+        if (widget && widget.open && !widget.contains(e.target)) {
+            widget.removeAttribute('open');
+        }
     });
 })();
 </script>
