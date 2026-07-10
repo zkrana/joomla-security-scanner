@@ -84,14 +84,14 @@ class SppbscanModelScanner extends BaseDatabaseModel
 
 public function scanFilesystem(): void
     {
-        $sig     = SppbscanHelper::getSignatures();
-        $params  = ComponentHelper::getParams('com_sppbscan');
+        $sig = SppbscanHelper::getSignatures();
+        $params = ComponentHelper::getParams('com_sppbscan');
         $maxSize = (int) ($params->get('max_file_scan_size', 2 * 1024 * 1024));
 
         $extraRootDirs = array_filter(array_map('trim', explode(',', (string) $params->get('extra_root_dirs', ''))));
         $sig['KNOWN_ROOT_DIRS'] = array_merge($sig['KNOWN_ROOT_DIRS'], $extraRootDirs);
 
-        $selfLogPattern      = '/^\.sppbscan-[a-f0-9]{16}\.(log|lock)$/i';
+        $selfLogPattern  = '/^\.sppbscan-[a-f0-9]{16}\.(log|lock)$/i';
         $googleVerifyPattern = '/^google[a-f0-9]{16,}\.html$/i';
 
         foreach ($sig['SCAN_CONFIG'] as $relDir => $mode) {

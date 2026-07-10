@@ -58,8 +58,10 @@ class SppbscanViewScanner extends HtmlView
         parent::display($tpl);
     }
 
-    protected function addToolbar(): void
+protected function addToolbar(): void
     {
         ToolbarHelper::title(Text::_('COM_SPPBSCAN_TITLE'), 'shield');
+        ToolbarHelper::preferences('com_sppbscan');
+        Toolbar::getInstance('toolbar')->help('');
     }
 }
