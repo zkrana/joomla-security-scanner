@@ -10,6 +10,10 @@ defined('_JEXEC') or die;
 use Joomla\CMS\HTML\HTMLHelper;
 use Joomla\CMS\Language\Text;
 use Joomla\CMS\Router\Route;
+use Joomla\CMS\Factory;
+use Joomla\CMS\MVC\View\HtmlView;
+use Joomla\CMS\Toolbar\ToolbarHelper;
+use Joomla\CMS\Toolbar\ToolbarInterface;
 
 /** @var SppbscanViewScanner $this */
 $fileFindings = $this->fileFindings ?? [];
@@ -235,11 +239,11 @@ function sppb_section_open(string $id, string $emoji, string $title, int $count)
         ? '<span class="inline-flex items-center justify-center w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full ml-2">' . $count . '</span>'
         : '<span class="inline-flex items-center justify-center w-5 h-5 bg-green-500 text-white text-[10px] font-bold rounded-full ml-2">✓</span>';
     echo '<details id="' . $id . '" ' . ($count > 0 ? 'open' : '') . ' class="group bg-white border border-gray-200 rounded-xl shadow-sm mb-4 overflow-hidden anim-in">';
-    echo '<summary class="list-none cursor-pointer select-none flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors">';
+    echo '<summary class="list-none cursor-pointer select-none flex items-center justify-between p-2 hover:bg-gray-50 transition-colors">';
     echo '<span class="flex items-center gap-2 font-bold text-gray-800">' . $emoji . ' <span>' . $title . '</span>' . $dot . '</span>';
     echo '<span class="text-gray-400 group-open:rotate-180 transition-transform duration-200 text-sm">▾</span>';
     echo '</summary>';
-    echo '<div class="border-t border-gray-100 px-5 py-5">';
+    echo '<div class="border-t border-gray-100 p-2">';
 }
 function sppb_section_close(): void {
     echo '</div></details>';
@@ -249,7 +253,7 @@ function sppb_section_close(): void {
 <!-- ── 1. Files ──────────────────────────────────────────────── -->
 <?php sppb_section_open('sec-files', '📁', 'Suspicious Files &amp; Folders', $fc); ?>
 <?php if (empty($fileFindings)): ?>
-    <div class="flex items-center gap-3 text-green-700 bg-green-50 rounded-xl px-5 py-4">
+    <div class="flex items-center gap-3 text-green-700 bg-green-50 rounded-xl p-[10px]">
         <span class="text-2xl">✅</span>
         <span class="font-medium">No suspicious files detected.</span>
     </div>
@@ -325,7 +329,7 @@ function sppb_section_close(): void {
 <!-- ── 2. Super Users ─────────────────────────────────────────── -->
 <?php sppb_section_open('sec-users', '👤', 'Super User Accounts', $suCount); ?>
 <?php if (empty($dbFindings['superusers'])): ?>
-    <div class="flex items-center gap-3 text-green-700 bg-green-50 rounded-xl px-5 py-4">
+    <div class="flex items-center gap-3 text-green-700 bg-green-50 rounded-xl p-[10px]">
         <span class="text-2xl">✅</span><span class="font-medium">No super user accounts found.</span>
     </div>
 <?php else: ?>
@@ -367,7 +371,7 @@ function sppb_section_close(): void {
 <!-- ── 3. Menu XSS ───────────────────────────────────────────── -->
 <?php sppb_section_open('sec-menu', '🔗', 'Menu XSS Injections', $menuCount); ?>
 <?php if (empty($dbFindings['menu_xss'])): ?>
-    <div class="flex items-center gap-3 text-green-700 bg-green-50 rounded-xl px-5 py-4">
+    <div class="flex items-center gap-3 text-green-700 bg-green-50 rounded-xl p-[10px]">
         <span class="text-2xl">✅</span><span class="font-medium">No injected menu items found.</span>
     </div>
 <?php else: ?>
@@ -418,7 +422,7 @@ function sppb_section_close(): void {
 <!-- ── 4. SPPB Assets ────────────────────────────────────────── -->
 <?php sppb_section_open('sec-assets', '🗄', 'SP Page Builder Asset Table', $assetCount); ?>
 <?php if (empty($dbFindings['sppb_assets']) && empty($dbFindings['rogue_iconfont'])): ?>
-    <div class="flex items-center gap-3 text-green-700 bg-green-50 rounded-xl px-5 py-4">
+    <div class="flex items-center gap-3 text-green-700 bg-green-50 rounded-xl p-[10px]">
         <span class="text-2xl">✅</span><span class="font-medium">No suspicious rows found in sppagebuilder_assets.</span>
     </div>
 <?php else: ?>
@@ -485,7 +489,7 @@ function sppb_section_close(): void {
 <!-- ── 5. Template defacement ────────────────────────────────── -->
 <?php sppb_section_open('sec-template', '🖼', 'Template Styles Defacement', $deface); ?>
 <?php if (empty($dbFindings['template_defacement'])): ?>
-    <div class="flex items-center gap-3 text-green-700 bg-green-50 rounded-xl px-5 py-4">
+    <div class="flex items-center gap-3 text-green-700 bg-green-50 rounded-xl p-[10px]">
         <span class="text-2xl">✅</span><span class="font-medium">No defacement markers found in template_styles.</span>
     </div>
 <?php else: ?>

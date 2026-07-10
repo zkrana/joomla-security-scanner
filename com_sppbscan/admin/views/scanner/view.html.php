@@ -7,22 +7,22 @@
 
 defined('_JEXEC') or die;
 
+use Joomla\CMS\Factory;
+use Joomla\CMS\Language\Text;
 use Joomla\CMS\MVC\View\HtmlView;
 use Joomla\CMS\Toolbar\ToolbarHelper;
-use Joomla\CMS\Language\Text;
-use Joomla\CMS\Factory;
 
 require_once JPATH_ADMINISTRATOR . '/components/com_sppbscan/helpers/sppbscan.php';
 
 class SppbscanViewScanner extends HtmlView
 {
-    public $fileFindings;
-    public $dbFindings;
-    public $highCount;
-    public $medCount;
-    public $scanned       = false;
+    public $fileFindings = [];
+    public $dbFindings = [];
+    public $highCount = 0;
+    public $medCount = 0;
+    public $scanned = false;
     public $scanStartedAt = 0;
-    public $sppbWarning   = null;
+    public $sppbWarning = null;
 
     public function display($tpl = null)
     {
@@ -31,37 +31,46 @@ class SppbscanViewScanner extends HtmlView
         $app     = Factory::getApplication();
         $session = $app->getSession();
 
-        // Always load the model — needed for getSppbVersionWarning()
-        // regardless of whether a scan cache exists.
         /** @var SppbscanModelScanner $model */
         $model = $this->getModel('Scanner');
 
-        // SPPB version warning is shown on every page load, not just after a scan.
+        // Show SPPB version warning
         $this->sppbWarning = $model->getSppbVersionWarning();
 
-        // Only populate scan results when a valid cache exists.
-        // The "Run Scan" button (task=scanner.scan) populates the cache;
-        // without it we just show the splash screen.
+        // Restore cached scan results
         $cachedAt = (int) $session->get('sppbscan.filefindings_time', 0);
         $hasCache = $cachedAt > 0 && (time() - $cachedAt) < 300;
 
         if ($hasCache) {
-            $this->fileFindings  = $model->getFileFindings();
-            $this->dbFindings    = $model->getDbFindings();
-            $this->highCount     = count(array_filter($this->fileFindings, fn($f) => $f['confidence'] === 'high'));
+            $this->fileFindings = $model->getFileFindings();
+            $this->dbFindings   = $model->getDbFindings();
+
+            $this->highCount = count(array_filter(
+                $this->fileFindings,
+                function ($f) {
+                    return isset($f['confidence']) && $f['confidence'] === 'high';
+                }
+            ));
+
             $this->medCount      = count($this->fileFindings) - $this->highCount;
             $this->scanned       = true;
             $this->scanStartedAt = $cachedAt;
         }
 
         $this->addToolbar();
+
         parent::display($tpl);
     }
 
-protected function addToolbar(): void
+    protected function addToolbar()
     {
         ToolbarHelper::title(Text::_('COM_SPPBSCAN_TITLE'), 'shield');
-        ToolbarHelper::preferences('com_sppbscan');
-        Toolbar::getInstance('toolbar')->help('');
+
+        // Show Preferences only if the helper supports it
+        if (method_exists('ToolbarHelper', 'preferences')) {
+            ToolbarHelper::preferences('com_sppbscan');
+        }
+
+        // Help button intentionally omitted for Joomla 3/4/5/6 compatibility.
     }
 }
