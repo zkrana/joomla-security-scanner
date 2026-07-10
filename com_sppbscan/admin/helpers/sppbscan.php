@@ -73,7 +73,7 @@ class SppbscanHelper
                 'shell_exec_chain'   => '/shell_exec\s*\(\s*\$_(POST|REQUEST|GET)/i',
                 'xss_report_payload' => '/xss\.report|_hu_inject/i',
                 'secure_local_marker'=> '/secure\.local/i',
-                'webshell_generic'   => '/FilesMan|c99shell|r57shell|WSO\s*Web\s*Shell/i',
+                'webshell_generic'   => '/FilesMan(?![a-zA-Z])|c99shell|r57shell|WSO\s*Web\s*Shell/i',
                 'stream_wrapper_payload'    => '/require(?:_once)?\s*\(?\s*\$?\w*\s*\)?\s*;?.{0,200}?(zip|phar|compress\.zlib|compress\.bzip2|data):\/\//is',
                 'chr_byte_array_decode'     => '/\$\w+\s*=\s*array\s*\(\s*(\d{2,3}\s*,\s*){6,}\d{2,3}\s*\)\s*;.{0,300}?chr\s*\(\s*\$\w+\[\$?\w+\]\s*\)/is',
                 'string_lookup_obfuscation' => '/\$_?\w+\s*=\s*base64_decode\s*\(\s*[\'"][A-Za-z0-9+\/=]{40,}[\'"]\s*\)\s*;.{0,80}?\$\w+\[\d+\]\s*\.\s*\$\w+\[\d+\]/is',

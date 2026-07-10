@@ -82,11 +82,14 @@ class SppbscanModelScanner extends BaseDatabaseModel
     // Filesystem scan — unchanged logic from the standalone scanner
     // ------------------------------------------------------------------
 
-    public function scanFilesystem(): void
+public function scanFilesystem(): void
     {
         $sig     = SppbscanHelper::getSignatures();
         $params  = ComponentHelper::getParams('com_sppbscan');
         $maxSize = (int) ($params->get('max_file_scan_size', 2 * 1024 * 1024));
+
+        $extraRootDirs = array_filter(array_map('trim', explode(',', (string) $params->get('extra_root_dirs', ''))));
+        $sig['KNOWN_ROOT_DIRS'] = array_merge($sig['KNOWN_ROOT_DIRS'], $extraRootDirs);
 
         $selfLogPattern      = '/^\.sppbscan-[a-f0-9]{16}\.(log|lock)$/i';
         $googleVerifyPattern = '/^google[a-f0-9]{16,}\.html$/i';
@@ -98,6 +101,9 @@ class SppbscanModelScanner extends BaseDatabaseModel
             SppbscanHelper::walkDir($dir, function (string $path, bool $isDir) use ($sig, $mode, $maxSize) {
                 foreach ($sig['SAFE_COMPONENT_PATHS'] as $safeFrag) {
                     if (stripos($path, $safeFrag) !== false) return;
+                }
+                if (preg_match('#/tmp/install_[a-z0-9]+(/|$)#i', $path)) {
+                    return; // Joomla's own installer extraction folder — transient, not user-uploadable
                 }
                 if (isset($this->seenAbs[$path])) return;
 
