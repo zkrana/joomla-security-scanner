@@ -30,5 +30,12 @@
             <option value="0">JNO</option>
             <option value="1">JYES</option>
         </field>
+        <field
+            name="extra_root_dirs"
+            type="textarea"
+            rows="2"
+            label="COM_SPPBSCAN_CONFIG_EXTRA_ROOT_DIRS_LABEL"
+            description="COM_SPPBSCAN_CONFIG_EXTRA_ROOT_DIRS_DESC"
+        />
     </fieldset>
 </config>
