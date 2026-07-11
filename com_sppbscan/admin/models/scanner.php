@@ -183,11 +183,24 @@ public function scanFilesystem(): void
                     }
                 }
 
-                // content signature scan — runs in both modes, files only
+                // content signature scan — runs in both modes, files only.
+                // Pure static/binary extensions are skipped: they cannot be executed
+                // by PHP and produce false positives. SVG is intentionally kept
+                // because it can embed <script> tags and has been used for XSS payloads.
+                $skipContentExts = [
+                    'jpg','jpeg','png','gif','webp','bmp','tiff','tif','avif','heic',
+                    'ico','woff','woff2','ttf','otf','eot',
+                    'mp4','mp3','webm','ogg','wav','avi','mov',
+                    'zip','gz','tar','rar','7z',
+                    'pdf','doc','docx','xls','xlsx','ppt','pptx',
+                    'map',
+                ];
                 if (!$isDir) {
                     $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
-                    if (SppbscanHelper::scanFileContent($path, $ext, $sig, $maxSize, $reasons)) {
-                        $flagged = true;
+                    if (!in_array($ext, $skipContentExts, true)) {
+                        if (SppbscanHelper::scanFileContent($path, $ext, $sig, $maxSize, $reasons)) {
+                            $flagged = true;
+                        }
                     }
                 }
 
@@ -243,7 +256,15 @@ public function scanFilesystem(): void
             SppbscanHelper::scanFileContent($p, $extR, $sig, $maxSize, $reasonsRoot);
             if (count($reasonsRoot) > ($flaggedRoot ? 1 : 0)) $flaggedRoot = true;
 
-            $benignExts = ['css','jpg','jpeg','png','gif','svg','ico','webp','woff','woff2','ttf','eot','map'];
+            // Skip flagging static assets as "unrecognized webroot files".
+            // SVG kept in scan list (can carry XSS). jpg/png/gif/webp etc. are never
+            // executable and produce only false positives in the webroot check.
+            $benignExts = [
+                'css','jpg','jpeg','png','gif','webp','bmp','tiff','avif','heic',
+                'ico','woff','woff2','ttf','otf','eot',
+                'mp4','mp3','webm','ogg','wav',
+                'zip','gz','pdf','map','txt','md','json','xml',
+            ];
             if (!$flaggedRoot && !in_array($extR, $benignExts, true)) {
                 $flaggedRoot   = true;
                 $reasonsRoot[] = 'Unrecognized file directly in the Joomla webroot — not part of a standard install.';
