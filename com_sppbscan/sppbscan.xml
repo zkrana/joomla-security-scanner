@@ -2,12 +2,12 @@
 <extension type="component" method="upgrade">
     <name>com_sppbscan</name>
     <author>ZKRANA</author>
-    <creationDate>2026-07</creationDate>
+    <creationDate>2026-07-09</creationDate>
     <copyright>MIT</copyright>
     <license>MIT</license>
     <authorEmail>zkranao@gmail.com</authorEmail>
     <authorUrl>https://www.linkedin.com/in/zkranadevs/</authorUrl>
-    <version>1.0.5</version>
+    <version>1.0.6</version>
     <description>SP Page Builder Infection Scanner &amp; Cleaner. Detects and helps clean malware left behind by the SP Page Builder uploadCustomIcon RCE and related JCE / Helix Ultimate compromises.</description>
 
     <administration>
