@@ -73,7 +73,7 @@ class SppbscanHelper
                 'shell_exec_chain'   => '/shell_exec\s*\(\s*\$_(POST|REQUEST|GET)/i',
                 'xss_report_payload' => '/xss\.report|_hu_inject/i',
                 'secure_local_marker'=> '/secure\.local/i',
-                'webshell_generic'   => '/FilesMan(?![a-zA-Z])|c99shell|r57shell|WSO\s*Web\s*Shell/i',
+                'webshell_generic'   => '/FilesMan|c99shell|r57shell|WSO\s*Web\s*Shell/i',
                 'stream_wrapper_payload'    => '/require(?:_once)?\s*\(?\s*\$?\w*\s*\)?\s*;?.{0,200}?(zip|phar|compress\.zlib|compress\.bzip2|data):\/\//is',
                 'chr_byte_array_decode'     => '/\$\w+\s*=\s*array\s*\(\s*(\d{2,3}\s*,\s*){6,}\d{2,3}\s*\)\s*;.{0,300}?chr\s*\(\s*\$\w+\[\$?\w+\]\s*\)/is',
                 'string_lookup_obfuscation' => '/\$_?\w+\s*=\s*base64_decode\s*\(\s*[\'"][A-Za-z0-9+\/=]{40,}[\'"]\s*\)\s*;.{0,80}?\$\w+\[\d+\]\s*\.\s*\$\w+\[\d+\]/is',
@@ -214,6 +214,47 @@ class SppbscanHelper
         return (bool) preg_match('/^\d{1,4}$/', $name);
     }
 
+    /**
+     * True if $contents is (after stripping comments/whitespace) nothing
+     * more than Joomla's standard "no direct access" guard. Joomla and
+     * countless legitimate extensions place this blank stub in every
+     * subfolder by convention -- an index.php existing somewhere is normal
+     * and NOT a threat on its own, even inside an "upload" directory like
+     * media/ or images/. Only flag a stub file if it contains more than
+     * this guard.
+     */
+    public static function isStandardJoomlaStub(string $contents): bool
+    {
+        $trimmed = trim($contents);
+        if ($trimmed === '') return true; // some older stubs are just blank files
+
+        $noBlockComments = preg_replace('#/\*.*?\*/#s', '', $trimmed);
+        $noLineComments  = preg_replace('#//[^\n]*#', '', $noBlockComments);
+        $normalized = trim(preg_replace('/\s+/', ' ', $noLineComments));
+
+        $guardPatterns = [
+            '/<\?php\s*defined\(\s*[\'"]_JEXEC[\'"]\s*\)\s*or\s*die(\s*\(\s*[\'"]?.*?[\'"]?\s*\))?\s*;?/i',
+            '/<\?php\s*\?>/i',
+            '/<\?php/i',
+            '/\?>/',
+        ];
+        $stripped = $normalized;
+        foreach ($guardPatterns as $p) {
+            $stripped = preg_replace($p, '', $stripped);
+        }
+        $stripped = trim($stripped);
+
+        // After removing the guard, comments, and PHP tags, almost nothing
+        // should remain. Allow a small margin (e.g. a trailing "exit;").
+        return strlen($stripped) <= 12;
+    }
+
+    /**
+     * Joomla's real root index.php never executes anything before defining
+     * _JEXEC. Any code before that point is a strong sign of a prepended
+     * payload -- the exact `$db = array(122,105,...); require zip://...`
+     * pattern seen in real Joomla compromises.
+     */
     public static function checkCoreIndexIntegrity(string $contents): ?string
     {
         $openTagPos = stripos($contents, '<?php');
@@ -264,6 +305,7 @@ class SppbscanHelper
         return null;
     }
 
+    /** Runs content-signature + polyglot checks. Used in both scan modes. */
     public static function scanFileContent(string $path, string $ext, array $sig, int $maxSize, array &$reasons): bool
     {
         if (!is_file($path) || @filesize($path) === false || @filesize($path) > $maxSize) return false;
@@ -306,6 +348,27 @@ class SppbscanHelper
         ];
     }
 
+    /**
+     * Surgically strips known XSS injection markers out of a Joomla menu
+     * "params" JSON blob, preserving every other legitimate setting.
+     *
+     * Handles two shapes of nested value:
+     *  1. A string that itself decodes as valid JSON (Helix Ultimate stores
+     *     layout data as JSON-encoded strings, sometimes nested several
+     *     levels deep) -- these are recursed into normally.
+     *  2. A string that LOOKS like it was meant to be a JSON container
+     *     (starts with '{' or '[') but FAILS to json_decode -- this happens
+     *     when the attacker's own injected payload contains an unescaped
+     *     quote that breaks JSON syntax. This is handled by
+     *     regexStripMalformed(), which now ALSO applies a fail-safe:
+     *     after targeted removal, if any signature still matches (or the
+     *     tell-tale "(function(){'use strict'" scaffold survives), the
+     *     entire value is blanked rather than left as a hollowed-out but
+     *     still-present script skeleton.
+     *
+     * item_id is enforced as a plain integer unconditionally when reached
+     * as a proper leaf (not gated behind pattern matching).
+     */
     public static function cleanMenuParamsXss(string $paramsJson, array $patterns): array
     {
         $decoded = json_decode($paramsJson, true);
@@ -346,14 +409,20 @@ class SppbscanHelper
             return $clean;
         };
 
+        // For strings that look like a JSON container but fail to parse --
+        // regex-strip the malicious content directly instead of discarding
+        // the whole field, with a fail-safe blank-out if residue survives.
         $regexStripMalformed = function (string $raw) use ($patterns, &$changed): string {
             $hit = false;
             foreach ($patterns as $re) { if (preg_match($re, $raw)) { $hit = true; break; } }
             if (!$hit) return $raw;
             $changed = true;
 
+            // Blank any item_id value outright -- these should only ever
+            // hold a plain numeric module/item ID, never markup or script.
             $raw = preg_replace('/"item_id"\s*:\s*"(?:[^"\\\\]|\\\\.)*"/is', '"item_id":""', $raw);
 
+            // Targeted removal pass.
             $raw = preg_replace('/<script\b[^>]*>.*?<\/script\s*>/is', '', $raw);
             $raw = preg_replace('/<img\b[^>]*>/is', '', $raw);
             $raw = preg_replace('/\bon[a-z]+\s*=\s*(".*?"|\'.*?\'|[^\s>]+|`[^`]*`)/is', '', $raw);
@@ -364,6 +433,14 @@ class SppbscanHelper
             $raw = preg_replace('/_hu_?inject[^\s\'"<>`]*/i', '', $raw);
             $raw = preg_replace('/document\s*\.\s*createElement\s*\(\s*[\'"]script[\'"]\s*\)/i', '', $raw);
 
+            // Fail-safe: targeted removal only deletes the specific tokens
+            // matched above, but attacker payloads come in endless variants
+            // (different function/variable names, different wrapper shape).
+            // If ANY signature still matches after the targeted pass -- or
+            // the tell-tale "(function(){'use strict'" scaffold is still
+            // present -- the remaining text is unresolved malicious residue,
+            // not a false positive. Blank the whole value rather than ship
+            // a hollowed-out-but-still-present script skeleton.
             $stillDangerous = false;
             foreach ($patterns as $re) {
                 if (preg_match($re, $raw)) { $stillDangerous = true; break; }
@@ -395,6 +472,9 @@ class SppbscanHelper
 
             $trimmed = ltrim($node);
             if ($trimmed !== '' && ($trimmed[0] === '{' || $trimmed[0] === '[')) {
+                // Looks like it was meant to be a JSON container but the
+                // attacker's own malformed escaping broke it. Regex-strip
+                // instead of nuking the whole field.
                 $node = $regexStripMalformed($node);
                 return;
             }

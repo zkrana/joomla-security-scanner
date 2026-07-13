@@ -37,5 +37,12 @@
             label="COM_SPPBSCAN_CONFIG_EXTRA_ROOT_DIRS_LABEL"
             description="COM_SPPBSCAN_CONFIG_EXTRA_ROOT_DIRS_DESC"
         />
+        <field
+            name="ignored_paths"
+            type="textarea"
+            rows="4"
+            label="COM_SPPBSCAN_CONFIG_IGNORED_PATHS_LABEL"
+            description="COM_SPPBSCAN_CONFIG_IGNORED_PATHS_DESC"
+        />
     </fieldset>
 </config>

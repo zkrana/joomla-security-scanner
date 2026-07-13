@@ -33,19 +33,14 @@ class SppbscanModelScanner extends BaseDatabaseModel
     // Public accessors used by the view
     // ------------------------------------------------------------------
 
-    /**
-     * Returns file findings. Uses a 5-minute session cache so the filesystem
-     * walk doesn't run on every page load or every action click.
-     * Pass rescan=1 in the URL (task=scanner.scan) to force a fresh walk.
-     */
     public function getFileFindings(): array
     {
-        $session     = Factory::getApplication()->getSession();
+        $session = Factory::getApplication()->getSession();
         $forceRescan = Factory::getApplication()->input->getBool('rescan', false);
 
         if (!$forceRescan) {
-            $cached   = $session->get('sppbscan.filefindings');
-            $cachedAt = (int) $session->get('sppbscan.filefindings_time', 0);
+            $cached = $session->get('sppbscan.filefindings');
+            $cachedAt = $session->get('sppbscan.filefindings_time', 0);
             if (is_array($cached) && (time() - $cachedAt) < 300) {
                 $this->fileFindings = $cached;
                 return $this->fileFindings;
@@ -64,6 +59,13 @@ class SppbscanModelScanner extends BaseDatabaseModel
         return $this->dbFindings;
     }
 
+    /** True if a scan result is already sitting in the session cache. */
+    public function hasCachedScan(): bool
+    {
+        $cached = Factory::getApplication()->getSession()->get('sppbscan.filefindings');
+        return is_array($cached);
+    }
+
     /**
      * Called by the controller's scan() task.
      * Forces a fresh filesystem walk, stores result in session, returns time.
@@ -79,10 +81,10 @@ class SppbscanModelScanner extends BaseDatabaseModel
     }
 
     // ------------------------------------------------------------------
-    // Filesystem scan — unchanged logic from the standalone scanner
+    // Filesystem scan
     // ------------------------------------------------------------------
 
-public function scanFilesystem(): void
+    public function scanFilesystem(): void
     {
         $sig = SppbscanHelper::getSignatures();
         $params = ComponentHelper::getParams('com_sppbscan');
@@ -91,6 +93,15 @@ public function scanFilesystem(): void
         $extraRootDirs = array_filter(array_map('trim', explode(',', (string) $params->get('extra_root_dirs', ''))));
         $sig['KNOWN_ROOT_DIRS'] = array_merge($sig['KNOWN_ROOT_DIRS'], $extraRootDirs);
 
+        $ignoredPaths = array_filter(array_map('trim', explode("\n", (string) $params->get('ignored_paths', ''))));
+        $isIgnored = function (string $relPath) use ($ignoredPaths): bool {
+            foreach ($ignoredPaths as $pattern) {
+                if ($pattern === '') continue;
+                if (fnmatch($pattern, $relPath, FNM_PATHNAME)) return true;
+            }
+            return false;
+        };
+
         $selfLogPattern  = '/^\.sppbscan-[a-f0-9]{16}\.(log|lock)$/i';
         $googleVerifyPattern = '/^google[a-f0-9]{16,}\.html$/i';
 
@@ -98,7 +109,7 @@ public function scanFilesystem(): void
             $dir = $this->root . '/' . $relDir;
             if (!is_dir($dir)) continue;
 
-            SppbscanHelper::walkDir($dir, function (string $path, bool $isDir) use ($sig, $mode, $maxSize) {
+            SppbscanHelper::walkDir($dir, function (string $path, bool $isDir) use ($sig, $mode, $maxSize, $isIgnored) {
                 foreach ($sig['SAFE_COMPONENT_PATHS'] as $safeFrag) {
                     if (stripos($path, $safeFrag) !== false) return;
                 }
@@ -107,30 +118,31 @@ public function scanFilesystem(): void
                 }
                 if (isset($this->seenAbs[$path])) return;
 
-                $basename       = basename($path);
-                $relCheck       = ltrim(str_replace($this->root, '', $path), '/');
-                $isKnownSafe    = !$isDir && in_array($relCheck, $sig['KNOWN_SAFE_RELATIVE_FILES'], true);
-                $flagged        = false;
-                $reasons        = [];
+                $basename = basename($path);
+                $relCheck = ltrim(str_replace($this->root, '', $path), '/');
+                if ($isIgnored($relCheck)) return;
+                $isKnownSafeEntry = !$isDir && in_array($relCheck, $sig['KNOWN_SAFE_RELATIVE_FILES'], true);
+                $flagged = false;
+                $reasons = [];
 
                 // iconfont strict allow-list
                 if (stripos($path, '/iconfont/') !== false) {
                     $parentBase = strtolower(basename(dirname($path)));
                     if ($isDir) {
                         if ($parentBase === 'iconfont' && !in_array(strtolower($basename), $sig['ICONFONT_ALLOWED_DIRNAMES'], true)) {
-                            $flagged   = true;
+                            $flagged = true;
                             $reasons[] = 'Unrecognized folder inside icon-font asset directory.';
                         }
                     } else {
                         $extL = strtolower(pathinfo($path, PATHINFO_EXTENSION));
                         if (in_array($extL, $sig['EXEC_EXTS'], true)) {
-                            $flagged   = true;
+                            $flagged = true;
                             $reasons[] = 'Executable file inside icon-font asset folder.';
                         } elseif ($parentBase === 'iconfont') {
                             $baseNoExt = strtolower(pathinfo($basename, PATHINFO_FILENAME));
                             if (!in_array($extL, $sig['ICONFONT_ALLOWED_EXTENSIONS'], true)
                                 && !($extL === '' && in_array($baseNoExt, $sig['ICONFONT_ALLOWED_BARE_NAMES'], true))) {
-                                $flagged   = true;
+                                $flagged = true;
                                 $reasons[] = 'Unrecognized file type inside icon-font asset directory.';
                             }
                         }
@@ -143,30 +155,37 @@ public function scanFilesystem(): void
                         if (stripos($path, $frag) === false) continue;
                         $extL = strtolower(pathinfo($path, PATHINFO_EXTENSION));
                         if (in_array($extL, $sig['EXEC_EXTS'], true)) {
-                            $flagged   = true;
+                            $flagged = true;
                             $reasons[] = 'Executable file inside JCE file-browser upload path.';
                         } elseif ($extL !== '' && !in_array($extL, $sig['JCE_UPLOAD_ALLOWED_EXTENSIONS'], true)) {
-                            $flagged   = true;
+                            $flagged = true;
                             $reasons[] = 'Unrecognized file type inside JCE file-browser upload path.';
                         }
                         break;
                     }
                 }
 
-                // upload mode structural checks
+                // 'upload' mode strict structural checks
                 if ($mode === 'upload') {
                     if ($isDir) {
                         if (preg_match('/^\d+$/', $basename) && !SppbscanHelper::isDateLikeNumericFolderName($basename)) {
-                            $flagged   = true;
-                            $reasons[] = "Folder name is purely numeric (\"{$basename}\") — a common automated-malware-drop pattern.";
+                            $flagged = true;
+                            $reasons[] = "Folder name is purely numeric (\"{$basename}\") and isn't a normal date/ID component — a common automated-malware-drop pattern.";
                         }
                     } else {
                         $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
-                        if (!$isKnownSafe && in_array($ext, $sig['EXEC_EXTS'], true)) {
-                            $flagged   = true;
-                            $reasons[] = "Executable file (.$ext) inside an upload directory.";
+                        $isBlankStub = false;
+                        if ($ext === 'php' && strcasecmp($basename, 'index.php') === 0) {
+                            $stubContents = @file_get_contents($path, false, null, 0, 4096);
+                            if ($stubContents !== false && SppbscanHelper::isStandardJoomlaStub($stubContents)) {
+                                $isBlankStub = true;
+                            }
                         }
-                        if (!$isKnownSafe) {
+                        if (!$isKnownSafeEntry && !$isBlankStub && in_array($ext, $sig['EXEC_EXTS'], true)) {
+                            $flagged = true;
+                            $reasons[] = "Executable file (.$ext) inside an upload directory — these should never contain runnable code.";
+                        }
+                        if (!$isKnownSafeEntry) {
                             foreach ($sig['SUSPICIOUS_FILENAME_REGEXES'] as $re) {
                                 if (preg_match($re, $basename)) { $flagged = true; $reasons[] = 'Filename matches known malicious pattern.'; break; }
                             }
@@ -176,31 +195,18 @@ public function scanFilesystem(): void
                             if ($contents !== false
                                 && preg_match('/Allow\s+from\s+all|Require\s+all\s+granted|RewriteEngine\s+Off/i', $contents)
                                 && !preg_match('/FilesMatch.*php/i', $contents)) {
-                                $flagged   = true;
+                                $flagged = true;
                                 $reasons[] = 'Suspicious .htaccess: permissively allows access in an upload folder.';
                             }
                         }
                     }
                 }
 
-                // content signature scan — runs in both modes, files only.
-                // Pure static/binary extensions are skipped: they cannot be executed
-                // by PHP and produce false positives. SVG is intentionally kept
-                // because it can embed <script> tags and has been used for XSS payloads.
-                $skipContentExts = [
-                    'jpg','jpeg','png','gif','webp','bmp','tiff','tif','avif','heic',
-                    'ico','woff','woff2','ttf','otf','eot',
-                    'mp4','mp3','webm','ogg','wav','avi','mov',
-                    'zip','gz','tar','rar','7z',
-                    'pdf','doc','docx','xls','xlsx','ppt','pptx',
-                    'map',
-                ];
+                // content signature scan runs in both modes, files only
                 if (!$isDir) {
                     $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
-                    if (!in_array($ext, $skipContentExts, true)) {
-                        if (SppbscanHelper::scanFileContent($path, $ext, $sig, $maxSize, $reasons)) {
-                            $flagged = true;
-                        }
+                    if (SppbscanHelper::scanFileContent($path, $ext, $sig, $maxSize, $reasons)) {
+                        $flagged = true;
                     }
                 }
 
@@ -219,6 +225,7 @@ public function scanFilesystem(): void
             if (isset($this->seenAbs[$p])) continue;
             if (preg_match($selfLogPattern, $it)) continue;
             if (preg_match($googleVerifyPattern, $it)) continue;
+            if ($isIgnored($it)) continue;
 
             if (is_dir($p)) {
                 if (!in_array(strtolower($it), array_map('strtolower', $sig['KNOWN_ROOT_DIRS']), true)) {
@@ -240,8 +247,8 @@ public function scanFilesystem(): void
             $relCheck = ltrim(str_replace($this->root, '', $p), '/');
             if (in_array($relCheck, $sig['KNOWN_SAFE_RELATIVE_FILES'], true)) continue;
 
-            $flaggedRoot  = false;
-            $reasonsRoot  = [];
+            $flaggedRoot = false;
+            $reasonsRoot = [];
             foreach ($sig['SUSPICIOUS_FILENAME_REGEXES'] as $re) {
                 if (preg_match($re, $it)) { $flaggedRoot = true; $reasonsRoot[] = 'Filename matches known malicious pattern.'; break; }
             }
@@ -256,17 +263,9 @@ public function scanFilesystem(): void
             SppbscanHelper::scanFileContent($p, $extR, $sig, $maxSize, $reasonsRoot);
             if (count($reasonsRoot) > ($flaggedRoot ? 1 : 0)) $flaggedRoot = true;
 
-            // Skip flagging static assets as "unrecognized webroot files".
-            // SVG kept in scan list (can carry XSS). jpg/png/gif/webp etc. are never
-            // executable and produce only false positives in the webroot check.
-            $benignExts = [
-                'css','jpg','jpeg','png','gif','webp','bmp','tiff','avif','heic',
-                'ico','woff','woff2','ttf','otf','eot',
-                'mp4','mp3','webm','ogg','wav',
-                'zip','gz','pdf','map','txt','md','json','xml',
-            ];
-            if (!$flaggedRoot && !in_array($extR, $benignExts, true)) {
-                $flaggedRoot   = true;
+            $benignStaticExts = ['css', 'jpg', 'jpeg', 'png', 'gif', 'svg', 'ico', 'webp', 'woff', 'woff2', 'ttf', 'eot', 'map'];
+            if (!$flaggedRoot && !in_array($extR, $benignStaticExts, true)) {
+                $flaggedRoot = true;
                 $reasonsRoot[] = 'Unrecognized file directly in the Joomla webroot — not part of a standard install.';
             }
 
@@ -276,7 +275,7 @@ public function scanFilesystem(): void
             }
         }
 
-        // Core entry-point integrity
+        // Core entry-point integrity + content-signature scan
         foreach ($sig['CORE_ENTRY_POINTS'] as $relEntry) {
             $absEntry = $this->root . '/' . $relEntry;
             if (!is_file($absEntry)) continue;
@@ -316,9 +315,11 @@ public function scanFilesystem(): void
                 ->where($db->quoteName('m.group_id') . ' IN (SELECT id FROM ' . $db->quoteName('#__usergroups') . ' WHERE title IN (' . $db->quote('Super Users') . ',' . $db->quote('Super User') . '))')
                 ->order($db->quoteName('u.registerDate') . ' DESC');
             $db->setQuery($query);
-            foreach ($db->loadAssocList() ?: [] as $row) {
-                $suspicious = false; $why = [];
-                if (stripos($row['email'], 'secure.local') !== false)          { $suspicious = true; $why[] = 'email domain: secure.local (known attacker marker)'; }
+            $rows = $db->loadAssocList() ?: [];
+            foreach ($rows as $row) {
+                $suspicious = false;
+                $why = [];
+                if (stripos($row['email'], 'secure.local') !== false) { $suspicious = true; $why[] = 'email domain: secure.local (known attacker marker)'; }
                 if (preg_match('/webmanager\d+|codex|sppb/i', $row['username'])) { $suspicious = true; $why[] = 'username matches known attacker pattern'; }
                 $this->dbFindings['superusers'][] = [
                     'id' => $row['id'], 'name' => $row['name'], 'username' => $row['username'],
@@ -326,67 +327,60 @@ public function scanFilesystem(): void
                     'suspicious' => $suspicious, 'why' => implode('; ', $why),
                 ];
             }
-        } catch (\Throwable $e) {}
+        } catch (\Throwable $e) { /* table missing or query failed -- non-fatal */ }
 
         try {
-            $db->setQuery($db->getQuery(true)->select('id, title, link, params')->from($db->quoteName('#__menu')));
-            foreach ($db->loadAssocList() ?: [] as $row) {
+            $query = $db->getQuery(true)->select('id, title, link, params')->from($db->quoteName('#__menu'));
+            $db->setQuery($query);
+            $rows = $db->loadAssocList() ?: [];
+            foreach ($rows as $row) {
+                $params = (string) ($row['params'] ?? '');
                 $matches = [];
                 foreach ($sig['MENU_XSS_PATTERNS'] as $label => $re) {
-                    if (preg_match($re, (string)($row['params'] ?? ''))) $matches[] = $label;
+                    if (preg_match($re, $params)) $matches[] = $label;
                 }
                 if (!empty($matches)) {
-                    $this->dbFindings['menu_xss'][] = ['id' => $row['id'], 'title' => $row['title'], 'link' => $row['link'], 'matches' => $matches];
+                    $this->dbFindings['menu_xss'][] = [
+                        'id' => $row['id'], 'title' => $row['title'], 'link' => $row['link'], 'matches' => $matches,
+                    ];
                 }
             }
-        } catch (\Throwable $e) {}
+        } catch (\Throwable $e) { /* non-fatal */ }
 
-        // ------------------------------------------------------------------
-        // FIX: these two queries used to share a single try/catch block.
-        // The #__sppagebuilder_assets table on current SPPB releases has no
-        // `asset_value` column, so the first query threw immediately and the
-        // exception silently aborted the block BEFORE the rogue-iconfont
-        // query ($q2 below) ever ran — which is why "Rogue asset rows"
-        // always showed 0 even on infected sites. Splitting them into their
-        // own try/catch blocks means a failure in one can never suppress
-        // the other.
-        // ------------------------------------------------------------------
         try {
-            $q = $db->getQuery(true)->select('*')->from($db->quoteName('#__sppagebuilder_assets'))
+            $query = $db->getQuery(true)->select('*')->from($db->quoteName('#__sppagebuilder_assets'))
                 ->where('(' . $db->quoteName('asset_value') . ' LIKE ' . $db->quote('%xss.report%')
                     . ' OR ' . $db->quoteName('asset_value') . ' LIKE ' . $db->quote('%base64_decode%')
-                    . ' OR ' . $db->quoteName('asset_value') . ' LIKE ' . $db->quote('%eval(%') . ')')->setLimit(100);
-            $db->setQuery($q);
+                    . ' OR ' . $db->quoteName('asset_value') . ' LIKE ' . $db->quote('%eval(%') . ')')
+                ->setLimit(100);
+            $db->setQuery($query);
             $this->dbFindings['sppb_assets'] = $db->loadAssocList() ?: [];
-        } catch (\Throwable $e) {
-            // asset_value doesn't exist on current SPPB schema — not fatal, just skip this legacy check
-            $this->dbFindings['sppb_assets'] = [];
-        }
 
-        try {
-            $q2 = $db->getQuery(true)->select('*')->from($db->quoteName('#__sppagebuilder_assets'))
+            $query2 = $db->getQuery(true)->select('*')->from($db->quoteName('#__sppagebuilder_assets'))
                 ->where($db->quoteName('type') . ' = ' . $db->quote('iconfont'))
                 ->where($db->quoteName('name') . ' != ' . $db->quote('icofont'))
                 ->where($db->quoteName('created_by') . ' = 0')
                 ->order($db->quoteName('created') . ' DESC');
-            $db->setQuery($q2);
+            $db->setQuery($query2);
             $this->dbFindings['rogue_iconfont'] = $db->loadAssocList() ?: [];
-        } catch (\Throwable $e) {
-            $this->dbFindings['rogue_iconfont'] = [];
-        }
+        } catch (\Throwable $e) { /* table missing -- non-fatal */ }
 
         try {
-            $db->setQuery($db->getQuery(true)->select('id, template, title, params')->from($db->quoteName('#__template_styles')));
-            foreach ($db->loadAssocList() ?: [] as $row) {
+            $query = $db->getQuery(true)->select('id, template, title, params')->from($db->quoteName('#__template_styles'));
+            $db->setQuery($query);
+            $rows = $db->loadAssocList() ?: [];
+            foreach ($rows as $row) {
                 $matches = [];
                 foreach ($sig['DEFACEMENT_PATTERNS'] as $pattern) {
                     if (preg_match($pattern, $row['params'], $m)) $matches[] = $m[0];
                 }
                 if (!empty($matches)) {
-                    $this->dbFindings['template_defacement'][] = ['id' => $row['id'], 'template' => $row['template'], 'title' => $row['title'], 'matches' => $matches];
+                    $this->dbFindings['template_defacement'][] = [
+                        'id' => $row['id'], 'template' => $row['template'], 'title' => $row['title'], 'matches' => $matches,
+                    ];
                 }
             }
-        } catch (\Throwable $e) {}
+        } catch (\Throwable $e) { /* non-fatal */ }
     }
 
     // ------------------------------------------------------------------
@@ -396,19 +390,19 @@ public function scanFilesystem(): void
     public function deleteTargets(array $targets): array
     {
         $this->fileFindings = $this->getFileFindings();
-        $sig        = SppbscanHelper::getSignatures();
-        $rootReal   = realpath($this->root);
-        $protected  = array_map(fn($d) => $rootReal . DIRECTORY_SEPARATOR . $d, $sig['PROTECTED_TOP_DIRS']);
-        $flash      = [];
+        $sig = SppbscanHelper::getSignatures();
+        $rootReal = realpath($this->root);
+        $protectedAbs = array_map(fn($d) => $rootReal . DIRECTORY_SEPARATOR . $d, $sig['PROTECTED_TOP_DIRS']);
+        $flash = [];
 
         foreach ($targets as $relPath) {
             $relPath = (string) $relPath;
-            if (!isset($this->fileFindings[$relPath]))                                { $flash[] = "SKIPPED (not flagged): $relPath";                  continue; }
+            if (!isset($this->fileFindings[$relPath])) { $flash[] = "SKIPPED (not flagged): $relPath"; continue; }
             $abs = realpath($this->root . '/' . $relPath);
-            if ($abs === false)                                                        { $flash[] = "SKIPPED (file vanished): $relPath";                continue; }
-            if (strpos($abs, $rootReal . DIRECTORY_SEPARATOR) !== 0)                 { $flash[] = "SKIPPED (outside root): $relPath";                 continue; }
-            if (basename($abs) === 'configuration.php')                               { $flash[] = "SKIPPED (protected): $relPath";                    continue; }
-            if (in_array($abs, $protected, true) || $abs === $rootReal)              { $flash[] = "SKIPPED (protected top-level directory): $relPath"; continue; }
+            if ($abs === false) { $flash[] = "SKIPPED (file vanished): $relPath"; continue; }
+            if (strpos($abs, $rootReal . DIRECTORY_SEPARATOR) !== 0) { $flash[] = "SKIPPED (outside root): $relPath"; continue; }
+            if (basename($abs) === 'configuration.php') { $flash[] = "SKIPPED (protected): $relPath"; continue; }
+            if (in_array($abs, $protectedAbs, true) || $abs === $rootReal) { $flash[] = "SKIPPED (protected top-level directory): $relPath"; continue; }
 
             if (is_dir($abs)) {
                 $flash[] = SppbscanHelper::deleteRecursive($abs) ? "DELETED (folder): $relPath" : "FAILED (permissions?): $relPath";
@@ -417,54 +411,51 @@ public function scanFilesystem(): void
             }
         }
 
-        // Bust the session cache so the next display reflects what was just deleted
         Factory::getApplication()->getSession()->set('sppbscan.filefindings', null);
-        Factory::getApplication()->getSession()->set('sppbscan.filefindings_time', 0);
         return $flash;
     }
 
     public function cleanMenuXss(array $ids): array
     {
-        $db    = $this->getDatabase();
-        $sig   = SppbscanHelper::getSignatures();
+        $db = $this->getDatabase();
+        $sig = SppbscanHelper::getSignatures();
         $flash = [];
 
         foreach ($ids as $id) {
             $id = (int) $id;
-            $db->setQuery($db->getQuery(true)->select('params')->from($db->quoteName('#__menu'))->where($db->quoteName('id') . ' = ' . $id));
+            $query = $db->getQuery(true)->select('params')->from($db->quoteName('#__menu'))->where($db->quoteName('id') . ' = ' . $id);
+            $db->setQuery($query);
             $paramsJson = $db->loadResult();
             if ($paramsJson === null) { $flash[] = "SKIPPED (row not found): id $id"; continue; }
 
             $result = SppbscanHelper::cleanMenuParamsXss((string) $paramsJson, array_values($sig['MENU_XSS_PATTERNS']));
             if (!$result['changed']) { $flash[] = "SKIPPED (couldn't safely parse params — clean manually): id $id"; continue; }
 
-            $db->setQuery($db->getQuery(true)->update($db->quoteName('#__menu'))
+            $update = $db->getQuery(true)->update($db->quoteName('#__menu'))
                 ->set($db->quoteName('params') . ' = ' . $db->quote($result['cleaned']))
-                ->where($db->quoteName('id') . ' = ' . $id));
+                ->where($db->quoteName('id') . ' = ' . $id);
+            $db->setQuery($update);
             $db->execute();
             $flash[] = "CLEANED injection from params, rest of settings kept: id $id";
         }
         return $flash;
     }
 
+    /** Deletes selected rogue SP Page Builder asset rows. */
     public function deleteRogueAssets(array $ids): void
     {
         if (empty($ids)) return;
-        $db  = $this->getDatabase();
+        $db = $this->getDatabase();
         $ids = array_map('intval', $ids);
-        $db->setQuery($db->getQuery(true)->delete($db->quoteName('#__sppagebuilder_assets'))
-            ->where($db->quoteName('id') . ' IN (' . implode(',', $ids) . ')'));
+        $query = $db->getQuery(true)->delete($db->quoteName('#__sppagebuilder_assets'))
+            ->where($db->quoteName('id') . ' IN (' . implode(',', $ids) . ')');
+        $db->setQuery($query);
         $db->execute();
     }
+
     /**
      * Checks the installed SP Page Builder version from #__extensions and
      * returns a warning array if it is a vulnerable build.
-     *
-     * Returns:
-     *   null                       — SPPB not installed or table unreadable
-     *   ['safe' => true,  ...]     — 6.6.2 or newer, no warning needed
-     *   ['safe' => false, ...]     — vulnerable build, show warning banner
-     *   ['safe' => null,  ...]     — installed but version string unreadable
      */
     public function getSppbVersionWarning(): ?array
     {
@@ -481,7 +472,7 @@ public function scanFilesystem(): void
             return null;
         }
 
-        if (empty($row)) return null; // SPPB not installed at all
+        if (empty($row)) return null;
 
         $manifest = json_decode($row['manifest_cache'] ?? '{}', true);
         $version  = trim($manifest['version'] ?? '');
@@ -495,7 +486,6 @@ public function scanFilesystem(): void
         $minor = $parts[1] ?? 0;
         $patch = $parts[2] ?? 0;
 
-        // Safe = 6.6.2 or newer
         $isSafe = ($major > 6)
             || ($major === 6 && $minor > 6)
             || ($major === 6 && $minor === 6 && $patch >= 2);
@@ -507,5 +497,4 @@ public function scanFilesystem(): void
             'enabled' => (bool) $row['enabled'],
         ];
     }
-
 }
