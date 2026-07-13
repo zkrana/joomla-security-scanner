@@ -7,7 +7,7 @@
     <license>MIT</license>
     <authorEmail>zkranao@gmail.com</authorEmail>
     <authorUrl>https://www.linkedin.com/in/zkranadevs/</authorUrl>
-    <version>1.0.6</version>
+    <version>1.0.7</version>
     <description>SP Page Builder Infection Scanner &amp; Cleaner. Detects and helps clean malware left behind by the SP Page Builder uploadCustomIcon RCE and related JCE / Helix Ultimate compromises.</description>
 
     <administration>

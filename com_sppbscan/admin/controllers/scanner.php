@@ -19,19 +19,38 @@ class SppbscanControllerScanner extends BaseController
      * Runs the full filesystem + DB scan, stores results in the session,
      * then redirects back to the display view so the URL stays clean.
      */
-    public function scan()
+public function scan()
     {
         Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
 
         $app    = Factory::getApplication();
         $input  = $app->input;
 
+        // Large sites (many extensions, big vendor/ trees) can genuinely
+        // take longer than a host's default max_execution_time to scan.
+        // Try to raise both -- @-suppressed because some hosts disable
+        // ini_set entirely, in which case this silently no-ops rather
+        // than fatal-ing on its own.
+        @set_time_limit(300);
+        @ini_set('memory_limit', '512M');
+
         /** @var SppbscanModelScanner $model */
         $model = $this->getModel('Scanner');
-        $model->runScan();
 
-        // Redirect back to the display — no task= means the view just reads
-        // from the now-populated session cache.
+        try {
+            $model->runScan();
+        } catch (\Throwable $e) {
+            // Don't let a mid-scan failure produce a raw 500 -- redirect
+            // back with a clear message instead, so the user gets a
+            // working page (and a fresh CSRF token) rather than a dead end.
+            $app->enqueueMessage(
+                'Scan failed: ' . $e->getMessage() . '. This usually means the scan hit your host\'s PHP execution time or memory limit -- check your PHP error log, or ask your host to raise max_execution_time / memory_limit for this site.',
+                'error'
+            );
+            $this->setRedirect('index.php?option=com_sppbscan');
+            return;
+        }
+
         $this->setRedirect('index.php?option=com_sppbscan');
     }
 
