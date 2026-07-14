@@ -347,23 +347,77 @@ class SppbscanModelScanner extends BaseDatabaseModel
             }
         } catch (\Throwable $e) { /* non-fatal */ }
 
-        try {
-            $query = $db->getQuery(true)->select('*')->from($db->quoteName('#__sppagebuilder_assets'))
-                ->where('(' . $db->quoteName('asset_value') . ' LIKE ' . $db->quote('%xss.report%')
-                    . ' OR ' . $db->quoteName('asset_value') . ' LIKE ' . $db->quote('%base64_decode%')
-                    . ' OR ' . $db->quoteName('asset_value') . ' LIKE ' . $db->quote('%eval(%') . ')')
-                ->setLimit(100);
-            $db->setQuery($query);
-            $this->dbFindings['sppb_assets'] = $db->loadAssocList() ?: [];
+       try {
+            // Get ALL SP Page Builder assets
+            $query = $db->getQuery(true)
+                ->select('*')
+                ->from($db->quoteName('#__sppagebuilder_assets'))
+                ->order($db->quoteName('id') . ' DESC');
 
-            $query2 = $db->getQuery(true)->select('*')->from($db->quoteName('#__sppagebuilder_assets'))
-                ->where($db->quoteName('type') . ' = ' . $db->quote('iconfont'))
-                ->where($db->quoteName('name') . ' != ' . $db->quote('icofont'))
-                ->where($db->quoteName('created_by') . ' = 0')
-                ->order($db->quoteName('created') . ' DESC');
-            $db->setQuery($query2);
-            $this->dbFindings['rogue_iconfont'] = $db->loadAssocList() ?: [];
-        } catch (\Throwable $e) { /* table missing -- non-fatal */ }
+            $db->setQuery($query);
+            $rows = $db->loadAssocList() ?: [];
+
+            $this->dbFindings['sppb_assets']    = [];
+            $this->dbFindings['rogue_iconfont'] = [];
+
+            foreach ($rows as $row) {
+
+                $reasons = [];
+
+                $assetValue = (string) ($row['asset_value'] ?? '');
+                $type       = strtolower((string) ($row['type'] ?? ''));
+                $name       = strtolower((string) ($row['name'] ?? ''));
+                $createdBy  = (int) ($row['created_by'] ?? 0);
+
+                // Detect suspicious payloads
+                if (stripos($assetValue, 'xss.report') !== false) {
+                    $reasons[] = 'Contains xss.report';
+                }
+
+                if (stripos($assetValue, 'base64_decode') !== false) {
+                    $reasons[] = 'Contains base64_decode()';
+                }
+
+                if (stripos($assetValue, 'eval(') !== false) {
+                    $reasons[] = 'Contains eval()';
+                }
+
+                if (stripos($assetValue, '<script') !== false) {
+                    $reasons[] = 'Contains <script>';
+                }
+
+                if (preg_match('/on(load|error|click|mouseover)\s*=/i', $assetValue)) {
+                    $reasons[] = 'Contains JavaScript event handler';
+                }
+
+                // Rogue iconfont detection
+                if ($type === 'iconfont') {
+
+                    if ($name !== 'icofont') {
+                        $reasons[] = 'Non-default iconfont';
+                    }
+
+                    if ($createdBy === 0) {
+                        $reasons[] = 'Created by Guest/System';
+                    }
+
+                    if ($name !== 'icofont' && $createdBy === 0) {
+                        $this->dbFindings['rogue_iconfont'][] = $row;
+                    }
+                }
+
+                // Add reasons for display
+                $row['scan_reasons'] = $reasons;
+
+                // Store ALL rows so the UI can display every asset
+                $this->dbFindings['sppb_assets'][] = $row;
+            }
+
+        } catch (\Throwable $e) {
+            // Table missing or query failed -- non-fatal
+            $this->dbFindings['sppb_assets'] = [];
+            $this->dbFindings['rogue_iconfont'] = [];
+        }
 
         try {
             $query = $db->getQuery(true)->select('id, template, title, params')->from($db->quoteName('#__template_styles'));
