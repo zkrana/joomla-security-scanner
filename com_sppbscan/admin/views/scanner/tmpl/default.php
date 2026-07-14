@@ -87,14 +87,43 @@ if ($w !== null && $w['safe'] !== true):
 
 <!-- ── Loading overlay ────────────────────────────────────────── -->
 <div id="sppbscan-overlay"
-     class="hidden fixed inset-0 z-50 flex-col items-center justify-content-center gap-5"
-     style="background:rgba(15,23,42,0.75); backdrop-filter:blur(4px); display:none;">
-    <div class="w-14 h-14 rounded-full border-4 border-white/20 border-t-white spinner"></div>
-    <div class="text-center">
-        <p class="text-white font-bold text-base">Scanning your Joomla installation…</p>
-        <p class="text-white/60 text-sm mt-1">This may take 10–30 seconds depending on site size.</p>
+     class="hidden fixed inset-0 z-50 flex-col items-center justify-center gap-0
+            bg-slate-900/80 backdrop-blur-sm">
+    <div class="flex flex-col items-center text-center max-w-xs px-4">
+
+        <!-- icon -->
+        <div class="relative w-16 h-16 mb-5 flex items-center justify-center text-3xl">
+            <div class="absolute inset-0 rounded-full border-4 border-white/10 border-t-blue-500 animate-spin"></div>
+            <span class="animate-pulse">🛡️</span>
+        </div>
+
+        <h3 class="text-white font-bold text-base mb-2">Scanning your Joomla installation</h3>
+        <p id="sppbscan-loading-status"
+           class="text-slate-400 text-sm mb-5 min-h-[18px] transition-opacity duration-300">
+            Starting scan…
+        </p>
+
+        <!-- indeterminate progress bar -->
+        <div class="w-56 h-1.5 rounded-full bg-white/10 overflow-hidden mb-4">
+            <div class="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-400 sppbscan-bar"></div>
+        </div>
+
+        <p class="text-slate-500 text-[11px] leading-relaxed">
+            This usually takes 10–30 seconds depending on site size — please don't close this tab.
+        </p>
     </div>
 </div>
+
+<style>
+/* Tailwind has no built-in indeterminate-bar keyframe, so this one stays custom. */
+.sppbscan-bar { width: 30%; animation: sppbscan-bar-slide 1.8s ease-in-out infinite; }
+@keyframes sppbscan-bar-slide {
+    0%   { width: 15%; margin-left: 0; }
+    50%  { width: 55%; margin-left: 20%; }
+    100% { width: 15%; margin-left: 100%; }
+}
+</style>
+
 
 <!-- ── Support widget ─────────────────────────────────────────── -->
 <details class="fixed top-16 right-5 z-40 group" id="support-widget">
@@ -538,7 +567,7 @@ function sppb_section_close(): void {
     forms.forEach(function (form) {
         if (!form) return;
         form.addEventListener('submit', function () {
-            overlay.style.display = 'flex';
+            sppbscanShowOverlay();
         });
     });
 
@@ -550,4 +579,34 @@ function sppb_section_close(): void {
         }
     });
 })();
+
+function sppbscanShowOverlay() {
+    var overlay  = document.getElementById('sppbscan-overlay');
+    var statusEl = document.getElementById('sppbscan-loading-status');
+
+    overlay.classList.remove('hidden');
+    overlay.classList.add('flex');
+    overlay.classList.add('flex-col');
+
+    var messages = [
+        'Starting scan…',
+        'Walking media/ and images/…',
+        'Checking core entry points…',
+        'Scanning extension code…',
+        'Checking the database…',
+        'Almost done…'
+    ];
+    var i = 0;
+    statusEl.textContent = messages[0];
+    // Cycles purely for perceived progress -- the real work is a single
+    // synchronous PHP request, this has no connection to actual scan phase.
+    setInterval(function () {
+        i = (i + 1) % messages.length;
+        statusEl.classList.add('opacity-0');
+        setTimeout(function () {
+            statusEl.textContent = messages[i];
+            statusEl.classList.remove('opacity-0');
+        }, 200);
+    }, 2200);
+}
 </script>

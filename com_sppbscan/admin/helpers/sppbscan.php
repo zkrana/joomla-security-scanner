@@ -89,6 +89,8 @@ class SppbscanHelper
                 'onerror/onload event handler' => '/on(error|load|mouseover|focus)\s*=/i',
                 'inline <script> tag'          => '/<script[\s>]/i',
                 'localStorage exfil/inject'    => '/localStorage\s*\.\s*(setItem|getItem)/i',
+                'sessionStorage exfil/inject'  => '/sessionStorage\s*\.\s*(setItem|getItem)/i',
+                'sessionStorage _hxd marker'   => '/sessionStorage\s*\.\s*_hxd/i',
                 'MutationObserver persistence' => '/MutationObserver/i',
                 'img src=x XSS payload'        => '/<img[^>]+src\s*=\s*["\']?x["\']?/i',
                 'script element creation'      => '/document\s*\.\s*createElement\s*\(\s*[\'"]script[\'"]\s*\)/i',
@@ -395,6 +397,7 @@ class SppbscanHelper
             $clean = preg_replace('/\bon[a-z]+\s*=\s*(".*?"|\'.*?\'|[^\s>]+)/is', '', $clean);
             $clean = preg_replace('/javascript\s*:/i', '', $clean);
             $clean = preg_replace('/localStorage\s*\.\s*(setItem|getItem)\s*\([^)]*\)/i', '', $clean);
+            $clean = preg_replace('/sessionStorage\s*\.\s*(setItem|getItem)\s*\([^)]*\)/i', '', $clean);
             $clean = preg_replace('/MutationObserver/i', '', $clean);
             $clean = preg_replace('/xss\.report[^\s\'"<>]*/i', '', $clean);
             $clean = preg_replace('/_hu_?inject[^\s\'"<>]*/i', '', $clean);
@@ -428,6 +431,7 @@ class SppbscanHelper
             $raw = preg_replace('/\bon[a-z]+\s*=\s*(".*?"|\'.*?\'|[^\s>]+|`[^`]*`)/is', '', $raw);
             $raw = preg_replace('/javascript\s*:/i', '', $raw);
             $raw = preg_replace('/localStorage\s*\.\s*(setItem|getItem)\s*\([^)]*\)/i', '', $raw);
+            $raw = preg_replace('/sessionStorage\s*\.\s*(setItem|getItem)\s*\([^)]*\)/i', '', $raw);
             $raw = preg_replace('/MutationObserver/i', '', $raw);
             $raw = preg_replace('/xss\.report[^\s\'"<>`]*/i', '', $raw);
             $raw = preg_replace('/_hu_?inject[^\s\'"<>`]*/i', '', $raw);
