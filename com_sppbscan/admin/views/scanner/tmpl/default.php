@@ -43,7 +43,7 @@ $rescanUrl  = 'index.php?option=com_sppbscan&task=scanner.scan&rescan=1';
   .tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 </style>
 
-<div id="sppbscan-root" class="font-sans text-gray-800">
+<div id="sppbscan-root" class="font-sans text-gray-800 relative">
 
 <?php
 /* ── SPPB version warning banner ───────────────────────────────── */
@@ -456,13 +456,46 @@ function sppb_section_close(): void {
     </div>
 <?php else: ?>
     <?php if (!empty($dbFindings['sppb_assets'])): ?>
-        <h4 class="font-bold text-gray-700 mb-3">Injected payload rows</h4>
+        <h4 class="font-bold text-gray-700 mb-3">
+            Injected payload rows
+            <span class="ml-1 inline-flex items-center justify-center w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full">
+                <?= count($dbFindings['sppb_assets']) ?>
+            </span>
+        </h4>
+
         <div class="space-y-2 mb-5">
+
             <?php foreach ($dbFindings['sppb_assets'] as $row): ?>
-                <div class="bg-red-50 border border-red-100 rounded-xl p-4">
-                    <pre class="text-xs text-red-800 overflow-x-auto"><?= htmlspecialchars(json_encode($row, JSON_PRETTY_PRINT)) ?></pre>
-                </div>
+                <details class="bg-red-50 border border-red-100 rounded-xl overflow-hidden">
+
+                    <summary class="cursor-pointer px-4 py-3 flex items-center justify-between hover:bg-red-100/50">
+                        <div class="flex items-center gap-3">
+                            <span class="text-red-600">⚠️</span>
+
+                            <div>
+                                <span class="font-bold text-sm text-gray-800">
+                                    #<?= (int)$row['id'] ?>
+                                    <?= htmlspecialchars($row['name'] ?? '') ?>
+                                </span>
+
+                                <span class="text-xs text-gray-500 ml-2">
+                                    <?= htmlspecialchars($row['type'] ?? '') ?>
+                                </span>
+                            </div>
+                        </div>
+
+                        <span class="text-xs text-gray-400">
+                            <?= htmlspecialchars($row['created'] ?? '') ?>
+                        </span>
+                    </summary>
+
+                    <div class="border-t border-red-100 p-4">
+                        <pre class="text-xs text-red-800 overflow-x-auto"><?= htmlspecialchars(json_encode($row, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)) ?></pre>
+                    </div>
+
+                </details>
             <?php endforeach; ?>
+
         </div>
     <?php endif; ?>
     <?php if (!empty($dbFindings['rogue_iconfont'])): ?>

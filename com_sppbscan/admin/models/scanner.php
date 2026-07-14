@@ -348,76 +348,93 @@ class SppbscanModelScanner extends BaseDatabaseModel
         } catch (\Throwable $e) { /* non-fatal */ }
 
        try {
-            // Get ALL SP Page Builder assets
-            $query = $db->getQuery(true)
-                ->select('*')
-                ->from($db->quoteName('#__sppagebuilder_assets'))
-                ->order($db->quoteName('id') . ' DESC');
 
-            $db->setQuery($query);
-            $rows = $db->loadAssocList() ?: [];
+    $this->dbFindings['sppb_assets'] = [];
+    $this->dbFindings['rogue_iconfont'] = [];
 
-            $this->dbFindings['sppb_assets']    = [];
-            $this->dbFindings['rogue_iconfont'] = [];
+    // Load all SP Page Builder assets
+    $query = $db->getQuery(true)
+        ->select('*')
+        ->from($db->quoteName('#__sppagebuilder_assets'))
+        ->order($db->quoteName('id') . ' DESC');
 
-            foreach ($rows as $row) {
+    $db->setQuery($query);
+    $rows = $db->loadAssocList() ?: [];
 
-                $reasons = [];
 
-                $assetValue = (string) ($row['asset_value'] ?? '');
-                $type       = strtolower((string) ($row['type'] ?? ''));
-                $name       = strtolower((string) ($row['name'] ?? ''));
-                $createdBy  = (int) ($row['created_by'] ?? 0);
+    foreach ($rows as $row) {
 
-                // Detect suspicious payloads
-                if (stripos($assetValue, 'xss.report') !== false) {
-                    $reasons[] = 'Contains xss.report';
-                }
+        $reasons = [];
 
-                if (stripos($assetValue, 'base64_decode') !== false) {
-                    $reasons[] = 'Contains base64_decode()';
-                }
+        $assetValue = (string) ($row['asset_value'] ?? '');
+        $type       = strtolower((string) ($row['type'] ?? ''));
+        $name       = strtolower((string) ($row['name'] ?? ''));
+        $createdBy  = (int) ($row['created_by'] ?? 0);
 
-                if (stripos($assetValue, 'eval(') !== false) {
-                    $reasons[] = 'Contains eval()';
-                }
 
-                if (stripos($assetValue, '<script') !== false) {
-                    $reasons[] = 'Contains <script>';
-                }
-
-                if (preg_match('/on(load|error|click|mouseover)\s*=/i', $assetValue)) {
-                    $reasons[] = 'Contains JavaScript event handler';
-                }
-
-                // Rogue iconfont detection
-                if ($type === 'iconfont') {
-
-                    if ($name !== 'icofont') {
-                        $reasons[] = 'Non-default iconfont';
-                    }
-
-                    if ($createdBy === 0) {
-                        $reasons[] = 'Created by Guest/System';
-                    }
-
-                    if ($name !== 'icofont' && $createdBy === 0) {
-                        $this->dbFindings['rogue_iconfont'][] = $row;
-                    }
-                }
-
-                // Add reasons for display
-                $row['scan_reasons'] = $reasons;
-
-                // Store ALL rows so the UI can display every asset
-                $this->dbFindings['sppb_assets'][] = $row;
-            }
-
-        } catch (\Throwable $e) {
-            // Table missing or query failed -- non-fatal
-            $this->dbFindings['sppb_assets'] = [];
-            $this->dbFindings['rogue_iconfont'] = [];
+        /*
+         * Payload detection
+         */
+        if (stripos($assetValue, 'xss.report') !== false) {
+            $reasons[] = 'Contains xss.report';
         }
+
+        if (stripos($assetValue, 'base64_decode') !== false) {
+            $reasons[] = 'Contains base64_decode()';
+        }
+
+        if (stripos($assetValue, 'eval(') !== false) {
+            $reasons[] = 'Contains eval()';
+        }
+
+        if (stripos($assetValue, '<script') !== false) {
+            $reasons[] = 'Contains script tag';
+        }
+
+        if (preg_match('/on(load|error|click|mouseover)\s*=/i', $assetValue)) {
+            $reasons[] = 'Contains JavaScript event handler';
+        }
+
+
+        /*
+         * Iconfont detection
+         */
+        if ($type === 'iconfont') {
+
+            // Ignore official IcoFont
+            if ($name !== 'icofont') {
+
+                $reasons[] = 'Non-default iconfont';
+
+                if ($createdBy === 0) {
+                    $reasons[] = 'Created by Guest/System';
+                }
+
+                // Separate delete candidates
+                $this->dbFindings['rogue_iconfont'][] = $row;
+            }
+        }
+
+
+        /*
+         * Only store suspicious rows
+         */
+        if (!empty($reasons)) {
+
+            $row['scan_reasons'] = array_values(array_unique($reasons));
+
+            $this->dbFindings['sppb_assets'][] = $row;
+        }
+    }
+
+
+} catch (\Throwable $e) {
+
+    // table missing or query failed
+    $this->dbFindings['sppb_assets'] = [];
+    $this->dbFindings['rogue_iconfont'] = [];
+
+}
 
         try {
             $query = $db->getQuery(true)->select('id, template, title, params')->from($db->quoteName('#__template_styles'));
