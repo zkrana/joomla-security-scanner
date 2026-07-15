@@ -41,6 +41,11 @@ $rescanUrl  = 'index.php?option=com_sppbscan&task=scanner.scan&rescan=1';
   #sppbscan-root code { font-family: ui-monospace, monospace; }
   /* scrollable table wrapper */
   .tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  /* tabs */
+  .sppb-tab { color:#4b5563; background:transparent; border:1px solid transparent; cursor:pointer; }
+  .sppb-tab:hover { background:#fff; color:#111827; }
+  .sppb-tab.active { background:#fff; color:#4338ca; border-color:#e5e7eb; box-shadow:0 1px 2px rgba(0,0,0,.05); }
+  .sppb-panel.active { display:block; }
 </style>
 
 <div id="sppbscan-root" class="font-sans text-gray-800 relative">
@@ -153,36 +158,80 @@ if ($w !== null && $w['safe'] !== true):
 <!-- ══════════════════════════════════════════════════════════════
      SCAN GATE
      ══════════════════════════════════════════════════════════════ -->
-<div class="anim-in flex flex-col items-center justify-center min-h-80 gap-8 py-16">
+<?php
+$scanAreas = $this->scanAreas ?? [];
+$selAreas  = $this->selectedAreas ?? [];
+// Empty previous selection = first visit -> default everything on.
+$isAreaChecked = function (string $key) use ($selAreas): bool {
+    return empty($selAreas) || in_array($key, $selAreas, true);
+};
+?>
+<div class="anim-in flex flex-col items-center justify-center gap-8 py-10">
     <!-- Animated shield -->
     <div class="relative flex items-center justify-center">
-        <div class="absolute w-32 h-32 rounded-full bg-indigo-100 shield-pulse"></div>
-        <div class="relative text-7xl">🛡️</div>
+        <div class="absolute w-28 h-28 rounded-full bg-indigo-100 shield-pulse"></div>
+        <div class="relative text-6xl">🛡️</div>
     </div>
 
     <div class="text-center max-w-lg">
         <h2 class="text-2xl font-extrabold text-gray-900 mb-3">SP Page Builder Infection Scanner</h2>
         <p class="text-gray-500 text-sm leading-relaxed">
-            Click <strong class="text-gray-700">Run Scan</strong> to walk the filesystem and check the database
-            for malware, rogue admin accounts, XSS injections, and defacement markers
-            left behind by the SPPB <code class="bg-gray-100 px-1.5 py-0.5 rounded text-xs">uploadCustomIcon</code> RCE (pre-6.6.2).
+            Choose the areas you want to scan, then click <strong class="text-gray-700">Run Scan</strong>.
+            The scanner walks the selected directories and checks the database for malware, rogue admin
+            accounts, XSS injections, disguised core files, and defacement markers left behind by the SPPB
+            <code class="bg-gray-100 px-1.5 py-0.5 rounded text-xs">uploadCustomIcon</code> RCE (pre-6.6.2).
         </p>
     </div>
 
-    <form action="<?= Route::_($scanUrl) ?>" method="post" id="sppbscan-form">
+    <form action="<?= Route::_($scanUrl) ?>" method="post" id="sppbscan-form" class="w-full max-w-3xl">
         <?= HTMLHelper::_('form.token') ?>
-        <button type="submit"
-                class="inline-flex items-center gap-2 px-8 py-3.5 bg-indigo-600 hover:bg-indigo-700
-                       text-white font-bold rounded-xl shadow-lg hover:shadow-xl
-                       transition-all duration-200 hover:-translate-y-0.5 text-base">
-            🔍 Run Scan
-        </button>
-    </form>
+        <input type="hidden" name="areas_submitted" value="1">
 
-    <div class="flex items-center gap-2 text-xs text-gray-400 bg-gray-50 border border-gray-100 rounded-lg px-4 py-2">
-        <span>⏱</span>
-        <span>Typically takes 10–30 seconds &nbsp;·&nbsp; Results cached for 5 minutes</span>
-    </div>
+        <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden mb-6">
+            <!-- Picker header / master select-all -->
+            <div class="flex items-center justify-between gap-3 px-5 py-3 bg-gray-50 border-b border-gray-100">
+                <span class="font-bold text-gray-800 text-sm flex items-center gap-2">🗂 Directories &amp; checks to scan</span>
+                <label class="flex items-center gap-2 text-sm font-medium text-gray-600 cursor-pointer select-none">
+                    <input type="checkbox" id="sppb-area-all"
+                           class="w-4 h-4 rounded border-gray-300"
+                           onclick="document.querySelectorAll('.sppb-area-chk').forEach(c=>c.checked=this.checked)">
+                    Select all
+                </label>
+            </div>
+
+            <div class="p-5 grid gap-5 sm:grid-cols-2">
+                <?php foreach ($scanAreas as $groupLabel => $areas): ?>
+                    <div>
+                        <div class="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2"><?= $groupLabel ?></div>
+                        <div class="space-y-1.5">
+                            <?php foreach ($areas as $key => $label): ?>
+                                <label class="flex items-start gap-2 text-sm text-gray-700 cursor-pointer hover:bg-gray-50 rounded-lg px-2 py-1.5 -mx-2 transition-colors">
+                                    <input type="checkbox" name="scan_areas[]"
+                                           value="<?= htmlspecialchars($key) ?>"
+                                           class="sppb-area-chk mt-0.5 w-4 h-4 rounded border-gray-300 flex-shrink-0"
+                                           <?= $isAreaChecked($key) ? 'checked' : '' ?>>
+                                    <span class="leading-snug"><?= $label ?></span>
+                                </label>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+
+        <div class="flex flex-col items-center gap-4">
+            <button type="submit"
+                    class="inline-flex items-center gap-2 px-8 py-3.5 bg-indigo-600 hover:bg-indigo-700
+                           text-white font-bold rounded-xl shadow-lg hover:shadow-xl
+                           transition-all duration-200 hover:-translate-y-0.5 text-base">
+                🔍 Run Scan
+            </button>
+            <div class="flex items-center gap-2 text-xs text-gray-400 bg-gray-50 border border-gray-100 rounded-lg px-4 py-2">
+                <span>⏱</span>
+                <span>Typically takes 10–30 seconds &nbsp;·&nbsp; Results cached for 5 minutes</span>
+            </div>
+        </div>
+    </form>
 </div>
 
 <?php else: ?>
@@ -200,15 +249,26 @@ if ($w !== null && $w['safe'] !== true):
         <span class="text-gray-300">·</span>
         <span class="text-gray-400">Cached for 5 min</span>
     </div>
-    <form action="<?= Route::_($rescanUrl) ?>" method="post" id="sppbscan-rescan-form" style="margin:0">
-        <?= HTMLHelper::_('form.token') ?>
-        <button type="submit"
-                class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-gray-300
-                       rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50
-                       transition-colors shadow-sm">
-            🔄 Re-scan now
-        </button>
-    </form>
+    <div class="flex items-center gap-2">
+        <form action="index.php?option=com_sppbscan&task=scanner.reset" method="post" style="margin:0">
+            <?= HTMLHelper::_('form.token') ?>
+            <button type="submit"
+                    class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-gray-300
+                           rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50
+                           transition-colors shadow-sm">
+                ⚙ Change scan areas
+            </button>
+        </form>
+        <form action="<?= Route::_($rescanUrl) ?>" method="post" id="sppbscan-rescan-form" style="margin:0">
+            <?= HTMLHelper::_('form.token') ?>
+            <button type="submit"
+                    class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-gray-300
+                           rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50
+                           transition-colors shadow-sm">
+                🔄 Re-scan now
+            </button>
+        </form>
+    </div>
 </div>
 
 <!-- Stats grid -->
@@ -262,20 +322,49 @@ $stats = [
 </div>
 
 <?php
-/* ── Helper: section card wrapper ── */
+/* ── Tab navigation ── */
+$tabs = [
+    ['id' => 'files',    'emoji' => '📁', 'title' => 'Suspicious Files', 'count' => $fc],
+    ['id' => 'users',    'emoji' => '👤', 'title' => 'Super Users',      'count' => $suCount],
+    ['id' => 'menu',     'emoji' => '🔗', 'title' => 'Menu XSS',         'count' => $menuCount],
+    ['id' => 'assets',   'emoji' => '🗄', 'title' => 'SPPB Assets',      'count' => $assetCount],
+    ['id' => 'template', 'emoji' => '🖼', 'title' => 'Defacement',       'count' => $deface],
+];
+// Open on the first tab that has findings; otherwise the first tab.
+$activeTab = $tabs[0]['id'];
+foreach ($tabs as $t) { if ($t['count'] > 0) { $activeTab = $t['id']; break; } }
+?>
+<div class="anim-in bg-white border border-gray-200 rounded-xl shadow-sm mb-5 overflow-hidden">
+    <div class="flex flex-wrap gap-1 p-1.5 bg-gray-50 border-b border-gray-100" role="tablist">
+        <?php foreach ($tabs as $t): ?>
+            <button type="button"
+                    class="sppb-tab flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+                    data-tab="<?= $t['id'] ?>" role="tab">
+                <span><?= $t['emoji'] ?></span>
+                <span><?= $t['title'] ?></span>
+                <?php if ($t['count'] > 0): ?>
+                    <span class="sppb-tab-badge inline-flex items-center justify-center min-w-5 h-5 px-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full"><?= $t['count'] ?></span>
+                <?php else: ?>
+                    <span class="sppb-tab-badge inline-flex items-center justify-center w-5 h-5 bg-green-500 text-white text-[10px] font-bold rounded-full">✓</span>
+                <?php endif; ?>
+            </button>
+        <?php endforeach; ?>
+    </div>
+</div>
+
+<?php
+/* ── Helper: tab panel wrapper (ids match the $tabs 'id' above) ── */
 function sppb_section_open(string $id, string $emoji, string $title, int $count): void {
+    $panel = preg_replace('/^sec-/', '', $id);
     $dot = $count > 0
-        ? '<span class="inline-flex items-center justify-center w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full ml-2">' . $count . '</span>'
+        ? '<span class="inline-flex items-center justify-center min-w-5 h-5 px-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full ml-2">' . $count . '</span>'
         : '<span class="inline-flex items-center justify-center w-5 h-5 bg-green-500 text-white text-[10px] font-bold rounded-full ml-2">✓</span>';
-    echo '<details id="' . $id . '" ' . ($count > 0 ? 'open' : '') . ' class="group bg-white border border-gray-200 rounded-xl shadow-sm mb-4 overflow-hidden anim-in">';
-    echo '<summary class="list-none cursor-pointer select-none flex items-center justify-between p-2 hover:bg-gray-50 transition-colors">';
-    echo '<span class="flex items-center gap-2 font-bold text-gray-800">' . $emoji . ' <span>' . $title . '</span>' . $dot . '</span>';
-    echo '<span class="text-gray-400 group-open:rotate-180 transition-transform duration-200 text-sm">▾</span>';
-    echo '</summary>';
-    echo '<div class="border-t border-gray-100 p-2">';
+    echo '<section class="sppb-panel hidden bg-white border border-gray-200 rounded-xl shadow-sm mb-4 overflow-hidden anim-in" data-panel="' . $panel . '">';
+    echo '<div class="flex items-center gap-2 font-bold text-gray-800 p-3 border-b border-gray-100">' . $emoji . ' <span>' . $title . '</span>' . $dot . '</div>';
+    echo '<div class="p-3">';
 }
 function sppb_section_close(): void {
-    echo '</div></details>';
+    echo '</div></section>';
 }
 ?>
 
@@ -611,6 +700,22 @@ function sppb_section_close(): void {
             widget.removeAttribute('open');
         }
     });
+
+    // ── Tabbed results ──────────────────────────────────────────
+    var tabs   = document.querySelectorAll('.sppb-tab');
+    var panels = document.querySelectorAll('.sppb-panel');
+    function activateTab(id) {
+        tabs.forEach(function (t) { t.classList.toggle('active', t.getAttribute('data-tab') === id); });
+        panels.forEach(function (p) {
+            var on = p.getAttribute('data-panel') === id;
+            p.classList.toggle('active', on);
+            p.classList.toggle('hidden', !on);
+        });
+    }
+    tabs.forEach(function (t) {
+        t.addEventListener('click', function () { activateTab(t.getAttribute('data-tab')); });
+    });
+    if (tabs.length) { activateTab(<?= json_encode($activeTab ?? 'files') ?>); }
 })();
 
 function sppbscanShowOverlay() {

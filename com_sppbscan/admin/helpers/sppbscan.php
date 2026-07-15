@@ -104,7 +104,7 @@ class SppbscanHelper
             ],
 
             'NON_PHP_EXTS_THAT_MUST_STAY_CLEAN' => ['png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'svg', 'bmp'],
-            'PHP_OPEN_TAG_RE' => '/<\?php/i',
+            'PHP_OPEN_TAG_RE' => '/<\?php|<\?=/i',
 
             'CORE_ENTRY_POINTS' => ['index.php', 'administrator/index.php', 'api/index.php', 'includes/app.php'],
 
@@ -156,8 +156,143 @@ class SppbscanHelper
                 'modules' => 'code', 'administrator/modules' => 'code',
                 'plugins' => 'code', 'administrator/includes' => 'code',
                 'libraries' => 'code', 'templates' => 'code', 'administrator/templates' => 'code',
+                'cli' => 'code', 'bin' => 'code',
+            ],
+
+            // Exact relative paths seen in real-world attacks where the
+            // attacker names a dropped file to LOOK like a plausible core
+            // Joomla file (blending into a legitimate-looking directory
+            // structure) even though no such core file actually exists.
+            // Grow this list every time a new masquerade path is found.
+            'CORE_MASQUERADE_EXACT_PATHS' => [
+                'libraries/system.php',
+                'bin/cms.php',
+                'cli/cli.php',
+                'templates/system/network.php',
+                'templates/system/online.php',
+                'options.php',
+                'plugins/content/joomla/content.php',
+            ],
+
+            // Folders where real Joomla core only ever places a small,
+            // fixed set of loose files directly at the top level -- any
+            // OTHER file sitting directly there (not nested in a real
+            // subfolder like libraries/src/ or libraries/vendor/) is
+            // almost certainly a payload disguised with a core-sounding
+            // path, which is a stealthier pattern than a randomly-named
+            // webshell since the filename itself looks legitimate.
+            'CORE_LOOSE_FILE_ALLOWLIST' => [
+                'libraries' => [
+                    'bootstrap.php', 'loader.php', 'classmap.php', 'namespacemap.php',
+                    'import.php', 'import.legacy.php', 'platform.php', 'fof30.autoload.php',
+                ],
+                'cli' => [
+                    'joomla.php', 'import.php', 'update_cron.php', 'deletefiles.php', 'garbagecron.php',
+                ],
+                'bin' => [],
+                // templates/system is Joomla's built-in system/error template.
+                // Its top-level loose files are a small, fixed set; anything
+                // else there (network.php, online.php, ...) is a disguise.
+                'templates/system' => [
+                    'index.php', 'error.php', 'error.full.php', 'offline.php', 'component.php',
+                ],
             ],
         ];
+    }
+
+    /**
+     * Canonical, user-selectable scan areas grouped for the pre-scan
+     * directory picker. Filesystem keys match SCAN_CONFIG relative dirs so
+     * the model can filter directly; the pseudo-keys core_entry / webroot /
+     * database gate the non-SCAN_CONFIG passes.
+     */
+    public static function getScanAreas(): array
+    {
+        return [
+            'Upload & media directories' => [
+                'media'  => 'media/',
+                'images' => 'images/',
+                'tmp'    => 'tmp/',
+                'cache'  => 'cache/',
+                'files'  => 'files/',
+            ],
+            'Extension & template code' => [
+                'components'                => 'components/',
+                'administrator/components'  => 'administrator/components/',
+                'modules'                   => 'modules/',
+                'administrator/modules'     => 'administrator/modules/',
+                'plugins'                   => 'plugins/',
+                'libraries'                 => 'libraries/',
+                'templates'                 => 'templates/',
+                'administrator/templates'   => 'administrator/templates/',
+                'administrator/includes'    => 'administrator/includes/',
+                'cli'                       => 'cli/',
+                'bin'                       => 'bin/',
+            ],
+            'Core &amp; webroot' => [
+                'core_entry' => 'Core entry points (index.php, administrator/index.php, api/index.php)',
+                'webroot'    => 'Webroot top-level files &amp; unknown folders',
+            ],
+            'Database' => [
+                'database' => 'Users, menu XSS, SP Page Builder assets, template styles',
+            ],
+        ];
+    }
+
+    /**
+     * Detects files whose PATH masquerades as legitimate Joomla core even
+     * though no such file exists in a clean install -- the stealthiest
+     * dropper pattern, because the filename itself looks trustworthy.
+     * Complements the content-signature scan (which only fires on payload
+     * text): a masquerade file can be flagged on its location alone.
+     *
+     * Returns a human-readable reason string, or null if nothing matched.
+     */
+    public static function checkCoreMasquerade(string $relPath, bool $isDir, array $sig): ?string
+    {
+        $relPath = ltrim(str_replace('\\', '/', $relPath), '/');
+        if ($relPath === '') return null;
+
+        $base = basename($relPath);
+        $ext  = strtolower(pathinfo($base, PATHINFO_EXTENSION));
+
+        // 1. Exact known-masquerade relative paths.
+        if (!$isDir && in_array($relPath, $sig['CORE_MASQUERADE_EXACT_PATHS'], true)) {
+            return 'Path masquerades as a legitimate Joomla core file, but no such file exists in a clean Joomla install — a stealthy dropper disguise.';
+        }
+
+        // 2. Hidden dot-file carrying an executable extension, anywhere.
+        //    Joomla never stores runnable code in a hidden file (e.g.
+        //    administrator/.../toolbar/.module.php).
+        if (!$isDir && $base !== '' && $base[0] === '.' && in_array($ext, $sig['EXEC_EXTS'], true)) {
+            return "Hidden dot-file with an executable extension (\"{$base}\") — legitimate Joomla code is never stored in hidden executable files.";
+        }
+
+        // 3. File placed directly (loosely) in a core directory whose full
+        //    set of top-level files is known and small. Executable files by
+        //    an unknown name are the classic disguise; unusual non-code
+        //    extensions (e.g. a ".lock" marker) dropped there are almost
+        //    always attacker toolkit artifacts too. Legitimate Joomla stub
+        //    files (index.html, web.config.txt, .htaccess, ...) are allowed.
+        if (!$isDir) {
+            $dir = strtolower(dirname($relPath));
+            if ($dir === '.') $dir = '';
+            if (isset($sig['CORE_LOOSE_FILE_ALLOWLIST'][$dir])) {
+                $allowed   = array_map('strtolower', $sig['CORE_LOOSE_FILE_ALLOWLIST'][$dir]);
+                $stubExts  = ['html', 'htm', 'xml', 'txt', 'ini', 'json', 'md', 'dist', 'htaccess'];
+                $baseLower = strtolower($base);
+                if (!in_array($baseLower, $allowed, true)) {
+                    if (in_array($ext, $sig['EXEC_EXTS'], true)) {
+                        return "Executable file placed directly in the core \"{$dir}/\" directory, which never holds a file by this name in a clean Joomla install — a core-path disguise.";
+                    }
+                    if ($ext !== '' && !in_array($ext, $stubExts, true) && $baseLower !== '.htaccess') {
+                        return "Unexpected file (\"{$base}\") loose in the core \"{$dir}/\" directory — clean Joomla never ships this file, a common malware toolkit artifact.";
+                    }
+                }
+            }
+        }
+
+        return null;
     }
 
     public static function humanSize(int $bytes): string
@@ -307,6 +442,54 @@ class SppbscanHelper
         return null;
     }
 
+    /**
+     * Verifies a file claiming to be an image (by extension) actually IS
+     * one -- both by magic-byte signature at the start AND by successfully
+     * decoding via getimagesize(). Catches two distinct attack patterns:
+     *  1. A webshell simply renamed/saved with an image extension and
+     *     no real image data at all (magic bytes won't match).
+     *  2. A polyglot: real, valid image data followed by an appended
+     *     payload -- browsers/image viewers render the picture fine and
+     *     ignore the trailing garbage, but the file is still dangerous if
+     *     ever included/executed. Magic bytes pass but getimagesize()
+     *     alone can't catch this reliably either, so this is a best-effort
+     *     check, not a guarantee -- pair with the content-signature scan,
+     *     which still runs on these files separately.
+     */
+    public static function checkImageIntegrity(string $path, string $ext, string $contents): ?string
+    {
+        $checkedExts = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
+        if (!in_array($ext, $checkedExts, true)) return null;
+        if ($contents === '') return null;
+
+        $magicMap = [
+            'png'  => ["\x89PNG\r\n\x1a\n"],
+            'jpg'  => ["\xFF\xD8\xFF"],
+            'jpeg' => ["\xFF\xD8\xFF"],
+            'gif'  => ["GIF87a", "GIF89a"],
+            'webp' => ["RIFF"],
+        ];
+
+        $magicOk = false;
+        foreach ($magicMap[$ext] as $magic) {
+            if (strncmp($contents, $magic, strlen($magic)) === 0) { $magicOk = true; break; }
+        }
+        if ($ext === 'webp' && $magicOk) {
+            $magicOk = (substr($contents, 8, 4) === 'WEBP');
+        }
+
+        if (!$magicOk) {
+            return "File has a .$ext extension but its content does not start with a valid $ext file signature — a strong sign of a webshell simply renamed/disguised with an image extension.";
+        }
+
+        $info = @getimagesize($path);
+        if ($info === false) {
+            return "File starts with a valid $ext signature but fails to decode as a real image — possible corrupted file, or a polyglot payload appended after genuine image data.";
+        }
+
+        return null;
+    }
+
     /** Runs content-signature + polyglot checks. Used in both scan modes. */
     public static function scanFileContent(string $path, string $ext, array $sig, int $maxSize, array &$reasons): bool
     {
@@ -325,6 +508,9 @@ class SppbscanHelper
             $reasons[] = 'Content signature: php_tag_in_image_file (polyglot shell disguised with an image extension)';
         }
 
+        $imageIssue = self::checkImageIntegrity($path, $ext, $contents);
+        if ($imageIssue !== null) { $flagged = true; $reasons[] = $imageIssue; }
+
         $headIssue = self::checkHeadTagInjection($contents);
         if ($headIssue !== null) { $flagged = true; $reasons[] = $headIssue; }
 
@@ -338,6 +524,7 @@ class SppbscanHelper
         $highSignals = [
             'content signature', 'icon-font', 'malicious pattern', 'unrecognized', 'numeric',
             'non-standard index.php', 'core entry-point', 'stream-wrapper', 'backup/duplicate', 'bootstrap',
+            'masquerade', 'disguise', 'polyglot', 'valid image signature', 'decode as a real image',
         ];
         $confidence = 'medium';
         foreach ($highSignals as $sigName) {

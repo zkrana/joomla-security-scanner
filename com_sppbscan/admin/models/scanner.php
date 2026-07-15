@@ -29,6 +29,24 @@ class SppbscanModelScanner extends BaseDatabaseModel
         $this->root = JPATH_ROOT;
     }
 
+    /**
+     * The scan areas the user ticked in the pre-scan directory picker.
+     * Stored in the session so both the fresh scan and the cached-result
+     * re-display honour the same selection. An empty selection means
+     * "scan everything" (backwards-compatible default).
+     */
+    protected function selectedAreas(): array
+    {
+        return (array) Factory::getApplication()->getSession()->get('sppbscan.scan_areas', []);
+    }
+
+    /** True if $key was selected (or if nothing was explicitly selected). */
+    protected function isAreaSelected(string $key): bool
+    {
+        $sel = $this->selectedAreas();
+        return empty($sel) || in_array($key, $sel, true);
+    }
+
     // ------------------------------------------------------------------
     // Public accessors used by the view
     // ------------------------------------------------------------------
@@ -106,6 +124,7 @@ class SppbscanModelScanner extends BaseDatabaseModel
         $googleVerifyPattern = '/^google[a-f0-9]{16,}\.html$/i';
 
         foreach ($sig['SCAN_CONFIG'] as $relDir => $mode) {
+            if (!$this->isAreaSelected($relDir)) continue;
             $dir = $this->root . '/' . $relDir;
             if (!is_dir($dir)) continue;
 
@@ -210,6 +229,10 @@ class SppbscanModelScanner extends BaseDatabaseModel
                     }
                 }
 
+                // core-path masquerade check (location-based, runs both modes)
+                $masq = SppbscanHelper::checkCoreMasquerade($relCheck, $isDir, $sig);
+                if ($masq !== null) { $flagged = true; $reasons[] = $masq; }
+
                 if ($flagged) {
                     $this->seenAbs[$path] = true;
                     SppbscanHelper::recordFinding($this->fileFindings, $path, $this->root, implode(' | ', array_unique($reasons)), $isDir);
@@ -218,7 +241,7 @@ class SppbscanModelScanner extends BaseDatabaseModel
         }
 
         // Shallow webroot scan
-        $rootItems = @scandir($this->root) ?: [];
+        $rootItems = $this->isAreaSelected('webroot') ? (@scandir($this->root) ?: []) : [];
         foreach ($rootItems as $it) {
             if ($it === '.' || $it === '..') continue;
             $p = $this->root . '/' . $it;
@@ -259,6 +282,9 @@ class SppbscanModelScanner extends BaseDatabaseModel
                 if (preg_match($re, $it)) { $flaggedRoot = true; $reasonsRoot[] = 'Backup/duplicate configuration file — leaks the same credentials as configuration.php.'; break; }
             }
 
+            $masqRoot = SppbscanHelper::checkCoreMasquerade($relCheck, false, $sig);
+            if ($masqRoot !== null) { $flaggedRoot = true; $reasonsRoot[] = $masqRoot; }
+
             $extR = strtolower(pathinfo($p, PATHINFO_EXTENSION));
             SppbscanHelper::scanFileContent($p, $extR, $sig, $maxSize, $reasonsRoot);
             if (count($reasonsRoot) > ($flaggedRoot ? 1 : 0)) $flaggedRoot = true;
@@ -276,7 +302,8 @@ class SppbscanModelScanner extends BaseDatabaseModel
         }
 
         // Core entry-point integrity + content-signature scan
-        foreach ($sig['CORE_ENTRY_POINTS'] as $relEntry) {
+        $coreEntries = $this->isAreaSelected('core_entry') ? $sig['CORE_ENTRY_POINTS'] : [];
+        foreach ($coreEntries as $relEntry) {
             $absEntry = $this->root . '/' . $relEntry;
             if (!is_file($absEntry)) continue;
             $size = @filesize($absEntry);
@@ -304,6 +331,8 @@ class SppbscanModelScanner extends BaseDatabaseModel
 
     public function scanDatabase(): void
     {
+        if (!$this->isAreaSelected('database')) return;
+
         $db  = $this->getDatabase();
         $sig = SppbscanHelper::getSignatures();
 
