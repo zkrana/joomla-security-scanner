@@ -65,21 +65,44 @@ class SppbscanHelper
                 '/^configuration\d*\.php\.(txt|bak)$/i',
             ],
 
+            // Each signature carries its own severity + a plain-language
+            // explanation of why it's flagged, rather than one blanket
+            // "any content signature match = High" rule. Signatures with a
+            // plausible legitimate explanation (obfuscated-but-legal
+            // commercial extension code, a legit extension using zip://
+            // for archive handling, a dev-config placeholder domain, ...)
+            // are scored 'medium' -- worth a human look, not an automatic
+            // high-confidence verdict -- so a real webshell isn't diluted
+            // down to "just another medium finding" next to false alarms.
             'CONTENT_SIGNATURES' => [
-                'eval_base64_post'   => '/eval\s*\(\s*(?:@)?base64_decode\s*\(\s*(?:@)?\$_(POST|REQUEST|GET)/i',
-                'cookie_gated_eval'  => '/md5\s*\(\s*(?:@)?\$_COOKIE\[[\'"][^\'"]+[\'"]\]\s*\)\s*==\s*[\'"][a-f0-9]{32}[\'"]/i',
-                'assert_backdoor'    => '/assert\s*\(\s*(?:@)?\$_(POST|REQUEST|GET)/i',
-                'gsocket_indicator'  => '/GS_ARGS|gsocket/i',
-                'shell_exec_chain'   => '/shell_exec\s*\(\s*\$_(POST|REQUEST|GET)/i',
-                'xss_report_payload' => '/xss\.report|_hu_inject/i',
-                'secure_local_marker'=> '/secure\.local/i',
-                'webshell_generic'   => '/FilesMan|c99shell|r57shell|WSO\s*Web\s*Shell/i',
-                'stream_wrapper_payload'    => '/require(?:_once)?\s*\(?\s*\$?\w*\s*\)?\s*;?.{0,200}?(zip|phar|compress\.zlib|compress\.bzip2|data):\/\//is',
-                'chr_byte_array_decode'     => '/\$\w+\s*=\s*array\s*\(\s*(\d{2,3}\s*,\s*){6,}\d{2,3}\s*\)\s*;.{0,300}?chr\s*\(\s*\$\w+\[\$?\w+\]\s*\)/is',
-                'string_lookup_obfuscation' => '/\$_?\w+\s*=\s*base64_decode\s*\(\s*[\'"][A-Za-z0-9+\/=]{40,}[\'"]\s*\)\s*;.{0,80}?\$\w+\[\d+\]\s*\.\s*\$\w+\[\d+\]/is',
-                'self_replicating_dropper'  => '/glob\s*\(.{0,40}GLOB_ONLYDIR.{0,200}?file_put_contents\s*\(.{0,400}?md5\s*\(\s*\$\w+\s*\)\s*==\s*md5\s*\(\s*file_get_contents/is',
-                'noop_comment_padding'      => '/(;\s*\/\*\s*\w{3,12}\s*\*\/\s*;\s*){8,}/i',
-                'opcache_reset_only'        => '/^\s*<\?php\s*opcache_reset\s*\(\s*\)\s*;\s*\?>\s*$/i',
+                'eval_base64_post'   => ['re' => '/eval\s*\(\s*(?:@)?base64_decode\s*\(\s*(?:@)?\$_(POST|REQUEST|GET)/i',
+                    'severity' => 'high', 'why' => 'Executes attacker-supplied POST/REQUEST/GET data via base64-decoded eval() — the canonical one-line PHP webshell pattern, no legitimate use.'],
+                'cookie_gated_eval'  => ['re' => '/md5\s*\(\s*(?:@)?\$_COOKIE\[[\'"][^\'"]+[\'"]\]\s*\)\s*==\s*[\'"][a-f0-9]{32}[\'"]/i',
+                    'severity' => 'high', 'why' => 'Gates hidden behavior behind a secret cookie value matched by MD5 hash — a common backdoor-access-control pattern.'],
+                'assert_backdoor'    => ['re' => '/assert\s*\(\s*(?:@)?\$_(POST|REQUEST|GET)/i',
+                    'severity' => 'high', 'why' => 'Passes attacker-supplied request data directly into assert(), which historically executes its string argument as PHP code — a known backdoor technique.'],
+                'gsocket_indicator'  => ['re' => '/GS_ARGS|gsocket/i',
+                    'severity' => 'high', 'why' => 'References gsocket, a reverse-shell/tunneling tool used to give an attacker an interactive shell on the server.'],
+                'shell_exec_chain'   => ['re' => '/shell_exec\s*\(\s*\$_(POST|REQUEST|GET)/i',
+                    'severity' => 'high', 'why' => 'Runs attacker-supplied request data as an OS shell command via shell_exec() — direct remote command execution.'],
+                'xss_report_payload' => ['re' => '/xss\.report|_hu_inject/i',
+                    'severity' => 'high', 'why' => 'Matches the known xss.report / _hu_inject marker used by the Helix Ultimate mega-menu XSS campaign tied to this SPPB compromise.'],
+                'webshell_generic'   => ['re' => '/FilesMan|c99shell|r57shell|WSO\s*Web\s*Shell/i',
+                    'severity' => 'high', 'why' => 'Matches the signature banner of a well-known, widely-distributed PHP webshell kit.'],
+                'self_replicating_dropper' => ['re' => '/glob\s*\(.{0,40}GLOB_ONLYDIR.{0,200}?file_put_contents\s*\(.{0,400}?md5\s*\(\s*\$\w+\s*\)\s*==\s*md5\s*\(\s*file_get_contents/is',
+                    'severity' => 'high', 'why' => 'Walks directories and rewrites files only when their content differs from a reference copy — a self-replicating/self-healing dropper pattern, not something legitimate code does.'],
+                'noop_comment_padding' => ['re' => '/(;\s*\/\*\s*\w{3,12}\s*\*\/\s*;\s*){8,}/i',
+                    'severity' => 'high', 'why' => 'Long chain of no-op statements padded with comments — a scanner-evasion technique to break up detectable strings, not something a compiler or formatter produces.'],
+                'secure_local_marker' => ['re' => '/secure\.local/i',
+                    'severity' => 'medium', 'why' => 'Matches the "secure.local" marker seen in this campaign\'s rogue accounts/payloads, but this string can also appear in ordinary dev/staging config examples — verify the surrounding code before treating as confirmed.'],
+                'stream_wrapper_payload' => ['re' => '/require(?:_once)?\s*\(?\s*\$?\w*\s*\)?\s*;?.{0,200}?(zip|phar|compress\.zlib|compress\.bzip2|data):\/\//is',
+                    'severity' => 'medium', 'why' => 'Loads code through a zip://phar://compress.*:// stream wrapper near a require -- a known payload-loading trick, but some legitimate extensions (backup/restore tools, archive handlers) use these wrappers for real archive access. Check what is actually being loaded.'],
+                'chr_byte_array_decode' => ['re' => '/\$\w+\s*=\s*array\s*\(\s*(\d{2,3}\s*,\s*){6,}\d{2,3}\s*\)\s*;.{0,300}?chr\s*\(\s*\$\w+\[\$?\w+\]\s*\)/is',
+                    'severity' => 'medium', 'why' => 'Reconstructs a string from a numeric byte array via chr() — common in obfuscated payloads, but also seen in some legitimately-obfuscated (not malicious) commercial extension license checks. Review what the reconstructed string does.'],
+                'string_lookup_obfuscation' => ['re' => '/\$_?\w+\s*=\s*base64_decode\s*\(\s*[\'"][A-Za-z0-9+\/=]{40,}[\'"]\s*\)\s*;.{0,80}?\$\w+\[\d+\]\s*\.\s*\$\w+\[\d+\]/is',
+                    'severity' => 'medium', 'why' => 'Decodes a long base64 blob then rebuilds identifiers via string-index lookups — a common obfuscation shape, but also used by some legitimate obfuscated/licensed commercial extensions. Review what the rebuilt identifiers resolve to.'],
+                'opcache_reset_only' => ['re' => '/^\s*<\?php\s*opcache_reset\s*\(\s*\)\s*;\s*\?>\s*$/i',
+                    'severity' => 'medium', 'why' => 'A file whose entire content is just opcache_reset() is functionally harmless by itself, but matches a known dropper self-cleanup helper used to force PHP to immediately pick up newly-written malicious files elsewhere.'],
             ],
 
             'MENU_XSS_PATTERNS' => [
@@ -179,6 +202,18 @@ class SppbscanHelper
                 'templates/system/online.php',
                 'options.php',
                 'plugins/content/joomla/content.php',
+            ],
+
+            // Third-party-template masquerade paths, matched against ANY
+            // template name (not a fixed template like the core-path list
+            // above). No clean install of any known Joomla template ships
+            // a top-level "features" folder with an index.php inside it --
+            // flagged on location alone, regardless of file content, since
+            // an attacker can trivially make the payload look like a
+            // blank access-guard stub to dodge a content-only check.
+            // Grow this list every time a new masquerade path is found.
+            'TEMPLATE_FOLDER_MASQUERADE_PATTERNS' => [
+                '#^(administrator/)?templates/[^/]+/features/index\.php$#i',
             ],
 
             // Folders where real Joomla core only ever places a small,
@@ -315,11 +350,25 @@ class SppbscanHelper
      * exactly the kind of file a plain executable-extension check inside
      * "code" mode directories (where .php is otherwise expected and
      * unremarkable) would never catch.
+     *
+     * A known-masquerade LOCATION (see TEMPLATE_FOLDER_MASQUERADE_PATTERNS)
+     * is checked first and flagged unconditionally, before even looking at
+     * content -- an attacker can trivially make a dropped file's content
+     * look like a blank stub specifically to dodge a content-only check,
+     * so a folder that shouldn't exist in any clean template at all is
+     * flagged purely on where it sits, not what it contains.
      */
-    public static function checkStrayIndexPhp(string $relPath, string $absPath): ?string
+    public static function checkStrayIndexPhp(string $relPath, string $absPath, array $sig): ?string
     {
         $relPath = ltrim(str_replace('\\', '/', $relPath), '/');
         if (strcasecmp(basename($relPath), 'index.php') !== 0) return null;
+
+        foreach ($sig['TEMPLATE_FOLDER_MASQUERADE_PATTERNS'] as $re) {
+            if (preg_match($re, $relPath)) {
+                return 'Path masquerades as a template asset folder that does not exist in a clean install of any known Joomla template — flagged regardless of file content (even a blank stub here is a known real-world compromise artifact).';
+            }
+        }
+
         if (preg_match('#^(administrator/)?templates/[^/]+/index\.php$#i', $relPath)) return null;
 
         $contents = @file_get_contents($absPath, false, null, 0, 4096);
@@ -523,6 +572,24 @@ class SppbscanHelper
         return "File starts with a recognizable image header but the image data fails to fully decode — could be a corrupted/truncated file; worth a manual look if unexpected.";
     }
 
+    /**
+     * Builds a short, human-readable preview of a regex match plus a
+     * little surrounding context, so a flagged finding shows exactly what
+     * triggered it in the actual file instead of just a bare signature
+     * name -- lets a human quickly judge for themselves whether it's a
+     * real threat or a false positive, without opening the file.
+     */
+    private static function previewMatch(string $text, array $match, int $context = 30, int $maxLen = 180): string
+    {
+        $matchedText = $match[0][0] ?? '';
+        $offset      = $match[0][1] ?? 0;
+        $start       = max(0, $offset - $context);
+        $length      = ($offset - $start) + strlen($matchedText) + $context;
+        $snippet     = substr($text, $start, $length);
+        $snippet     = trim(preg_replace('/\s+/', ' ', $snippet));
+        return strlen($snippet) > $maxLen ? substr($snippet, 0, $maxLen) . '…' : $snippet;
+    }
+
     /** Runs content-signature + polyglot checks. Used in both scan modes. */
     public static function scanFileContent(string $path, string $ext, array $sig, int $maxSize, array &$reasons): bool
     {
@@ -549,12 +616,25 @@ class SppbscanHelper
             ? substr($contents, 0, 4096) . "\n" . substr($contents, -8192)
             : $contents;
 
-        foreach ($sig['CONTENT_SIGNATURES'] as $sigName => $re) {
-            if (preg_match($re, $scanText)) { $flagged = true; $reasons[] = "Content signature: $sigName"; }
+        // Each signature carries its own severity + a plain-language "why"
+        // (see getSignatures()). A high-severity match is unambiguous
+        // enough on its own to mark the whole file High confidence; a
+        // medium one names something that has a plausible benign
+        // explanation and is surfaced for human review instead of an
+        // automatic verdict. Either way the actual matched code is quoted
+        // so the reason is verifiable, not just a signature label.
+        foreach ($sig['CONTENT_SIGNATURES'] as $sigName => $def) {
+            if (preg_match($def['re'], $scanText, $m, PREG_OFFSET_CAPTURE)) {
+                $flagged = true;
+                $preview = self::previewMatch($scanText, $m);
+                $tag = $def['severity'] === 'high' ? 'high-confidence exploit pattern' : 'needs manual review';
+                $reasons[] = "Content signature: {$sigName} ({$tag}) — {$def['why']} Matched code: {$preview}";
+            }
         }
-        if ($isImageExt && preg_match($sig['PHP_OPEN_TAG_RE'], $scanText)) {
+        if ($isImageExt && preg_match($sig['PHP_OPEN_TAG_RE'], $scanText, $m, PREG_OFFSET_CAPTURE)) {
             $flagged = true;
-            $reasons[] = 'Content signature: php_tag_in_image_file (polyglot shell disguised with an image extension)';
+            $preview = self::previewMatch($scanText, $m);
+            $reasons[] = "Content signature: php_tag_in_image_file (polyglot shell disguised with an image extension) — Matched code: {$preview}";
         }
 
         $imageIssue = self::checkImageIntegrity($path, $ext, $contents);
@@ -571,7 +651,7 @@ class SppbscanHelper
         $rel = ltrim(str_replace($root, '', $absPath), '/');
         $size = $isDir ? self::dirSize($absPath) : (is_file($absPath) ? (int) @filesize($absPath) : 0);
         $highSignals = [
-            'content signature', 'icon-font', 'malicious pattern', 'unrecognized', 'numeric',
+            'high-confidence exploit pattern', 'icon-font', 'malicious pattern', 'unrecognized', 'numeric',
             'non-standard index.php', 'core entry-point', 'stream-wrapper', 'backup/duplicate', 'bootstrap',
             'masquerade', 'disguise', 'polyglot',
         ];

@@ -235,7 +235,7 @@ class SppbscanModelScanner extends BaseDatabaseModel
 
                 // stray index.php structural check (location-based, runs both modes)
                 if (!$isDir && !$isKnownSafeEntry) {
-                    $strayIdx = SppbscanHelper::checkStrayIndexPhp($relCheck, $path);
+                    $strayIdx = SppbscanHelper::checkStrayIndexPhp($relCheck, $path, $sig);
                     if ($strayIdx !== null) { $flagged = true; $reasons[] = $strayIdx; }
                 }
 
