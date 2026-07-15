@@ -23,6 +23,8 @@ class SppbscanViewScanner extends HtmlView
     public $scanned = false;
     public $scanStartedAt = 0;
     public $sppbWarning = null;
+    public $scanAreas = [];
+    public $selectedAreas = [];
 
     public function display($tpl = null)
     {
@@ -36,6 +38,10 @@ class SppbscanViewScanner extends HtmlView
 
         // Show SPPB version warning
         $this->sppbWarning = $model->getSppbVersionWarning();
+
+        // Directory-picker definitions + the user's last selection.
+        $this->scanAreas     = SppbscanHelper::getScanAreas();
+        $this->selectedAreas = (array) $session->get('sppbscan.scan_areas', []);
 
         // Restore cached scan results
         $cachedAt = (int) $session->get('sppbscan.filefindings_time', 0);

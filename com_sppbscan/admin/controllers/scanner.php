@@ -34,6 +34,17 @@ public function scan()
         @set_time_limit(300);
         @ini_set('memory_limit', '512M');
 
+        // Persist the directory picker selection so both this scan and the
+        // cached-result re-display honour it. Only overwrite when the gate
+        // form actually submitted the picker (the "Re-scan now" button does
+        // not, so it reuses the previous selection). An empty selection is
+        // treated as "scan everything".
+        if ($input->post->get('areas_submitted', 0, 'int') === 1) {
+            $areas = $input->post->get('scan_areas', [], 'array');
+            $areas = array_values(array_map('strval', $areas));
+            $app->getSession()->set('sppbscan.scan_areas', $areas);
+        }
+
         /** @var SppbscanModelScanner $model */
         $model = $this->getModel('Scanner');
 
@@ -50,6 +61,21 @@ public function scan()
             $this->setRedirect('index.php?option=com_sppbscan');
             return;
         }
+
+        $this->setRedirect('index.php?option=com_sppbscan');
+    }
+
+    /**
+     * Clears the cached scan result so the directory picker (scan gate)
+     * reappears, keeping the previous selection pre-ticked.
+     */
+    public function reset()
+    {
+        Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
+
+        $session = Factory::getApplication()->getSession();
+        $session->set('sppbscan.filefindings', null);
+        $session->set('sppbscan.filefindings_time', 0);
 
         $this->setRedirect('index.php?option=com_sppbscan');
     }
