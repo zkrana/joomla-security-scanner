@@ -443,18 +443,26 @@ class SppbscanHelper
     }
 
     /**
-     * Verifies a file claiming to be an image (by extension) actually IS
-     * one -- both by magic-byte signature at the start AND by successfully
-     * decoding via getimagesize(). Catches two distinct attack patterns:
-     *  1. A webshell simply renamed/saved with an image extension and
-     *     no real image data at all (magic bytes won't match).
-     *  2. A polyglot: real, valid image data followed by an appended
-     *     payload -- browsers/image viewers render the picture fine and
-     *     ignore the trailing garbage, but the file is still dangerous if
-     *     ever included/executed. Magic bytes pass but getimagesize()
-     *     alone can't catch this reliably either, so this is a best-effort
-     *     check, not a guarantee -- pair with the content-signature scan,
-     *     which still runs on these files separately.
+     * Verifies a file claiming to be an image (by extension) actually
+     * contains real image data. getimagesize() is the ground truth here --
+     * it sniffs the real format from content and is deliberately used
+     * INSTEAD of a strict per-extension magic-byte match, because a real
+     * image saved or served under a mismatched extension is common and
+     * harmless (image-optimizer plugins/CDNs frequently rewrite JPGs to
+     * WebP data while keeping the original .jpg filename for compatibility;
+     * a tiny thumbnail can also legitimately have a minimal/nonstandard
+     * header). Flagging on extension-vs-magic-byte mismatch alone produced
+     * false positives on ordinary resized thumbnails -- so a successful
+     * getimagesize() decode of ANY image format is accepted as proof this
+     * is a real image, regardless of extension.
+     *
+     * Only once getimagesize() fails outright do we fall back to checking
+     * magic bytes (again, against any known image format, not just the
+     * extension's) to distinguish "not image data at all" (a webshell
+     * simply renamed with an image extension -- high confidence) from
+     * "looks like it starts as an image but the body won't decode"
+     * (corrupted/truncated file, or a polyglot with data appended after
+     * genuine image bytes -- lower confidence, worth a manual look).
      */
     public static function checkImageIntegrity(string $path, string $ext, string $contents): ?string
     {
@@ -462,32 +470,23 @@ class SppbscanHelper
         if (!in_array($ext, $checkedExts, true)) return null;
         if ($contents === '') return null;
 
-        $magicMap = [
-            'png'  => ["\x89PNG\r\n\x1a\n"],
-            'jpg'  => ["\xFF\xD8\xFF"],
-            'jpeg' => ["\xFF\xD8\xFF"],
-            'gif'  => ["GIF87a", "GIF89a"],
-            'webp' => ["RIFF"],
+        if (@getimagesize($path) !== false) {
+            return null;
+        }
+
+        $anyImageMagic = [
+            "\x89PNG\r\n\x1a\n", "\xFF\xD8\xFF", "GIF87a", "GIF89a", "RIFF", "BM", "II*\x00", "MM\x00*",
         ];
-
-        $magicOk = false;
-        foreach ($magicMap[$ext] as $magic) {
-            if (strncmp($contents, $magic, strlen($magic)) === 0) { $magicOk = true; break; }
-        }
-        if ($ext === 'webp' && $magicOk) {
-            $magicOk = (substr($contents, 8, 4) === 'WEBP');
+        $looksLikeAnyImage = false;
+        foreach ($anyImageMagic as $magic) {
+            if (strncmp($contents, $magic, strlen($magic)) === 0) { $looksLikeAnyImage = true; break; }
         }
 
-        if (!$magicOk) {
-            return "File has a .$ext extension but its content does not start with a valid $ext file signature — a strong sign of a webshell simply renamed/disguised with an image extension.";
+        if (!$looksLikeAnyImage) {
+            return "File has a .$ext extension but its content does not match any known image file signature and fails to decode as an image — a strong sign of a webshell simply renamed/disguised with an image extension.";
         }
 
-        $info = @getimagesize($path);
-        if ($info === false) {
-            return "File starts with a valid $ext signature but fails to decode as a real image — possible corrupted file, or a polyglot payload appended after genuine image data.";
-        }
-
-        return null;
+        return "File starts with a recognizable image header but the image data fails to fully decode — could be a corrupted/truncated file; worth a manual look if unexpected.";
     }
 
     /** Runs content-signature + polyglot checks. Used in both scan modes. */
@@ -524,7 +523,7 @@ class SppbscanHelper
         $highSignals = [
             'content signature', 'icon-font', 'malicious pattern', 'unrecognized', 'numeric',
             'non-standard index.php', 'core entry-point', 'stream-wrapper', 'backup/duplicate', 'bootstrap',
-            'masquerade', 'disguise', 'polyglot', 'valid image signature', 'decode as a real image',
+            'masquerade', 'disguise', 'polyglot',
         ];
         $confidence = 'medium';
         foreach ($highSignals as $sigName) {
