@@ -233,6 +233,12 @@ class SppbscanModelScanner extends BaseDatabaseModel
                 $masq = SppbscanHelper::checkCoreMasquerade($relCheck, $isDir, $sig);
                 if ($masq !== null) { $flagged = true; $reasons[] = $masq; }
 
+                // stray index.php structural check (location-based, runs both modes)
+                if (!$isDir && !$isKnownSafeEntry) {
+                    $strayIdx = SppbscanHelper::checkStrayIndexPhp($relCheck, $path);
+                    if ($strayIdx !== null) { $flagged = true; $reasons[] = $strayIdx; }
+                }
+
                 if ($flagged) {
                     $this->seenAbs[$path] = true;
                     SppbscanHelper::recordFinding($this->fileFindings, $path, $this->root, implode(' | ', array_unique($reasons)), $isDir);

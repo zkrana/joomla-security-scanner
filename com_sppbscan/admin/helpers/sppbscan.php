@@ -302,6 +302,33 @@ class SppbscanHelper
         return null;
     }
 
+    /**
+     * Any index.php file OUTSIDE a template's own top-level root should be
+     * nothing more than Joomla's standard blank "no direct access" stub --
+     * this convention holds almost universally across the ENTIRE Joomla
+     * tree (components, modules, plugins, libraries, and every nested
+     * template subfolder like a "features" or "layouts" directory).
+     * Only a template's own root index.php (templates/<name>/index.php)
+     * legitimately contains real rendering code. A non-stub index.php
+     * anywhere else is a strong sign of a webshell hiding behind the
+     * single most innocuous-looking filename in the whole codebase --
+     * exactly the kind of file a plain executable-extension check inside
+     * "code" mode directories (where .php is otherwise expected and
+     * unremarkable) would never catch.
+     */
+    public static function checkStrayIndexPhp(string $relPath, string $absPath): ?string
+    {
+        $relPath = ltrim(str_replace('\\', '/', $relPath), '/');
+        if (strcasecmp(basename($relPath), 'index.php') !== 0) return null;
+        if (preg_match('#^(administrator/)?templates/[^/]+/index\.php$#i', $relPath)) return null;
+
+        $contents = @file_get_contents($absPath, false, null, 0, 4096);
+        if ($contents === false) return null;
+        if (self::isStandardJoomlaStub($contents)) return null;
+
+        return 'Non-standard index.php — Joomla only ever places a blank "no direct access" stub here (outside a template\'s own root layout file); this one contains extra code, a common disguise for a webshell.';
+    }
+
     public static function humanSize(int $bytes): string
     {
         $units = ['B', 'KB', 'MB', 'GB'];
