@@ -69,6 +69,9 @@ $rescanUrl  = 'index.php?option=com_sppbscan&task=scanner.scan&rescan=1';
   .sppb-tab.active { background:#fff; color:#4338ca; border-color:#e5e7eb; box-shadow:0 1px 2px rgba(0,0,0,.05); }
   .sppb-panel.active { display:block; }
 
+  /* copy-path button feedback */
+  .sppb-copy-btn.sppb-copied { color:#16a34a !important; background:#f0fdf4 !important; }
+
   /* ── Loading overlay & floating support widget ──────────────────
      Deliberately PLAIN CSS (no Tailwind utility classes). Both elements
      get re-parented to <body> at runtime via JS: Joomla's admin template
@@ -109,6 +112,28 @@ $rescanUrl  = 'index.php?option=com_sppbscan&task=scanner.scan&rescan=1';
   #support-widget-menu a { display:flex; align-items:center; gap:8px; padding:12px 16px; font-size:14px; color:#374151; text-decoration:none; border-bottom:1px solid #f9fafb; transition:background .15s; }
   #support-widget-menu a:last-child { border-bottom:0; }
   #support-widget-menu a:hover { background:#f9fafb; }
+
+  /* ── Code-analysis modal ──────────────────────────────────────
+     Same plain-CSS + re-parent-to-<body> treatment as the overlay and
+     support widget above, for the same reason: Joomla's admin template
+     transforms the content wrapper, which breaks `position: fixed`. */
+  #sppb-modal { display:none; position:fixed; inset:0; z-index:999997; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  #sppb-modal.sppb-show { display:block; }
+  #sppb-modal-backdrop { position:absolute; inset:0; background:rgba(15,23,42,.6); backdrop-filter:blur(2px); -webkit-backdrop-filter:blur(2px); }
+  #sppb-modal-dialog { position:relative; max-width:720px; width:calc(100% - 32px); max-height:calc(100% - 64px); margin:32px auto; background:#fff; border-radius:16px; box-shadow:0 20px 50px rgba(0,0,0,.3); display:flex; flex-direction:column; overflow:hidden; }
+  #sppb-modal-header { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:18px 20px; border-bottom:1px solid #f1f5f9; }
+  #sppb-modal-badge { display:inline-block; font-size:11px; font-weight:700; padding:2px 8px; border-radius:9999px; margin-bottom:6px; }
+  #sppb-modal-badge.high { background:#fee2e2; color:#b91c1c; }
+  #sppb-modal-badge.medium { background:#fef3c7; color:#92400e; }
+  #sppb-modal-path { font-family:ui-monospace,monospace; font-size:12.5px; color:#374151; word-break:break-all; }
+  #sppb-modal-close { flex-shrink:0; width:28px; height:28px; border-radius:9999px; background:#f3f4f6; color:#6b7280; font-size:14px; line-height:1; cursor:pointer; border:0; }
+  #sppb-modal-close:hover { background:#e5e7eb; color:#111827; }
+  #sppb-modal-body { padding:16px 20px 20px; overflow-y:auto; }
+  .sppb-reason-block { padding:12px 0; border-bottom:1px solid #f1f5f9; }
+  .sppb-reason-block:last-child { border-bottom:0; }
+  .sppb-reason-block p { font-size:13px; color:#374151; line-height:1.55; margin:0 0 8px; }
+  .sppb-reason-code-label { font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#9ca3af; margin-bottom:4px; }
+  .sppb-reason-code { font-family:ui-monospace,monospace; font-size:12px; line-height:1.6; color:#b91c1c; background:#fef2f2; border:1px solid #fee2e2; border-radius:8px; padding:10px 12px; white-space:pre-wrap; word-break:break-all; margin:0; }
 </style>
 
 <div id="sppbscan-root" class="font-sans text-gray-800 relative">
@@ -179,6 +204,21 @@ if ($w !== null && $w['safe'] !== true):
         <a href="https://www.linkedin.com/in/zkranadevs/" target="_blank" rel="noopener">💼 LinkedIn</a>
     </div>
 </details>
+
+<!-- ── Code-analysis modal (re-parented to <body> at runtime, see script) ── -->
+<div id="sppb-modal">
+    <div id="sppb-modal-backdrop"></div>
+    <div id="sppb-modal-dialog" role="dialog" aria-modal="true">
+        <div id="sppb-modal-header">
+            <div>
+                <div id="sppb-modal-badge"></div>
+                <code id="sppb-modal-path"></code>
+            </div>
+            <button type="button" id="sppb-modal-close" aria-label="Close">✕</button>
+        </div>
+        <div id="sppb-modal-body"></div>
+    </div>
+</div>
 
 <?php if (!$this->scanned): ?>
 <!-- ══════════════════════════════════════════════════════════════
@@ -455,7 +495,26 @@ function sppb_section_close(): void {
                                    name="targets[]" value="<?= htmlspecialchars($f['rel']) ?>">
                         </td>
                         <td class="px-4 py-3">
-                            <code class="text-xs text-gray-600 break-all"><?= htmlspecialchars($f['rel']) ?></code>
+                            <?php
+                            $pathDir  = dirname($f['rel']);
+                            $pathBase = basename($f['rel']);
+                            ?>
+                            <div class="flex items-center gap-1.5 max-w-md">
+                                <span class="flex-shrink-0 text-sm"><?= $f['type']==='dir' ? '📂' : '📄' ?></span>
+                                <div class="min-w-0 flex-1 bg-gray-50 border border-gray-100 rounded-lg px-2.5 py-1.5 overflow-hidden">
+                                    <div class="font-mono text-xs break-all leading-snug" title="<?= htmlspecialchars($f['rel']) ?>">
+                                        <?php if ($pathDir !== '.'): ?>
+                                            <span class="text-gray-400"><?= htmlspecialchars($pathDir) ?>/</span>
+                                        <?php endif; ?>
+                                        <span class="text-gray-800 font-semibold"><?= htmlspecialchars($pathBase) ?></span>
+                                    </div>
+                                </div>
+                                <button type="button"
+                                        class="sppb-copy-btn flex-shrink-0 w-7 h-7 inline-flex items-center justify-center rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                                        data-copy="<?= htmlspecialchars($f['rel']) ?>" title="Copy path" aria-label="Copy path">
+                                    <span class="sppb-copy-icon">📋</span>
+                                </button>
+                            </div>
                         </td>
                         <td class="px-4 py-3">
                             <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-gray-100 text-gray-600">
@@ -469,7 +528,20 @@ function sppb_section_close(): void {
                                 <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700">🟡 Medium</span>
                             <?php endif; ?>
                         </td>
-                        <td class="px-4 py-3 text-xs text-amber-700"><?= htmlspecialchars($f['reason']) ?></td>
+                        <td class="px-4 py-3 text-xs">
+                            <?php
+                            $reasonsList = $f['reasons'] ?? [$f['reason']];
+                            $blocksHtml  = array_map(fn($r) => \SppbscanHelper::formatReasonForDisplay($r), $reasonsList);
+                            $reasonsJson = htmlspecialchars(json_encode($blocksHtml), ENT_QUOTES);
+                            ?>
+                            <div class="text-amber-700 mb-1.5"><?= htmlspecialchars(\SppbscanHelper::shortReasonLabel($reasonsList)) ?></div>
+                            <button type="button" class="sppb-code-issues-btn inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                                    data-path="<?= htmlspecialchars($f['rel']) ?>"
+                                    data-confidence="<?= htmlspecialchars($f['confidence']) ?>"
+                                    data-reasons="<?= $reasonsJson ?>">
+                                🧬 Code Issues<?= count($reasonsList) > 1 ? ' (' . count($reasonsList) . ')' : '' ?>
+                            </button>
+                        </td>
                         <td class="px-4 py-3 text-xs text-gray-500"><?= \SppbscanHelper::humanSize($f['size']) ?></td>
                         <td class="px-4 py-3 text-xs text-gray-400"><?= $f['mtime'] ? date('Y-m-d H:i',$f['mtime']) : '—' ?></td>
                     </tr>
@@ -735,7 +807,7 @@ function sppb_section_close(): void {
     // animating the collapsible sidebar, and a transformed ancestor
     // breaks `position: fixed` for any descendant, confining it to that
     // ancestor's box instead of the actual viewport.
-    ['sppbscan-overlay', 'support-widget'].forEach(function (id) {
+    ['sppbscan-overlay', 'support-widget', 'sppb-modal'].forEach(function (id) {
         var el = document.getElementById(id);
         if (el && el.parentNode !== document.body) {
             document.body.appendChild(el);
@@ -775,7 +847,86 @@ function sppb_section_close(): void {
         t.addEventListener('click', function () { activateTab(t.getAttribute('data-tab')); });
     });
     if (tabs.length) { activateTab(<?= json_encode($activeTab ?? 'files') ?>); }
+
+    // ── Code-analysis modal ─────────────────────────────────────
+    // Event delegation, not per-button listeners -- the button set lives
+    // inside a results panel that can be re-rendered/hidden by the tab
+    // switcher above, so this stays correct regardless of DOM churn.
+    document.addEventListener('click', function (e) {
+        var issuesBtn = e.target.closest('.sppb-code-issues-btn');
+        if (issuesBtn) { sppbOpenCodeModal(issuesBtn); return; }
+
+        var copyBtn = e.target.closest('.sppb-copy-btn');
+        if (copyBtn) { sppbCopyPath(copyBtn); return; }
+
+        if (e.target.id === 'sppb-modal-close' || e.target.id === 'sppb-modal-backdrop') {
+            sppbCloseCodeModal();
+        }
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') sppbCloseCodeModal();
+    });
 })();
+
+function sppbOpenCodeModal(btn) {
+    var modal   = document.getElementById('sppb-modal');
+    var badge   = document.getElementById('sppb-modal-badge');
+    var pathEl  = document.getElementById('sppb-modal-path');
+    var bodyEl  = document.getElementById('sppb-modal-body');
+    var conf    = btn.getAttribute('data-confidence') || 'medium';
+    var blocks  = [];
+    try { blocks = JSON.parse(btn.getAttribute('data-reasons') || '[]'); } catch (err) { blocks = []; }
+
+    badge.textContent = conf === 'high' ? '🔴 High confidence' : '🟡 Needs manual review';
+    badge.className = conf === 'high' ? 'high' : 'medium';
+    pathEl.textContent = btn.getAttribute('data-path') || '';
+    // blocks[] is pre-rendered, escaped HTML built server-side in
+    // SppbscanHelper::formatReasonForDisplay() -- nothing user-controlled
+    // reaches innerHTML unescaped here.
+    bodyEl.innerHTML = blocks.join('');
+
+    modal.classList.add('sppb-show');
+    document.body.style.overflow = 'hidden';
+}
+
+function sppbCloseCodeModal() {
+    var modal = document.getElementById('sppb-modal');
+    modal.classList.remove('sppb-show');
+    document.body.style.overflow = '';
+}
+
+function sppbCopyPath(btn) {
+    var text = btn.getAttribute('data-copy') || '';
+    var icon = btn.querySelector('.sppb-copy-icon');
+
+    function showCopied() {
+        if (!icon) return;
+        icon.textContent = '✅';
+        btn.classList.add('sppb-copied');
+        setTimeout(function () {
+            icon.textContent = '📋';
+            btn.classList.remove('sppb-copied');
+        }, 1200);
+    }
+
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(showCopied).catch(function () { sppbCopyPathFallback(text, showCopied); });
+    } else {
+        sppbCopyPathFallback(text, showCopied);
+    }
+}
+
+function sppbCopyPathFallback(text, onDone) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    try { document.execCommand('copy'); onDone(); } catch (err) { /* clipboard unavailable -- no-op */ }
+    document.body.removeChild(ta);
+}
 
 function sppbUpdateAreaCount() {
     var boxes = document.querySelectorAll('.sppb-area-chk');

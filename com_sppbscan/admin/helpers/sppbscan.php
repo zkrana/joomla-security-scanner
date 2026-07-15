@@ -646,8 +646,19 @@ class SppbscanHelper
         return $flagged;
     }
 
-    public static function recordFinding(array &$arr, string $absPath, string $root, string $reason, bool $isDir = false): void
+    /**
+     * @param string|array $reasons Either the already-joined display string
+     *                              (legacy callers) or the raw list of
+     *                              individual reason strings -- passing the
+     *                              raw list also preserves each one
+     *                              separately in 'reasons' for the
+     *                              per-finding code-analysis modal in the UI.
+     */
+    public static function recordFinding(array &$arr, string $absPath, string $root, $reasons, bool $isDir = false): void
     {
+        $reasonsList = is_array($reasons) ? array_values(array_unique($reasons)) : [(string) $reasons];
+        $reasonText  = implode(' | ', $reasonsList);
+
         $rel = ltrim(str_replace($root, '', $absPath), '/');
         $size = $isDir ? self::dirSize($absPath) : (is_file($absPath) ? (int) @filesize($absPath) : 0);
         $highSignals = [
@@ -657,13 +668,45 @@ class SppbscanHelper
         ];
         $confidence = 'medium';
         foreach ($highSignals as $sigName) {
-            if (stripos($reason, $sigName) !== false) { $confidence = 'high'; break; }
+            if (stripos($reasonText, $sigName) !== false) { $confidence = 'high'; break; }
         }
         $arr[$rel] = [
-            'rel' => $rel, 'abs' => $absPath, 'reason' => $reason,
+            'rel' => $rel, 'abs' => $absPath, 'reason' => $reasonText, 'reasons' => $reasonsList,
             'type' => $isDir ? 'dir' : 'file', 'confidence' => $confidence,
             'size' => $size, 'mtime' => (int) @filemtime($absPath),
         ];
+    }
+
+    /**
+     * Splits a reason string into a lead sentence + an optional code
+     * snippet (the "Matched code:" / "Offending code:" / "Preview:"
+     * suffix that several checks append), and renders both as safe,
+     * pre-escaped HTML for the code-analysis modal. Kept server-side so
+     * the client never has to parse free text -- it just injects
+     * ready-made HTML.
+     */
+    public static function formatReasonForDisplay(string $reason): string
+    {
+        if (preg_match('/^(.*?)(Matched code:|Offending code:|Preview:)\s*(.*)$/s', $reason, $m)) {
+            $lead  = trim($m[1]);
+            $label = trim($m[2], ': ');
+            $code  = trim($m[3]);
+            return '<div class="sppb-reason-block"><p>' . htmlspecialchars($lead) . '</p>'
+                 . '<div class="sppb-reason-code-label">' . htmlspecialchars($label) . '</div>'
+                 . '<pre class="sppb-reason-code">' . htmlspecialchars($code) . '</pre></div>';
+        }
+        return '<div class="sppb-reason-block"><p>' . htmlspecialchars($reason) . '</p></div>';
+    }
+
+    /** A short, single-line summary for the table row (full detail lives in the modal). */
+    public static function shortReasonLabel(array $reasonsList): string
+    {
+        if (empty($reasonsList)) return '';
+        $first = preg_replace('/\s*(Matched code:|Offending code:|Preview:).*$/s', '', $reasonsList[0]);
+        $first = trim($first);
+        if (strlen($first) > 90) $first = substr($first, 0, 90) . '…';
+        $extra = count($reasonsList) - 1;
+        return $extra > 0 ? "{$first} (+{$extra} more)" : $first;
     }
 
     /**
