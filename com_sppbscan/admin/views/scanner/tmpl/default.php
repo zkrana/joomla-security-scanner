@@ -27,25 +27,88 @@ $rescanUrl  = 'index.php?option=com_sppbscan&task=scanner.scan&rescan=1';
 ?>
 
 <script src="https://cdn.tailwindcss.com"></script>
+<script>
+  // Scope every Tailwind utility class to elements inside #sppbscan-root,
+  // and disable Tailwind's global reset (preflight). Without this, the
+  // CDN build resets margin/box-sizing/line-height on EVERY element on
+  // the admin page (not just ours), and several of its utility class
+  // names collide 1:1 with Joomla's own Bootstrap admin classes
+  // (.shadow-sm, .gap-2, .rounded, .border, ...) -- which is what was
+  // breaking the sidebar, post-install messages, and other admin chrome
+  // sitting outside this component.
+  tailwind.config = {
+    important: '#sppbscan-root',
+    corePlugins: { preflight: false },
+  };
+</script>
 <style>
-  @keyframes spin { to { transform: rotate(360deg); } }
-  @keyframes fadeSlideUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
-  @keyframes pulse-ring { 0%,100%{opacity:.4;transform:scale(1)} 50%{opacity:.8;transform:scale(1.08)} }
-  .spinner { animation: spin 0.8s linear infinite; }
-  .anim-in { animation: fadeSlideUp 0.4s ease both; }
-  .shield-pulse { animation: pulse-ring 2.5s ease-in-out infinite; }
-  /* keep Joomla admin from resetting our colours */
-  #sppbscan-root * { box-sizing: border-box; }
+  @keyframes sppbscan-spin { to { transform: rotate(360deg); } }
+  @keyframes sppbscan-fade-up { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes sppbscan-pulse-ring { 0%,100%{opacity:.4;transform:scale(1)} 50%{opacity:.8;transform:scale(1.08)} }
+  .spinner { animation: sppbscan-spin 0.8s linear infinite; }
+  .anim-in { animation: sppbscan-fade-up 0.4s ease both; }
+  .shield-pulse { animation: sppbscan-pulse-ring 2.5s ease-in-out infinite; }
+
+  /* Base resets scoped to our component only, replacing what Tailwind's
+     preflight would normally do globally (now disabled above). */
+  #sppbscan-root, #sppbscan-root * { box-sizing: border-box; }
+  #sppbscan-root { line-height: 1.55; -webkit-font-smoothing: antialiased; }
+  #sppbscan-root h1, #sppbscan-root h2, #sppbscan-root h3, #sppbscan-root h4, #sppbscan-root p { margin: 0; }
+  #sppbscan-root a { color: inherit; text-decoration: none; }
+  #sppbscan-root button { font: inherit; cursor: pointer; background: none; border: 0; padding: 0; -webkit-appearance: none; appearance: none; }
   #sppbscan-root table { border-collapse: collapse; width: 100%; }
   #sppbscan-root pre  { white-space: pre-wrap; word-break: break-all; }
   #sppbscan-root code { font-family: ui-monospace, monospace; }
+
   /* scrollable table wrapper */
   .tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
   /* tabs */
   .sppb-tab { color:#4b5563; background:transparent; border:1px solid transparent; cursor:pointer; }
   .sppb-tab:hover { background:#fff; color:#111827; }
   .sppb-tab.active { background:#fff; color:#4338ca; border-color:#e5e7eb; box-shadow:0 1px 2px rgba(0,0,0,.05); }
   .sppb-panel.active { display:block; }
+
+  /* ── Loading overlay & floating support widget ──────────────────
+     Deliberately PLAIN CSS (no Tailwind utility classes). Both elements
+     get re-parented to <body> at runtime via JS: Joomla's admin template
+     applies a CSS transform to the content wrapper while animating the
+     collapsible sidebar, and a transformed ancestor breaks
+     `position: fixed` (it gets confined to that ancestor's box instead
+     of the real viewport -- which is why the overlay was appearing
+     pinned near the sidebar instead of centered). Re-parenting to <body>
+     escapes that, but also takes these elements outside #sppbscan-root,
+     so they can no longer rely on the Tailwind scoping above. */
+  #sppbscan-overlay {
+    position: fixed; inset: 0; z-index: 999999; display: none;
+    align-items: center; justify-content: center;
+    background: rgba(15,23,42,.86);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  #sppbscan-overlay.sppbscan-show { display: flex; }
+  .sppbscan-overlay-card { display:flex; flex-direction:column; align-items:center; text-align:center; max-width:320px; padding:0 16px; }
+  .sppbscan-overlay-icon-wrap { position:relative; width:64px; height:64px; margin-bottom:20px; display:flex; align-items:center; justify-content:center; font-size:30px; }
+  .sppbscan-overlay-spinner { position:absolute; inset:0; border-radius:9999px; border:4px solid rgba(255,255,255,.12); border-top-color:#3b82f6; animation: sppbscan-spin .8s linear infinite; }
+  .sppbscan-overlay-icon { animation: sppbscan-icon-pulse 1.6s ease-in-out infinite; }
+  @keyframes sppbscan-icon-pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+  .sppbscan-overlay-title { color:#fff; font-weight:700; font-size:16px; margin:0 0 8px; }
+  .sppbscan-overlay-status { color:#94a3b8; font-size:14px; margin:0 0 20px; min-height:18px; transition:opacity .3s; }
+  .sppbscan-overlay-track { width:224px; height:6px; border-radius:9999px; background:rgba(255,255,255,.1); overflow:hidden; margin-bottom:16px; }
+  .sppbscan-overlay-bar { height:100%; border-radius:9999px; background:linear-gradient(90deg,#3b82f6,#60a5fa); width:30%; animation: sppbscan-bar-slide 1.8s ease-in-out infinite; }
+  @keyframes sppbscan-bar-slide { 0%{width:15%;margin-left:0} 50%{width:55%;margin-left:20%} 100%{width:15%;margin-left:100%} }
+  .sppbscan-overlay-note { color:#64748b; font-size:11px; line-height:1.6; margin:0; }
+
+  #support-widget { position: fixed; top: 64px; right: 20px; z-index: 999998; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  #support-widget summary { list-style:none; cursor:pointer; user-select:none; display:flex; align-items:center; gap:8px; background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:8px 16px; font-size:14px; font-weight:600; color:#374151; box-shadow:0 1px 3px rgba(0,0,0,.08); transition:box-shadow .2s; }
+  #support-widget summary::-webkit-details-marker { display:none; }
+  #support-widget summary:hover { box-shadow:0 4px 10px rgba(0,0,0,.1); }
+  #support-widget .sppb-caret { color:#9ca3af; font-size:11px; transition:transform .2s; }
+  #support-widget[open] .sppb-caret { transform: rotate(180deg); }
+  #support-widget-menu { position:absolute; right:0; margin-top:8px; width:224px; background:#fff; border:1px solid #f3f4f6; border-radius:12px; box-shadow:0 10px 25px rgba(0,0,0,.12); overflow:hidden; }
+  #support-widget-menu a { display:flex; align-items:center; gap:8px; padding:12px 16px; font-size:14px; color:#374151; text-decoration:none; border-bottom:1px solid #f9fafb; transition:background .15s; }
+  #support-widget-menu a:last-child { border-bottom:0; }
+  #support-widget-menu a:hover { background:#f9fafb; }
 </style>
 
 <div id="sppbscan-root" class="font-sans text-gray-800 relative">
@@ -90,67 +153,30 @@ if ($w !== null && $w['safe'] !== true):
 </div>
 <?php endif; ?>
 
-<!-- ── Loading overlay ────────────────────────────────────────── -->
-<div id="sppbscan-overlay"
-     class="hidden fixed inset-0 z-50 flex-col items-center justify-center gap-0
-            bg-slate-900/80 backdrop-blur-sm">
-    <div class="flex flex-col items-center text-center max-w-xs px-4">
-
-        <!-- icon -->
-        <div class="relative w-16 h-16 mb-5 flex items-center justify-center text-3xl">
-            <div class="absolute inset-0 rounded-full border-4 border-white/10 border-t-blue-500 animate-spin"></div>
-            <span class="animate-pulse">🛡️</span>
+<!-- ── Loading overlay (re-parented to <body> at runtime, see script) ── -->
+<div id="sppbscan-overlay">
+    <div class="sppbscan-overlay-card">
+        <div class="sppbscan-overlay-icon-wrap">
+            <div class="sppbscan-overlay-spinner"></div>
+            <span class="sppbscan-overlay-icon">🛡️</span>
         </div>
-
-        <h3 class="text-white font-bold text-base mb-2">Scanning your Joomla installation</h3>
-        <p id="sppbscan-loading-status"
-           class="text-slate-400 text-sm mb-5 min-h-[18px] transition-opacity duration-300">
-            Starting scan…
-        </p>
-
-        <!-- indeterminate progress bar -->
-        <div class="w-56 h-1.5 rounded-full bg-white/10 overflow-hidden mb-4">
-            <div class="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-400 sppbscan-bar"></div>
-        </div>
-
-        <p class="text-slate-500 text-[11px] leading-relaxed">
-            This usually takes 10–30 seconds depending on site size — please don't close this tab.
-        </p>
+        <h3 class="sppbscan-overlay-title">Scanning your Joomla installation</h3>
+        <p id="sppbscan-loading-status" class="sppbscan-overlay-status">Starting scan…</p>
+        <div class="sppbscan-overlay-track"><div class="sppbscan-overlay-bar"></div></div>
+        <p class="sppbscan-overlay-note">This usually takes 10–30 seconds depending on site size — please don't close this tab.</p>
     </div>
 </div>
 
-<style>
-/* Tailwind has no built-in indeterminate-bar keyframe, so this one stays custom. */
-.sppbscan-bar { width: 30%; animation: sppbscan-bar-slide 1.8s ease-in-out infinite; }
-@keyframes sppbscan-bar-slide {
-    0%   { width: 15%; margin-left: 0; }
-    50%  { width: 55%; margin-left: 20%; }
-    100% { width: 15%; margin-left: 100%; }
-}
-</style>
-
-
-<!-- ── Support widget ─────────────────────────────────────────── -->
-<details class="fixed top-16 right-5 z-40 group" id="support-widget">
-    <summary class="list-none cursor-pointer select-none flex items-center gap-2
-                    bg-white border border-gray-200 rounded-xl px-4 py-2 text-sm font-semibold
-                    shadow-md hover:shadow-lg transition-all text-gray-700">
+<!-- ── Support widget (re-parented to <body> at runtime, see script) ── -->
+<details id="support-widget">
+    <summary>
         💬 Support
-        <span class="text-gray-400 group-open:rotate-180 transition-transform text-xs">▾</span>
+        <span class="sppb-caret">▾</span>
     </summary>
-    <div class="absolute right-0 mt-2 w-56 bg-white border border-gray-100 rounded-xl shadow-xl overflow-hidden">
-        <a href="mailto:zkranao@gmail.com" target="_blank" rel="noopener"
-           class="flex items-center gap-2 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 border-b border-gray-50 transition-colors">
-            ☕ Buy me a coffee
-        </a>
-        <a href="mailto:zkranao@gmail.com" target="_blank" rel="noopener"
-           class="flex items-center gap-2 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 border-b border-gray-50 transition-colors">
-            ✉️ Email support
-        </a>
-        <a href="https://www.linkedin.com/in/zkranadevs/" target="_blank" rel="noopener"
-           class="flex items-center gap-2 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-            💼 LinkedIn
-        </a>
+    <div id="support-widget-menu">
+        <a href="mailto:zkranao@gmail.com" target="_blank" rel="noopener">☕ Buy me a coffee</a>
+        <a href="mailto:zkranao@gmail.com" target="_blank" rel="noopener">✉️ Email support</a>
+        <a href="https://www.linkedin.com/in/zkranadevs/" target="_blank" rel="noopener">💼 LinkedIn</a>
     </div>
 </details>
 
@@ -166,20 +192,29 @@ $isAreaChecked = function (string $key) use ($selAreas): bool {
     return empty($selAreas) || in_array($key, $selAreas, true);
 };
 ?>
-<div class="anim-in flex flex-col items-center justify-center gap-8 py-10">
-    <!-- Animated shield -->
-    <div class="relative flex items-center justify-center">
-        <div class="absolute w-28 h-28 rounded-full bg-indigo-100 shield-pulse"></div>
-        <div class="relative text-6xl">🛡️</div>
-    </div>
-
-    <div class="text-center max-w-lg">
-        <h2 class="text-2xl font-extrabold text-gray-900 mb-3">SP Page Builder Infection Scanner</h2>
-        <p class="text-gray-500 text-sm leading-relaxed">
+<?php
+$groupIcons = [
+    'Upload & media directories'  => ['icon' => '🖼', 'chip' => 'bg-sky-100 text-sky-600'],
+    'Extension & template code'   => ['icon' => '🧩', 'chip' => 'bg-violet-100 text-violet-600'],
+    'Core &amp; webroot'          => ['icon' => '🏛', 'chip' => 'bg-amber-100 text-amber-600'],
+    'Database'                    => ['icon' => '🗄', 'chip' => 'bg-emerald-100 text-emerald-600'],
+];
+$totalAreaCount = array_sum(array_map('count', $scanAreas));
+?>
+<div class="anim-in flex flex-col items-center gap-6 py-6">
+    <!-- Hero -->
+    <div class="w-full max-w-3xl text-center relative overflow-hidden rounded-2xl px-6 py-9"
+         style="background:linear-gradient(135deg,#eef2ff 0%,#f5f3ff 55%,#fdf2f8 100%);">
+        <div class="relative flex items-center justify-center mb-4">
+            <div class="absolute w-24 h-24 rounded-full bg-indigo-200/50 shield-pulse"></div>
+            <div class="relative text-5xl">🛡️</div>
+        </div>
+        <h2 class="text-2xl font-extrabold text-gray-900 mb-2">SP Page Builder Infection Scanner</h2>
+        <p class="text-gray-500 text-sm leading-relaxed max-w-lg mx-auto">
             Choose the areas you want to scan, then click <strong class="text-gray-700">Run Scan</strong>.
-            The scanner walks the selected directories and checks the database for malware, rogue admin
-            accounts, XSS injections, disguised core files, and defacement markers left behind by the SPPB
-            <code class="bg-gray-100 px-1.5 py-0.5 rounded text-xs">uploadCustomIcon</code> RCE (pre-6.6.2).
+            Checks the filesystem and database for malware, rogue admin accounts, XSS injections,
+            disguised core files, and defacement markers left behind by the SPPB
+            <code class="bg-white/70 px-1.5 py-0.5 rounded text-xs">uploadCustomIcon</code> RCE (pre-6.6.2).
         </p>
     </div>
 
@@ -194,21 +229,27 @@ $isAreaChecked = function (string $key) use ($selAreas): bool {
                 <label class="flex items-center gap-2 text-sm font-medium text-gray-600 cursor-pointer select-none">
                     <input type="checkbox" id="sppb-area-all"
                            class="w-4 h-4 rounded border-gray-300"
-                           onclick="document.querySelectorAll('.sppb-area-chk').forEach(c=>c.checked=this.checked)">
+                           onclick="document.querySelectorAll('.sppb-area-chk').forEach(c=>c.checked=this.checked); sppbUpdateAreaCount();">
                     Select all
                 </label>
             </div>
 
-            <div class="p-5 grid gap-5 sm:grid-cols-2">
-                <?php foreach ($scanAreas as $groupLabel => $areas): ?>
+            <div class="p-5 grid gap-6 sm:grid-cols-2">
+                <?php foreach ($scanAreas as $groupLabel => $areas):
+                    $meta = $groupIcons[$groupLabel] ?? ['icon' => '📦', 'chip' => 'bg-gray-100 text-gray-500'];
+                ?>
                     <div>
-                        <div class="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2"><?= $groupLabel ?></div>
-                        <div class="space-y-1.5">
+                        <div class="flex items-center gap-2 mb-2.5">
+                            <span class="inline-flex items-center justify-center w-6 h-6 rounded-md text-xs flex-shrink-0 <?= $meta['chip'] ?>"><?= $meta['icon'] ?></span>
+                            <span class="text-[11px] font-bold uppercase tracking-wider text-gray-400"><?= $groupLabel ?></span>
+                        </div>
+                        <div class="space-y-1">
                             <?php foreach ($areas as $key => $label): ?>
                                 <label class="flex items-start gap-2 text-sm text-gray-700 cursor-pointer hover:bg-gray-50 rounded-lg px-2 py-1.5 -mx-2 transition-colors">
                                     <input type="checkbox" name="scan_areas[]"
                                            value="<?= htmlspecialchars($key) ?>"
                                            class="sppb-area-chk mt-0.5 w-4 h-4 rounded border-gray-300 flex-shrink-0"
+                                           onchange="sppbUpdateAreaCount()"
                                            <?= $isAreaChecked($key) ? 'checked' : '' ?>>
                                     <span class="leading-snug"><?= $label ?></span>
                                 </label>
@@ -217,9 +258,13 @@ $isAreaChecked = function (string $key) use ($selAreas): bool {
                     </div>
                 <?php endforeach; ?>
             </div>
+
+            <div class="px-5 py-2.5 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">
+                <span id="sppb-area-count"><?= $totalAreaCount ?></span> of <?= $totalAreaCount ?> areas selected
+            </div>
         </div>
 
-        <div class="flex flex-col items-center gap-4">
+        <div class="flex flex-col items-center gap-3">
             <button type="submit"
                     class="inline-flex items-center gap-2 px-8 py-3.5 bg-indigo-600 hover:bg-indigo-700
                            text-white font-bold rounded-xl shadow-lg hover:shadow-xl
@@ -684,8 +729,22 @@ function sppb_section_close(): void {
 
 <script>
 (function () {
-    var forms   = [document.getElementById('sppbscan-form'), document.getElementById('sppbscan-rescan-form')];
-    var overlay = document.getElementById('sppbscan-overlay');
+    // Re-parent fixed-position elements to <body> so they truly cover the
+    // viewport / anchor to the real top-right corner. Joomla's admin
+    // template applies a CSS transform to the content wrapper while
+    // animating the collapsible sidebar, and a transformed ancestor
+    // breaks `position: fixed` for any descendant, confining it to that
+    // ancestor's box instead of the actual viewport.
+    ['sppbscan-overlay', 'support-widget'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el && el.parentNode !== document.body) {
+            document.body.appendChild(el);
+        }
+    });
+
+    sppbUpdateAreaCount();
+
+    var forms = [document.getElementById('sppbscan-form'), document.getElementById('sppbscan-rescan-form')];
     forms.forEach(function (form) {
         if (!form) return;
         form.addEventListener('submit', function () {
@@ -718,13 +777,27 @@ function sppb_section_close(): void {
     if (tabs.length) { activateTab(<?= json_encode($activeTab ?? 'files') ?>); }
 })();
 
+function sppbUpdateAreaCount() {
+    var boxes = document.querySelectorAll('.sppb-area-chk');
+    if (!boxes.length) return;
+    var checked = 0;
+    boxes.forEach(function (c) { if (c.checked) checked++; });
+
+    var countEl = document.getElementById('sppb-area-count');
+    if (countEl) countEl.textContent = checked;
+
+    var master = document.getElementById('sppb-area-all');
+    if (master) {
+        master.checked = checked === boxes.length;
+        master.indeterminate = checked > 0 && checked < boxes.length;
+    }
+}
+
 function sppbscanShowOverlay() {
     var overlay  = document.getElementById('sppbscan-overlay');
     var statusEl = document.getElementById('sppbscan-loading-status');
 
-    overlay.classList.remove('hidden');
-    overlay.classList.add('flex');
-    overlay.classList.add('flex-col');
+    overlay.classList.add('sppbscan-show');
 
     var messages = [
         'Starting scan…',
@@ -740,10 +813,10 @@ function sppbscanShowOverlay() {
     // synchronous PHP request, this has no connection to actual scan phase.
     setInterval(function () {
         i = (i + 1) % messages.length;
-        statusEl.classList.add('opacity-0');
+        statusEl.style.opacity = '0';
         setTimeout(function () {
             statusEl.textContent = messages[i];
-            statusEl.classList.remove('opacity-0');
+            statusEl.style.opacity = '1';
         }, 200);
     }, 2200);
 }
