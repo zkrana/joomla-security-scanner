@@ -241,7 +241,7 @@ class SppbscanModelScanner extends BaseDatabaseModel
 
                 if ($flagged) {
                     $this->seenAbs[$path] = true;
-                    SppbscanHelper::recordFinding($this->fileFindings, $path, $this->root, implode(' | ', array_unique($reasons)), $isDir);
+                    SppbscanHelper::recordFinding($this->fileFindings, $path, $this->root, $reasons, $isDir);
                 }
             });
         }
@@ -303,7 +303,7 @@ class SppbscanModelScanner extends BaseDatabaseModel
 
             if ($flaggedRoot) {
                 $this->seenAbs[$p] = true;
-                SppbscanHelper::recordFinding($this->fileFindings, $p, $this->root, implode(' | ', array_unique($reasonsRoot)), false);
+                SppbscanHelper::recordFinding($this->fileFindings, $p, $this->root, $reasonsRoot, false);
             }
         }
 
@@ -326,7 +326,7 @@ class SppbscanModelScanner extends BaseDatabaseModel
 
             if (!empty($reasonsEntry)) {
                 $this->seenAbs[$absEntry] = true;
-                SppbscanHelper::recordFinding($this->fileFindings, $absEntry, $this->root, implode(' | ', array_unique($reasonsEntry)), false);
+                SppbscanHelper::recordFinding($this->fileFindings, $absEntry, $this->root, $reasonsEntry, false);
             }
         }
     }
