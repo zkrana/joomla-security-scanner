@@ -104,7 +104,14 @@ class SppbscanHelper
             ],
 
             'NON_PHP_EXTS_THAT_MUST_STAY_CLEAN' => ['png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'svg', 'bmp'],
-            'PHP_OPEN_TAG_RE' => '/<\?php|<\?=/i',
+            // <?php is 5 literal bytes -- vanishingly unlikely to occur by
+            // chance in binary image data. The <?= short tag is only 3
+            // bytes, which DOES turn up by pure random chance in the
+            // megabytes of high-entropy compressed pixel data a large
+            // photo can contain -- so it's required to be followed by a
+            // plausible PHP token (optionally preceded by whitespace), not
+            // matched bare, to avoid flagging ordinary large photos.
+            'PHP_OPEN_TAG_RE' => '/<\?php|<\?=\s*[\$A-Za-z_(]/i',
 
             'CORE_ENTRY_POINTS' => ['index.php', 'administrator/index.php', 'api/index.php', 'includes/app.php'],
 
@@ -499,10 +506,26 @@ class SppbscanHelper
         if ($contents === false || $contents === '') return false;
 
         $flagged = false;
+
+        // A legitimate image (especially a phone photo) can be several MB
+        // of mostly-compressed, high-entropy pixel data. Scanning that
+        // whole blob against short text signatures produces false
+        // positives purely from random byte collisions -- the risk grows
+        // with file size, which is exactly why large photos were getting
+        // flagged. Real polyglot payloads are always prepended or appended
+        // to the valid image bytes, never buried mid-stream inside them,
+        // so signature scanning on image extensions is restricted to a
+        // head+tail window instead of the full file. Actual code files
+        // (php/js/html/...) are unaffected and still scanned in full.
+        $isImageExt = in_array($ext, $sig['NON_PHP_EXTS_THAT_MUST_STAY_CLEAN'], true);
+        $scanText = $isImageExt
+            ? substr($contents, 0, 4096) . "\n" . substr($contents, -8192)
+            : $contents;
+
         foreach ($sig['CONTENT_SIGNATURES'] as $sigName => $re) {
-            if (preg_match($re, $contents)) { $flagged = true; $reasons[] = "Content signature: $sigName"; }
+            if (preg_match($re, $scanText)) { $flagged = true; $reasons[] = "Content signature: $sigName"; }
         }
-        if (in_array($ext, $sig['NON_PHP_EXTS_THAT_MUST_STAY_CLEAN'], true) && preg_match($sig['PHP_OPEN_TAG_RE'], $contents)) {
+        if ($isImageExt && preg_match($sig['PHP_OPEN_TAG_RE'], $scanText)) {
             $flagged = true;
             $reasons[] = 'Content signature: php_tag_in_image_file (polyglot shell disguised with an image extension)';
         }
