@@ -74,7 +74,11 @@ if [[ -n "$DIRTY_OTHER" ]]; then
 fi
 
 git add "$MANIFEST" "$CHANGELOG"
-git commit -m "Release v$VERSION"
+if git diff --cached --quiet; then
+  echo "Note: $MANIFEST/$CHANGELOG already match $VERSION and are already committed -- nothing new to commit here."
+else
+  git commit -m "Release v$VERSION"
+fi
 git push origin main
 
 git tag -a "$TAG" -m "Release $TAG"
