@@ -40,6 +40,15 @@ class SppbscanHelper
         return [
             'EXEC_EXTS' => ['php', 'phtml', 'php3', 'php4', 'php5', 'php7', 'phar', 'pht', 'shtml'],
 
+            // Hidden dot-files with a well-known, ubiquitous benign
+            // purpose -- shipped by countless legitimate composer/vendor
+            // packages, not something an attacker planted. Exempted from
+            // the "hidden dot-file with an executable extension" check.
+            // Grow this list if another legitimate one turns up.
+            'HIDDEN_DOTFILE_ALLOWLIST' => [
+                '.phpstorm.meta.php',
+            ],
+
             'SUSPICIOUS_FILENAME_REGEXES' => [
                 '/^codex-sppb-[a-f0-9]+\.php$/i',
                 '/^codex_sppb.*\.php$/i',
@@ -239,19 +248,25 @@ class SppbscanHelper
             // path, which is a stealthier pattern than a randomly-named
             // webshell since the filename itself looks legitimate.
             'CORE_LOOSE_FILE_ALLOWLIST' => [
+                // web.config is Joomla's IIS-hosting counterpart to
+                // .htaccess and is shipped loose in several core
+                // directories, not just the webroot -- allowed everywhere
+                // this list applies.
                 'libraries' => [
                     'bootstrap.php', 'loader.php', 'classmap.php', 'namespacemap.php',
                     'import.php', 'import.legacy.php', 'platform.php', 'fof30.autoload.php',
+                    'cms.php', 'web.config',
                 ],
                 'cli' => [
                     'joomla.php', 'import.php', 'update_cron.php', 'deletefiles.php', 'garbagecron.php',
+                    'web.config',
                 ],
-                'bin' => [],
+                'bin' => ['web.config'],
                 // templates/system is Joomla's built-in system/error template.
                 // Its top-level loose files are a small, fixed set; anything
                 // else there (network.php, online.php, ...) is a disguise.
                 'templates/system' => [
-                    'index.php', 'error.php', 'error.full.php', 'offline.php', 'component.php',
+                    'index.php', 'error.php', 'error.full.php', 'fatal.php', 'offline.php', 'component.php', 'web.config',
                 ],
             ],
         ];
@@ -320,8 +335,12 @@ class SppbscanHelper
 
         // 2. Hidden dot-file carrying an executable extension, anywhere.
         //    Joomla never stores runnable code in a hidden file (e.g.
-        //    administrator/.../toolbar/.module.php).
-        if (!$isDir && $base !== '' && $base[0] === '.' && in_array($ext, $sig['EXEC_EXTS'], true)) {
+        //    administrator/.../toolbar/.module.php) -- except a small,
+        //    known set of IDE/tooling metadata files that legitimate
+        //    composer packages ship this way by convention (e.g.
+        //    PhpStorm's .phpstorm.meta.php), which are exempted.
+        if (!$isDir && $base !== '' && $base[0] === '.' && in_array($ext, $sig['EXEC_EXTS'], true)
+            && !in_array(strtolower($base), array_map('strtolower', $sig['HIDDEN_DOTFILE_ALLOWLIST']), true)) {
             return "Hidden dot-file with an executable extension (\"{$base}\") — legitimate Joomla code is never stored in hidden executable files.";
         }
 

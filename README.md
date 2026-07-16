@@ -181,6 +181,18 @@ And if you found it useful, a ⭐ on the repository helps others find it too.
 
 ---
 
+## 📝 Feedback
+
+If you have any feedback or suggestions, please open an issue on the repository.
+
+---
+
+## 🙏 Thanks to
+
+Thank you, MD. Toufiqur Rahman, Paul Frankowski, Ofi Khan, and Md. Atick Eashrak Shuvo, for your valuable support and contributions in helping me to improve this tool.
+
+- [Ziaulkabir](https://github.com/ziaulkabir)
+
 ## 👨‍💻 Author
 
 **ZKRANA**
