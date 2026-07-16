@@ -122,19 +122,26 @@ class SppbscanModelScanner extends BaseDatabaseModel
 
         $selfLogPattern  = '/^\.sppbscan-[a-f0-9]{16}\.(log|lock)$/i';
         $googleVerifyPattern = '/^google[a-f0-9]{16,}\.html$/i';
+        // Safety-backup copies this scanner's own "Clean code" action
+        // writes before overwriting an infected file -- deliberately kept
+        // on disk for manual review/rollback, so they shouldn't re-appear
+        // as a "new" finding on the next scan (they still contain the
+        // original malicious content by design, that's the whole point).
+        $selfBackupPattern = '/\.sppbscan-\d{8}-\d{6}\.bak$/i';
 
         foreach ($sig['SCAN_CONFIG'] as $relDir => $mode) {
             if (!$this->isAreaSelected($relDir)) continue;
             $dir = $this->root . '/' . $relDir;
             if (!is_dir($dir)) continue;
 
-            SppbscanHelper::walkDir($dir, function (string $path, bool $isDir) use ($sig, $mode, $maxSize, $isIgnored) {
+            SppbscanHelper::walkDir($dir, function (string $path, bool $isDir) use ($sig, $mode, $maxSize, $isIgnored, $selfBackupPattern) {
                 foreach ($sig['SAFE_COMPONENT_PATHS'] as $safeFrag) {
                     if (stripos($path, $safeFrag) !== false) return;
                 }
                 if (preg_match('#/tmp/install_[a-z0-9]+(/|$)#i', $path)) {
                     return; // Joomla's own installer extraction folder — transient, not user-uploadable
                 }
+                if (!$isDir && preg_match($selfBackupPattern, basename($path))) return;
                 if (isset($this->seenAbs[$path])) return;
 
                 $basename = basename($path);
@@ -253,6 +260,7 @@ class SppbscanModelScanner extends BaseDatabaseModel
             $p = $this->root . '/' . $it;
             if (isset($this->seenAbs[$p])) continue;
             if (preg_match($selfLogPattern, $it)) continue;
+            if (preg_match($selfBackupPattern, $it)) continue;
             if (preg_match($googleVerifyPattern, $it)) continue;
             if ($isIgnored($it)) continue;
 
@@ -510,11 +518,83 @@ class SppbscanModelScanner extends BaseDatabaseModel
             if (basename($abs) === 'configuration.php') { $flash[] = "SKIPPED (protected): $relPath"; continue; }
             if (in_array($abs, $protectedAbs, true) || $abs === $rootReal) { $flash[] = "SKIPPED (protected top-level directory): $relPath"; continue; }
 
+            $relNorm = str_replace('\\', '/', $relPath);
+            $isProtectedEntry = in_array($relNorm, $sig['PROTECTED_ENTRY_FILES'], true);
+            if (!$isProtectedEntry) {
+                foreach ($sig['PROTECTED_ENTRY_FILE_PATTERNS'] as $re) {
+                    if (preg_match($re, $relNorm)) { $isProtectedEntry = true; break; }
+                }
+            }
+            if ($isProtectedEntry) {
+                $flash[] = "SKIPPED (required core entry file — use \"Clean code\" to strip injected code instead of deleting): $relPath";
+                continue;
+            }
+
             if (is_dir($abs)) {
                 $flash[] = SppbscanHelper::deleteRecursive($abs) ? "DELETED (folder): $relPath" : "FAILED (permissions?): $relPath";
             } elseif (is_file($abs)) {
                 $flash[] = @unlink($abs) ? "DELETED: $relPath" : "FAILED (permissions?): $relPath";
             }
+        }
+
+        Factory::getApplication()->getSession()->set('sppbscan.filefindings', null);
+        return $flash;
+    }
+
+    /**
+     * Surgically repairs selected files instead of deleting them -- for
+     * the well-bounded injection patterns this scanner can safely fix
+     * (a payload prepended before Joomla's bootstrap/access guard, or a
+     * <script> block injected right after <head>) the exact malicious
+     * region is known, so it can be stripped while leaving the rest of
+     * the file -- a genuinely legitimate Joomla core/template file --
+     * completely untouched. A timestamped backup of the original is
+     * always written first so the change can be reviewed or reverted.
+     */
+    public function cleanCodeFiles(array $targets): array
+    {
+        $this->fileFindings = $this->getFileFindings();
+        $rootReal = realpath($this->root);
+        $cleanableExts = ['php', 'phtml', 'php3', 'php4', 'php5', 'php7', 'pht', 'html', 'htm'];
+        $flash = [];
+
+        foreach ($targets as $relPath) {
+            $relPath = (string) $relPath;
+            if (!isset($this->fileFindings[$relPath])) { $flash[] = "SKIPPED (not flagged): $relPath"; continue; }
+
+            $abs = realpath($this->root . '/' . $relPath);
+            if ($abs === false || !is_file($abs)) { $flash[] = "SKIPPED (file vanished): $relPath"; continue; }
+            if (strpos($abs, $rootReal . DIRECTORY_SEPARATOR) !== 0) { $flash[] = "SKIPPED (outside root): $relPath"; continue; }
+
+            $ext = strtolower(pathinfo($abs, PATHINFO_EXTENSION));
+            if (!in_array($ext, $cleanableExts, true)) {
+                $flash[] = "SKIPPED (not an auto-cleanable file type): $relPath";
+                continue;
+            }
+
+            $contents = @file_get_contents($abs);
+            if ($contents === false) { $flash[] = "SKIPPED (unreadable): $relPath"; continue; }
+
+            $result = SppbscanHelper::cleanPrependedPayload($contents);
+            if (!$result['changed']) {
+                $result = SppbscanHelper::cleanHeadTagInjection($contents);
+            }
+            if (!$result['changed']) {
+                $flash[] = "SKIPPED (no auto-cleanable pattern recognized here — review the Code Issues details and clean manually): $relPath";
+                continue;
+            }
+
+            $backup = $abs . '.sppbscan-' . date('Ymd-His') . '.bak';
+            if (@copy($abs, $backup) === false) {
+                $flash[] = "SKIPPED (couldn't create a safety backup, nothing was changed): $relPath";
+                continue;
+            }
+            if (@file_put_contents($abs, $result['cleaned']) === false) {
+                $flash[] = "FAILED (couldn't write the cleaned file — original is untouched, backup kept at " . basename($backup) . "): $relPath";
+                continue;
+            }
+
+            $flash[] = "CLEANED (removed: {$result['removed_preview']}) — original backed up as " . basename($backup) . ": $relPath";
         }
 
         Factory::getApplication()->getSession()->set('sppbscan.filefindings', null);

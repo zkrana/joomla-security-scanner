@@ -48,8 +48,29 @@ jobs:
             exit 1
           fi
 
+      - name: Extract release notes from CHANGELOG.md
+        run: |
+          ver="${{ steps.version.outputs.version }}"
+          awk -v ver="$ver" '
+            /^## \[/ {
+              if (found) exit
+              if ($0 ~ "^## \\[" ver "\\]") { found=1; next }
+              next
+            }
+            found { print }
+          ' CHANGELOG.md > dist/release-notes.md
+          # Trim leading/trailing blank lines so the release body doesn't
+          # start/end with awkward empty space.
+          sed -i -e '/./,$!d' -e ':a' -e '/^\n*$/{$d;N;ba' -e '}' dist/release-notes.md
+          if [ ! -s dist/release-notes.md ]; then
+            echo "::error::CHANGELOG.md has no '## [$ver]' section (or it's empty). Add one before tagging -- see scripts/release.sh."
+            exit 1
+          fi
+          echo "--- release notes ---"
+          cat dist/release-notes.md
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: dist/com_sppbscan-${{ steps.version.outputs.version }}.zip
-          generate_release_notes: true
+          body_path: dist/release-notes.md

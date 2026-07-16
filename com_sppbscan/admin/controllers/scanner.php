@@ -99,6 +99,28 @@ public function scan()
     }
 
     /**
+     * Surgically clean selected flagged files instead of deleting them --
+     * for a legitimate core/template file (index.php, administrator's own
+     * index.php, a template's root index.php, a core library file, ...)
+     * that has been infected, this strips just the injected code and
+     * keeps the file in place, since deleting it would break the site.
+     */
+    public function cleancode()
+    {
+        Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
+
+        $app     = Factory::getApplication();
+        $targets = $app->input->post->get('targets', [], 'array');
+
+        /** @var SppbscanModelScanner $model */
+        $model = $this->getModel('Scanner');
+        $flash = $model->cleanCodeFiles($targets);
+
+        $app->enqueueMessage('<pre>' . implode("\n", array_map('htmlspecialchars', $flash)) . '</pre>', 'info');
+        $this->setRedirect('index.php?option=com_sppbscan');
+    }
+
+    /**
      * Surgically clean XSS from selected #__menu rows.
      */
     public function cleanmenu()

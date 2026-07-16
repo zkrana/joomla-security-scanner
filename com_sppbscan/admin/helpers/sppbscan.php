@@ -176,6 +176,21 @@ class SppbscanHelper
                 'plugins', 'modules', 'language', 'cache', 'tmp', 'layouts', 'includes', 'api', 'cli',
             ],
 
+            // Genuinely required core/template entry files -- even when
+            // infected (a "prepended payload" ahead of the bootstrap/
+            // access guard), the fix is to CLEAN the injected code, never
+            // to delete the file outright, since the site (or the active
+            // template) cannot function without it. Matched exactly for
+            // the fixed entry points; matched by pattern for any
+            // template's own root index.php since the template name
+            // varies per site.
+            'PROTECTED_ENTRY_FILES' => [
+                'index.php', 'administrator/index.php', 'api/index.php', 'includes/app.php',
+            ],
+            'PROTECTED_ENTRY_FILE_PATTERNS' => [
+                '#^(administrator/)?templates/[^/]+/index\.php$#i',
+            ],
+
             // Directories scanned recursively, and in which mode.
             // 'upload' = strict structural checks (no exec files, no numeric drop folders).
             // 'code'   = signature-only (this is real extension code, .php is expected).
@@ -475,19 +490,10 @@ class SppbscanHelper
      * payload -- the exact `$db = array(122,105,...); require zip://...`
      * pattern seen in real Joomla compromises.
      */
-    public static function checkCoreIndexIntegrity(string $contents): ?string
+    /** Patterns indicating executable/obfuscated code, used to judge whether text found before Joomla's bootstrap/guard marker is a real threat. */
+    private static function suspiciousPrefixPatterns(): array
     {
-        $openTagPos = stripos($contents, '<?php');
-        if ($openTagPos === false) return null;
-
-        $bootstrapPattern = '/(?:\\\\?\bdefine\s*\(\s*[\'"]_JEXEC[\'"]\s*,\s*1\s*\)|\bconst\s+_JEXEC\s*=\s*1)\s*;/i';
-        if (!preg_match($bootstrapPattern, $contents, $m, PREG_OFFSET_CAPTURE)) {
-            return null;
-        }
-
-        $prefix = substr($contents, $openTagPos + 5, $m[0][1] - ($openTagPos + 5));
-
-        $suspiciousPatterns = [
+        return [
             'stream-wrapper reference (zip://, phar://, etc.)' => '/(zip|phar|compress\.zlib|compress\.bzip2|data):\/\//i',
             'numeric byte-array (chr() decode obfuscation)'    => '/array\s*\(\s*(\d{2,3}\s*,\s*){6,}\d{2,3}\s*\)/i',
             'eval()'                                            => '/\beval\s*\(/i',
@@ -495,15 +501,111 @@ class SppbscanHelper
             'assert()'                                           => '/\bassert\s*\(/i',
             'shell/process execution function'                  => '/\b(system|exec|shell_exec|passthru|proc_open)\s*\(/i',
         ];
+    }
 
-        foreach ($suspiciousPatterns as $label => $re) {
+    /**
+     * Locates the earliest point in a PHP file where Joomla's own
+     * convention guarantees nothing should have executed yet -- either
+     * the strict `define('_JEXEC', 1)` bootstrap constant (only the 4
+     * true core entry points: index.php, administrator/index.php,
+     * api/index.php, includes/app.php) or the universal
+     * `defined('_JEXEC') or die(...)` guard that is the first statement
+     * in virtually every OTHER Joomla PHP file (core libraries,
+     * extensions, template root files, ...). Returns the matched
+     * anchor's position plus everything between the opening <?php tag
+     * and it, so callers can both FLAG suspicious content in that prefix
+     * (checkCoreIndexIntegrity / checkGuardPrependedPayload) and, once
+     * confirmed, safely CLEAN it (cleanPrependedPayload) by removing
+     * exactly that prefix and nothing else -- the boundary is a hard
+     * Joomla-convention marker, not a guess.
+     */
+    public static function checkPrependedPayload(string $contents): ?array
+    {
+        $openTagPos = stripos($contents, '<?php');
+        if ($openTagPos === false) return null;
+
+        $bootstrapPattern = '/(?:\\\\?\bdefine\s*\(\s*[\'"]_JEXEC[\'"]\s*,\s*1\s*\)|\bconst\s+_JEXEC\s*=\s*1)\s*;/i';
+        $guardPattern      = '/defined\s*\(\s*[\'"]_JEXEC[\'"]\s*\)\s*or\s+die\s*(\([^)]*\))?\s*;/i';
+
+        if (preg_match($bootstrapPattern, $contents, $m, PREG_OFFSET_CAPTURE)) {
+            $anchorType = 'bootstrap';
+        } elseif (preg_match($guardPattern, $contents, $m, PREG_OFFSET_CAPTURE)) {
+            $anchorType = 'guard';
+        } else {
+            return null;
+        }
+
+        $prefixStart = $openTagPos + 5;
+        $anchorPos   = $m[0][1];
+        if ($anchorPos < $prefixStart) return null;
+        $prefix = substr($contents, $prefixStart, $anchorPos - $prefixStart);
+
+        foreach (self::suspiciousPrefixPatterns() as $label => $re) {
             if (preg_match($re, $prefix)) {
-                $preview = trim(preg_replace('/\s+/', ' ', $prefix));
-                $preview = strlen($preview) > 160 ? substr($preview, 0, 160) . '…' : $preview;
-                return "Core entry-point file contains suspicious code before the Joomla bootstrap (_JEXEC) — {$label} detected. Offending code: {$preview}";
+                return [
+                    'anchor_type'  => $anchorType,
+                    'label'        => $label,
+                    'prefix'       => $prefix,
+                    'open_tag_pos' => $openTagPos,
+                    'anchor_pos'   => $anchorPos,
+                ];
             }
         }
         return null;
+    }
+
+    public static function checkCoreIndexIntegrity(string $contents): ?string
+    {
+        $info = self::checkPrependedPayload($contents);
+        if ($info === null || $info['anchor_type'] !== 'bootstrap') return null;
+
+        $preview = trim(preg_replace('/\s+/', ' ', $info['prefix']));
+        $preview = strlen($preview) > 160 ? substr($preview, 0, 160) . '…' : $preview;
+        return "Core entry-point file contains suspicious code before the Joomla bootstrap (_JEXEC) — {$info['label']} detected. Offending code: {$preview}";
+    }
+
+    /**
+     * Same threat detection as checkCoreIndexIntegrity(), but for ANY
+     * Joomla PHP file (core library, extension, template) using its own
+     * universal `defined('_JEXEC') or die` access guard as the anchor
+     * instead of the bootstrap constant only the 4 true entry points
+     * define. Catches a legitimate core/extension file that has had
+     * malicious code prepended ahead of its own guard -- the same
+     * real-world "prepended payload" technique, just outside the 4 named
+     * entry points, which previously went undetected by this check.
+     */
+    public static function checkGuardPrependedPayload(string $contents): ?string
+    {
+        $info = self::checkPrependedPayload($contents);
+        if ($info === null || $info['anchor_type'] !== 'guard') return null;
+
+        $preview = trim(preg_replace('/\s+/', ' ', $info['prefix']));
+        $preview = strlen($preview) > 160 ? substr($preview, 0, 160) . '…' : $preview;
+        return "File contains suspicious code before its own Joomla bootstrap/access guard (defined('_JEXEC') or die) — {$info['label']} detected; a legitimate Joomla file never executes anything before this line. Offending code: {$preview}";
+    }
+
+    /**
+     * Repairs a "prepended payload" infection (see checkPrependedPayload())
+     * by removing exactly the code sitting between the opening <?php tag
+     * and Joomla's own bootstrap/guard statement, leaving everything from
+     * that statement onward -- the entire legitimate file -- completely
+     * untouched. Use this instead of deleting the file: index.php,
+     * administrator/index.php, and a template's own root index.php are
+     * all genuinely required files that should never simply be removed.
+     */
+    public static function cleanPrependedPayload(string $contents): array
+    {
+        $info = self::checkPrependedPayload($contents);
+        if ($info === null) return ['cleaned' => $contents, 'changed' => false];
+
+        $before  = substr($contents, 0, $info['open_tag_pos']);
+        $after   = substr($contents, $info['anchor_pos']);
+        $cleaned = $before . '<?php' . "\n" . $after;
+
+        $preview = trim(preg_replace('/\s+/', ' ', $info['prefix']));
+        $preview = strlen($preview) > 160 ? substr($preview, 0, 160) . '…' : $preview;
+
+        return ['cleaned' => $cleaned, 'changed' => true, 'removed_preview' => $preview];
     }
 
     public static function checkHeadTagInjection(string $contents): ?string
@@ -523,6 +625,37 @@ class SppbscanHelper
             }
         }
         return null;
+    }
+
+    /**
+     * Repairs a <head> script-injection infection (see
+     * checkHeadTagInjection()) by removing exactly the injected
+     * <script>...</script> block that check matched, leaving the <head>
+     * tag and every other legitimate line in the template untouched.
+     */
+    public static function cleanHeadTagInjection(string $contents): array
+    {
+        if (stripos($contents, '<head') === false) return ['cleaned' => $contents, 'changed' => false];
+
+        $patterns = [
+            '/<head[^>]*>\s*(?:<[^>]*>)*?\s*<script[^>]*>(?:.*?(?:base64|atob|eval|String\.fromCharCode|document\.write).*?)<\/script/is',
+            '/<head[^>]*>\s*<script[^>]*>(?:[\s\S]{200,}?)<\/script/is',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $contents, $matches)
+                && preg_match('/<script\b[^>]*>.*?<\/script\s*>/is', $matches[0], $scriptMatch)) {
+                $pos = strpos($contents, $scriptMatch[0]);
+                if ($pos === false) continue;
+                $cleaned = substr_replace($contents, '', $pos, strlen($scriptMatch[0]));
+
+                $preview = trim(preg_replace('/\s+/', ' ', $scriptMatch[0]));
+                $preview = strlen($preview) > 160 ? substr($preview, 0, 160) . '…' : $preview;
+
+                return ['cleaned' => $cleaned, 'changed' => true, 'removed_preview' => $preview];
+            }
+        }
+        return ['cleaned' => $contents, 'changed' => false];
     }
 
     /**
@@ -642,6 +775,17 @@ class SppbscanHelper
 
         $headIssue = self::checkHeadTagInjection($contents);
         if ($headIssue !== null) { $flagged = true; $reasons[] = $headIssue; }
+
+        // Prepended-payload check on the file's OWN Joomla access guard --
+        // catches a genuinely legitimate core/extension/template file that
+        // has been infected by prepending malicious code ahead of its own
+        // `defined('_JEXEC') or die` guard, the same real-world technique
+        // as core entry-point tampering but applicable to any PHP file,
+        // not just the 4 named entry points.
+        if (in_array($ext, ['php', 'phtml', 'php3', 'php4', 'php5', 'php7', 'pht'], true)) {
+            $guardIssue = self::checkGuardPrependedPayload($contents);
+            if ($guardIssue !== null) { $flagged = true; $reasons[] = $guardIssue; }
+        }
 
         return $flagged;
     }

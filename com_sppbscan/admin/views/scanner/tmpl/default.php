@@ -461,8 +461,7 @@ function sppb_section_close(): void {
         <span class="font-medium">No suspicious files detected.</span>
     </div>
 <?php else: ?>
-    <form action="index.php?option=com_sppbscan&task=scanner.delete" method="post"
-          onsubmit="return confirm('Delete selected files/folders? This cannot be undone.');">
+    <form action="index.php?option=com_sppbscan&task=scanner.delete" method="post" id="sppb-files-form">
         <div class="flex items-center justify-between mb-3">
             <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
                 <input type="checkbox" class="w-4 h-4 rounded border-gray-300"
@@ -498,6 +497,8 @@ function sppb_section_close(): void {
                             <?php
                             $pathDir  = dirname($f['rel']);
                             $pathBase = basename($f['rel']);
+                            $isProtectedEntry = in_array($f['rel'], ['index.php', 'administrator/index.php', 'api/index.php', 'includes/app.php'], true)
+                                || (bool) preg_match('#^(administrator/)?templates/[^/]+/index\.php$#i', $f['rel']);
                             ?>
                             <div class="flex items-center gap-1.5 max-w-md">
                                 <span class="flex-shrink-0 text-sm"><?= $f['type']==='dir' ? '📂' : '📄' ?></span>
@@ -508,6 +509,11 @@ function sppb_section_close(): void {
                                         <?php endif; ?>
                                         <span class="text-gray-800 font-semibold"><?= htmlspecialchars($pathBase) ?></span>
                                     </div>
+                                    <?php if ($isProtectedEntry): ?>
+                                        <div class="mt-1 inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600">
+                                            🛡 Required file — use Clean, not Delete
+                                        </div>
+                                    <?php endif; ?>
                                 </div>
                                 <button type="button"
                                         class="sppb-copy-btn flex-shrink-0 w-7 h-7 inline-flex items-center justify-center rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
@@ -550,12 +556,20 @@ function sppb_section_close(): void {
             </table>
         </div>
         <?= HTMLHelper::_('form.token') ?>
-        <div class="flex items-center gap-3">
+        <div class="flex flex-wrap items-center gap-3">
             <button type="submit"
+                    formaction="index.php?option=com_sppbscan&task=scanner.cleancode"
+                    onclick="return confirm('Surgically clean the selected files? A timestamped backup of each original is kept alongside it.');"
+                    class="inline-flex items-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl shadow transition-colors">
+                🧹 Clean code
+            </button>
+            <button type="submit"
+                    formaction="index.php?option=com_sppbscan&task=scanner.delete"
+                    onclick="return confirm('Delete selected files/folders? This cannot be undone.');"
                     class="inline-flex items-center gap-2 px-5 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-xl shadow transition-colors">
                 🗑 Delete selected
             </button>
-            <span class="text-xs text-gray-400">Only items flagged in this scan run can be deleted.</span>
+            <span class="text-xs text-gray-400">Required core/template entry files can't be deleted — use Clean code to strip injected code instead. Only items flagged in this scan run can be acted on.</span>
         </div>
     </form>
 <?php endif; ?>
