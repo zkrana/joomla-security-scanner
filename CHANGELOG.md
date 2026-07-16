@@ -8,6 +8,22 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Unreleased]
 
+## [2.1.9] - 2026-07-16
+
+### Added
+
+- **"AI Integration — coming soon"** preview button in the re-scan bar.
+
+### Changed
+
+- Removed the redundant **Clean code** button from the Suspicious Files tab — cleaning now lives exclusively in the Cleanable Files tab, so each tab has exactly one clear action (Delete vs. Clean).
+- Added a shared `SppbscanHelper::isProtectedEntryPath()` helper and switched both the model's `deleteTargets()` and the results-table row renderer to use it, removing a duplicated (and slightly drifting) inline check.
+
+### Fixed
+
+- **Suspicious Files tab no longer lists files it can't actually delete.** Auto-cleanable files and required core/template entry files (`index.php`, `administrator/index.php`, a template's own root `index.php`, ...) were still showing up in the Suspicious Files list even though Delete would just skip them — they now appear only in the Cleanable Files tab. Every finding still lands in exactly one of the two tabs; nothing is dropped.
+- **"Select all" did nothing in the Cleanable Files tab.** The tab's `<section>` wrapper never actually had the `id="sec-cleanable"` attribute the checkbox handler was targeting (only a `data-panel` attribute) — every `sppb_section_open()` panel now gets a real `id`.
+
 ## [2.1.8] - 2026-07-16
 
 ## Fixed and Improved

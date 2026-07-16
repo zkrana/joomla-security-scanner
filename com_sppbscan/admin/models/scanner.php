@@ -518,14 +518,7 @@ class SppbscanModelScanner extends BaseDatabaseModel
             if (basename($abs) === 'configuration.php') { $flash[] = "SKIPPED (protected): $relPath"; continue; }
             if (in_array($abs, $protectedAbs, true) || $abs === $rootReal) { $flash[] = "SKIPPED (protected top-level directory): $relPath"; continue; }
 
-            $relNorm = str_replace('\\', '/', $relPath);
-            $isProtectedEntry = in_array($relNorm, $sig['PROTECTED_ENTRY_FILES'], true);
-            if (!$isProtectedEntry) {
-                foreach ($sig['PROTECTED_ENTRY_FILE_PATTERNS'] as $re) {
-                    if (preg_match($re, $relNorm)) { $isProtectedEntry = true; break; }
-                }
-            }
-            if ($isProtectedEntry) {
+            if (SppbscanHelper::isProtectedEntryPath($relPath, $sig)) {
                 $flash[] = "SKIPPED (required core entry file — use \"Clean code\" to strip injected code instead of deleting): $relPath";
                 continue;
             }

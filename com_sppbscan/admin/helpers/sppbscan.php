@@ -453,6 +453,17 @@ class SppbscanHelper
         return false;
     }
 
+    /** True if $relPath is a genuinely required core/template entry file that deleteTargets() refuses to delete. */
+    public static function isProtectedEntryPath(string $relPath, array $sig): bool
+    {
+        $relNorm = str_replace('\\', '/', $relPath);
+        if (in_array($relNorm, $sig['PROTECTED_ENTRY_FILES'], true)) return true;
+        foreach ($sig['PROTECTED_ENTRY_FILE_PATTERNS'] as $re) {
+            if (preg_match($re, $relNorm)) return true;
+        }
+        return false;
+    }
+
     public static function humanSize(int $bytes): string
     {
         $units = ['B', 'KB', 'MB', 'GB'];

@@ -353,6 +353,13 @@ $totalAreaCount = array_sum(array_map('count', $scanAreas));
                 🔄 Re-scan now
             </button>
         </form>
+        <button type="button" disabled
+                title="AI-powered code analysis — coming soon"
+                class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-dashed border-gray-200
+                       rounded-lg text-sm font-medium text-gray-400 bg-gray-50 cursor-not-allowed">
+            🤖 AI Integration
+            <span class="inline-flex items-center px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-500 text-[10px] font-bold">Soon</span>
+        </button>
     </div>
 </div>
 
@@ -408,10 +415,22 @@ $stats = [
 
 <?php
 /* ── Tab navigation ── */
-$cleanableFindings = array_filter($fileFindings, fn($f) => \SppbscanHelper::isCleanablePattern($f['reasons'] ?? [$f['reason']]));
+$sig = \SppbscanHelper::getSignatures();
+// Not-deletable = an auto-cleanable infection pattern, OR a genuinely
+// required core/template entry file that deleteTargets() refuses to
+// touch regardless. Every finding lands in exactly one of the two tabs
+// below -- nothing silently disappears, and "Suspicious Files" only
+// ever lists things the Delete button can actually act on.
+$notDeletable = fn($f) => \SppbscanHelper::isCleanablePattern($f['reasons'] ?? [$f['reason']])
+    || \SppbscanHelper::isProtectedEntryPath($f['rel'], $sig);
+$cleanableFindings = array_filter($fileFindings, $notDeletable);
 $cleanableCount = count($cleanableFindings);
+$deletableFindings = array_filter($fileFindings, fn($f) => !$notDeletable($f));
+$deletableCount = count($deletableFindings);
+$deletableHigh = count(array_filter($deletableFindings, fn($f) => $f['confidence'] === 'high'));
+$deletableMed  = $deletableCount - $deletableHigh;
 $tabs = [
-    ['id' => 'files',      'emoji' => '📁', 'title' => 'Suspicious Files', 'count' => $fc],
+    ['id' => 'files',      'emoji' => '📁', 'title' => 'Suspicious Files', 'count' => $deletableCount],
     ['id' => 'cleanable',  'emoji' => '🧹', 'title' => 'Cleanable Files',  'count' => $cleanableCount],
     ['id' => 'users',      'emoji' => '👤', 'title' => 'Super Users',      'count' => $suCount],
     ['id' => 'menu',       'emoji' => '🔗', 'title' => 'Menu XSS',         'count' => $menuCount],
@@ -447,7 +466,7 @@ function sppb_section_open(string $id, string $emoji, string $title, int $count)
     $dot = $count > 0
         ? '<span class="inline-flex items-center justify-center min-w-5 h-5 px-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full ml-2">' . $count . '</span>'
         : '<span class="inline-flex items-center justify-center w-5 h-5 bg-green-500 text-white text-[10px] font-bold rounded-full ml-2">✓</span>';
-    echo '<section class="sppb-panel hidden bg-white border border-gray-200 rounded-xl shadow-sm mb-4 overflow-hidden anim-in" data-panel="' . $panel . '">';
+    echo '<section id="' . $id . '" class="sppb-panel hidden bg-white border border-gray-200 rounded-xl shadow-sm mb-4 overflow-hidden anim-in" data-panel="' . $panel . '">';
     echo '<div class="flex items-center gap-2 font-bold text-gray-800 p-3 border-b border-gray-100">' . $emoji . ' <span>' . $title . '</span>' . $dot . '</div>';
     echo '<div class="p-3">';
 }
@@ -460,8 +479,7 @@ function sppb_section_close(): void {
 function sppb_render_file_row(array $f): void {
     $pathDir  = dirname($f['rel']);
     $pathBase = basename($f['rel']);
-    $isProtectedEntry = in_array($f['rel'], ['index.php', 'administrator/index.php', 'api/index.php', 'includes/app.php'], true)
-        || (bool) preg_match('#^(administrator/)?templates/[^/]+/index\.php$#i', $f['rel']);
+    $isProtectedEntry = \SppbscanHelper::isProtectedEntryPath($f['rel'], \SppbscanHelper::getSignatures());
     $reasonsList = $f['reasons'] ?? [$f['reason']];
     $blocksHtml  = array_map(fn($r) => \SppbscanHelper::formatReasonForDisplay($r), $reasonsList);
     $reasonsJson = htmlspecialchars(json_encode($blocksHtml), ENT_QUOTES);
@@ -523,14 +541,15 @@ function sppb_render_file_row(array $f): void {
 ?>
 
 <!-- ── 1. Files ──────────────────────────────────────────────── -->
-<?php sppb_section_open('sec-files', '📁', 'Suspicious Files &amp; Folders', $fc); ?>
-<?php if (empty($fileFindings)): ?>
+<?php sppb_section_open('sec-files', '📁', 'Suspicious Files &amp; Folders', $deletableCount); ?>
+<?php if (empty($deletableFindings)): ?>
     <div class="flex items-center gap-3 text-green-700 bg-green-50 rounded-xl p-[10px]">
         <span class="text-2xl">✅</span>
-        <span class="font-medium">No suspicious files detected.</span>
+        <span class="font-medium">No deletable suspicious files detected.</span>
     </div>
 <?php else: ?>
-    <form action="index.php?option=com_sppbscan&task=scanner.delete" method="post" id="sppb-files-form">
+    <form action="index.php?option=com_sppbscan&task=scanner.delete" method="post" id="sppb-files-form"
+          onsubmit="return confirm('Delete selected files/folders? This cannot be undone.');">
         <div class="flex items-center justify-between mb-3">
             <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
                 <input type="checkbox" class="w-4 h-4 rounded border-gray-300"
@@ -538,8 +557,8 @@ function sppb_render_file_row(array $f): void {
                 Select all
             </label>
             <div class="flex items-center gap-2 text-xs text-gray-500">
-                <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-red-100 text-red-700 rounded-full font-semibold">🔴 <?= $this->highCount ?> high</span>
-                <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full font-semibold">🟡 <?= $this->medCount ?> medium</span>
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-red-100 text-red-700 rounded-full font-semibold">🔴 <?= $deletableHigh ?> high</span>
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full font-semibold">🟡 <?= $deletableMed ?> medium</span>
             </div>
         </div>
         <div class="tbl-wrap rounded-xl border border-gray-100 overflow-hidden mb-4">
@@ -556,25 +575,17 @@ function sppb_render_file_row(array $f): void {
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-50">
-                <?php foreach ($fileFindings as $f): sppb_render_file_row($f); endforeach; ?>
+                <?php foreach ($deletableFindings as $f): sppb_render_file_row($f); endforeach; ?>
                 </tbody>
             </table>
         </div>
         <?= HTMLHelper::_('form.token') ?>
-        <div class="flex flex-wrap items-center gap-3">
+        <div class="flex items-center gap-3">
             <button type="submit"
-                    formaction="index.php?option=com_sppbscan&task=scanner.cleancode"
-                    onclick="return confirm('Surgically clean the selected files? A timestamped backup of each original is kept alongside it.');"
-                    class="inline-flex items-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl shadow transition-colors">
-                🧹 Clean code
-            </button>
-            <button type="submit"
-                    formaction="index.php?option=com_sppbscan&task=scanner.delete"
-                    onclick="return confirm('Delete selected files/folders? This cannot be undone.');"
                     class="inline-flex items-center gap-2 px-5 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-xl shadow transition-colors">
                 🗑 Delete selected
             </button>
-            <span class="text-xs text-gray-400">Required core/template entry files can't be deleted — use Clean code to strip injected code instead. Only items flagged in this scan run can be acted on.</span>
+            <span class="text-xs text-gray-400">Cleanable/required core files live in the 🧹 Cleanable Files tab instead. Only items flagged in this scan run can be deleted.</span>
         </div>
     </form>
 <?php endif; ?>
