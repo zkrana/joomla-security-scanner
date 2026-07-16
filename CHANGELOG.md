@@ -8,6 +8,18 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Unreleased]
 
+## [2.1.10] - 2026-07-16
+
+### Changed
+
+- Rewrote `<head>` script-injection detection and repair to share a single implementation based on plain string search instead of two independently-maintained regexes, so the two can never silently disagree on the same file.
+- The Clean code result message now uses the right severity color (red for failures/warnings, yellow for skips, green for success) instead of always rendering as flat blue info text.
+
+### Fixed
+
+- **Clean code could silently do nothing on a read-only file.** Added an explicit writability check before attempting a repair, with a clear message pointing at file ownership/permissions — the most common real-world reason a "successful" clean doesn't actually stick on shared hosting.
+- **Clean code now verifies its own write.** After writing the repaired file, it's re-read from disk and re-checked; if the infection pattern is somehow still present (a cache, a file-integrity/restore tool, or anything else reverting the change), you now get an explicit warning instead of a false "CLEANED" result.
+
 ## [2.1.9] - 2026-07-16
 
 ### Added

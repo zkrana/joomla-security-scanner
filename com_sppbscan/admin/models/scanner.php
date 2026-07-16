@@ -565,6 +565,16 @@ class SppbscanModelScanner extends BaseDatabaseModel
                 continue;
             }
 
+            // Checked explicitly (rather than only relying on
+            // file_put_contents()'s return value) so a permissions
+            // problem -- the single most common real-world reason a
+            // "successful" clean silently doesn't stick on shared
+            // hosting -- gets its own clear, actionable message.
+            if (!is_writable($abs)) {
+                $flash[] = "SKIPPED (file is not writable by PHP — fix file ownership/permissions on the server, then retry): $relPath";
+                continue;
+            }
+
             $contents = @file_get_contents($abs);
             if ($contents === false) { $flash[] = "SKIPPED (unreadable): $relPath"; continue; }
 
@@ -584,6 +594,22 @@ class SppbscanModelScanner extends BaseDatabaseModel
             }
             if (@file_put_contents($abs, $result['cleaned']) === false) {
                 $flash[] = "FAILED (couldn't write the cleaned file — original is untouched, backup kept at " . basename($backup) . "): $relPath";
+                continue;
+            }
+
+            // Verify the write actually stuck by re-reading the file from
+            // disk and confirming the same issue no longer matches --
+            // catches caching layers, race conditions, or any other way a
+            // "successful" write could fail to actually take effect,
+            // instead of just trusting file_put_contents()'s return value.
+            clearstatcache(true, $abs);
+            $verifyContents = @file_get_contents($abs);
+            $stillInfected = $verifyContents !== false && (
+                SppbscanHelper::cleanPrependedPayload($verifyContents)['changed']
+                || SppbscanHelper::cleanHeadTagInjection($verifyContents)['changed']
+            );
+            if ($stillInfected) {
+                $flash[] = "WARNING: wrote the file but re-reading it still shows the same infection pattern — something on the server (a cache, a file-integrity/restore tool, or another process) may be reverting the change. Backup kept at " . basename($backup) . ": $relPath";
                 continue;
             }
 

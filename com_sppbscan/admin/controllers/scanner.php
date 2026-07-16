@@ -116,7 +116,15 @@ public function scan()
         $model = $this->getModel('Scanner');
         $flash = $model->cleanCodeFiles($targets);
 
-        $app->enqueueMessage('<pre>' . implode("\n", array_map('htmlspecialchars', $flash)) . '</pre>', 'info');
+        $combined = implode("\n", $flash);
+        $type = 'message';
+        if (stripos($combined, 'FAILED') !== false || stripos($combined, 'WARNING') !== false) {
+            $type = 'error';
+        } elseif (stripos($combined, 'SKIPPED') !== false) {
+            $type = 'warning';
+        }
+
+        $app->enqueueMessage('<pre>' . implode("\n", array_map('htmlspecialchars', $flash)) . '</pre>', $type);
         $this->setRedirect('index.php?option=com_sppbscan');
     }
 

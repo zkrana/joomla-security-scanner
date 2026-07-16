@@ -679,23 +679,61 @@ class SppbscanHelper
         return ['cleaned' => $cleaned, 'changed' => true, 'removed_preview' => $preview];
     }
 
+    /**
+     * Locates the first <script>...</script> block appearing after a
+     * <head> tag, if its content matches known payload-loading markers
+     * (base64/atob/eval/String.fromCharCode/document.write) or is simply
+     * unusually large for an inline head script. Implemented with plain
+     * string search (stripos/strpos/substr) rather than a single
+     * monolithic regex spanning the whole file -- a nested-lazy-quantifier
+     * regex applied to tens of KB of heavily-obfuscated real-world payload
+     * is exactly the kind of input that can behave inconsistently under
+     * PHP's PCRE backtrack limit, which would let detection and repair
+     * silently disagree. This is the single source of truth for both
+     * checkHeadTagInjection() (report) and cleanHeadTagInjection()
+     * (repair), so they can never drift out of sync with each other.
+     */
+    private static function findInjectedHeadScript(string $contents): ?array
+    {
+        $headPos = stripos($contents, '<head');
+        if ($headPos === false) return null;
+
+        $scriptOpenPos = stripos($contents, '<script', $headPos);
+        if ($scriptOpenPos === false) return null;
+
+        $openTagCloseAt = strpos($contents, '>', $scriptOpenPos);
+        if ($openTagCloseAt === false) return null;
+        $bodyStart = $openTagCloseAt + 1;
+
+        $scriptClosePos = stripos($contents, '</script', $bodyStart);
+        if ($scriptClosePos === false) return null;
+        $closeTagEndAt = strpos($contents, '>', $scriptClosePos);
+        if ($closeTagEndAt === false) return null;
+        $blockEnd = $closeTagEndAt + 1;
+
+        $scriptBody = substr($contents, $bodyStart, $scriptClosePos - $bodyStart);
+        $fullBlock  = substr($contents, $scriptOpenPos, $blockEnd - $scriptOpenPos);
+
+        $hasMarker = (bool) preg_match('/base64|atob|eval|String\.fromCharCode|document\.write/i', $scriptBody);
+        $isLarge   = strlen($scriptBody) > 200;
+        if (!$hasMarker && !$isLarge) return null;
+
+        return [
+            'start' => $scriptOpenPos,
+            'end'   => $blockEnd,
+            'block' => $fullBlock,
+            'label' => $hasMarker ? 'known payload-loading marker (base64/atob/eval/...)' : 'unusually large inline script',
+        ];
+    }
+
     public static function checkHeadTagInjection(string $contents): ?string
     {
-        if (stripos($contents, '<head') === false) return null;
+        $info = self::findInjectedHeadScript($contents);
+        if ($info === null) return null;
 
-        $patterns = [
-            '/<head[^>]*>\s*(?:<[^>]*>)*?\s*<script[^>]*>(?:.*?(?:base64|atob|eval|String\.fromCharCode|document\.write).*?)<\/script/is',
-            '/<head[^>]*>\s*<script[^>]*>(?:[\s\S]{200,}?)<\/script/is',
-        ];
-
-        foreach ($patterns as $pattern) {
-            if (preg_match($pattern, $contents, $matches)) {
-                $preview = trim(preg_replace('/\s+/', ' ', $matches[0]));
-                $preview = strlen($preview) > 200 ? substr($preview, 0, 200) . '…' : $preview;
-                return "Suspicious obfuscated script injected right after <head> tag. Preview: {$preview}";
-            }
-        }
-        return null;
+        $preview = trim(preg_replace('/\s+/', ' ', $info['block']));
+        $preview = strlen($preview) > 200 ? substr($preview, 0, 200) . '…' : $preview;
+        return "Suspicious obfuscated script injected right after <head> tag ({$info['label']}). Preview: {$preview}";
     }
 
     /**
@@ -706,27 +744,15 @@ class SppbscanHelper
      */
     public static function cleanHeadTagInjection(string $contents): array
     {
-        if (stripos($contents, '<head') === false) return ['cleaned' => $contents, 'changed' => false];
+        $info = self::findInjectedHeadScript($contents);
+        if ($info === null) return ['cleaned' => $contents, 'changed' => false];
 
-        $patterns = [
-            '/<head[^>]*>\s*(?:<[^>]*>)*?\s*<script[^>]*>(?:.*?(?:base64|atob|eval|String\.fromCharCode|document\.write).*?)<\/script/is',
-            '/<head[^>]*>\s*<script[^>]*>(?:[\s\S]{200,}?)<\/script/is',
-        ];
+        $cleaned = substr($contents, 0, $info['start']) . substr($contents, $info['end']);
 
-        foreach ($patterns as $pattern) {
-            if (preg_match($pattern, $contents, $matches)
-                && preg_match('/<script\b[^>]*>.*?<\/script\s*>/is', $matches[0], $scriptMatch)) {
-                $pos = strpos($contents, $scriptMatch[0]);
-                if ($pos === false) continue;
-                $cleaned = substr_replace($contents, '', $pos, strlen($scriptMatch[0]));
+        $preview = trim(preg_replace('/\s+/', ' ', $info['block']));
+        $preview = strlen($preview) > 160 ? substr($preview, 0, 160) . '…' : $preview;
 
-                $preview = trim(preg_replace('/\s+/', ' ', $scriptMatch[0]));
-                $preview = strlen($preview) > 160 ? substr($preview, 0, 160) . '…' : $preview;
-
-                return ['cleaned' => $cleaned, 'changed' => true, 'removed_preview' => $preview];
-            }
-        }
-        return ['cleaned' => $contents, 'changed' => false];
+        return ['cleaned' => $cleaned, 'changed' => true, 'removed_preview' => $preview];
     }
 
     /**

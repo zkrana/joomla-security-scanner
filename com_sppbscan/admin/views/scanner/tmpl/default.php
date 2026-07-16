@@ -521,7 +521,7 @@ function sppb_render_file_row(array $f): void {
             <?php if ($f['confidence']==='high'): ?>
                 <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700">🔴 High</span>
             <?php else: ?>
-                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700">🟡 Medium</span>
+                <span class="min-w-[80px] text-center inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700">🟡 Medium</span>
             <?php endif; ?>
         </td>
         <td class="px-4 py-3 text-xs">
