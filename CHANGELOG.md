@@ -8,6 +8,18 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Unreleased]
 
+## [2.1.8] - 2026-07-16
+
+## Fixed and Improved
+
+- Add file content preview snippets to suspicious file findings to display matched code in the admin UI.
+- Introduce a new Cleanable Files tab in the scanner view that lists files with safely auto-repairable infections (code prepended before Joomla's bootstrap or head tag injections).
+- Add helper functions for detecting cleanable patterns and rendering shared file rows across tabs to reduce code duplication.
+- Refactor existing file listing UI code to use the shared render function.
+- Update the checkCoreMasquerade helper to accept an absolute path parameter and append preview text to findings.
+- Bump the package version from 2.1.7 to 2.1.8.
+
+
 ## [2.1.7] - 2026-07-16
 
 ### Fixed

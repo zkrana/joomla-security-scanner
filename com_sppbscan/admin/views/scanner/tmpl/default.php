@@ -408,12 +408,15 @@ $stats = [
 
 <?php
 /* ── Tab navigation ── */
+$cleanableFindings = array_filter($fileFindings, fn($f) => \SppbscanHelper::isCleanablePattern($f['reasons'] ?? [$f['reason']]));
+$cleanableCount = count($cleanableFindings);
 $tabs = [
-    ['id' => 'files',    'emoji' => '📁', 'title' => 'Suspicious Files', 'count' => $fc],
-    ['id' => 'users',    'emoji' => '👤', 'title' => 'Super Users',      'count' => $suCount],
-    ['id' => 'menu',     'emoji' => '🔗', 'title' => 'Menu XSS',         'count' => $menuCount],
-    ['id' => 'assets',   'emoji' => '🗄', 'title' => 'SPPB Assets',      'count' => $assetCount],
-    ['id' => 'template', 'emoji' => '🖼', 'title' => 'Defacement',       'count' => $deface],
+    ['id' => 'files',      'emoji' => '📁', 'title' => 'Suspicious Files', 'count' => $fc],
+    ['id' => 'cleanable',  'emoji' => '🧹', 'title' => 'Cleanable Files',  'count' => $cleanableCount],
+    ['id' => 'users',      'emoji' => '👤', 'title' => 'Super Users',      'count' => $suCount],
+    ['id' => 'menu',       'emoji' => '🔗', 'title' => 'Menu XSS',         'count' => $menuCount],
+    ['id' => 'assets',     'emoji' => '🗄', 'title' => 'SPPB Assets',      'count' => $assetCount],
+    ['id' => 'template',   'emoji' => '🖼', 'title' => 'Defacement',       'count' => $deface],
 ];
 // Open on the first tab that has findings; otherwise the first tab.
 $activeTab = $tabs[0]['id'];
@@ -451,6 +454,72 @@ function sppb_section_open(string $id, string $emoji, string $title, int $count)
 function sppb_section_close(): void {
     echo '</div></section>';
 }
+
+/** Shared <tr> markup for a file finding -- used by both the Suspicious
+ *  Files and Cleanable Files tabs so the two stay visually identical. */
+function sppb_render_file_row(array $f): void {
+    $pathDir  = dirname($f['rel']);
+    $pathBase = basename($f['rel']);
+    $isProtectedEntry = in_array($f['rel'], ['index.php', 'administrator/index.php', 'api/index.php', 'includes/app.php'], true)
+        || (bool) preg_match('#^(administrator/)?templates/[^/]+/index\.php$#i', $f['rel']);
+    $reasonsList = $f['reasons'] ?? [$f['reason']];
+    $blocksHtml  = array_map(fn($r) => \SppbscanHelper::formatReasonForDisplay($r), $reasonsList);
+    $reasonsJson = htmlspecialchars(json_encode($blocksHtml), ENT_QUOTES);
+    ?>
+    <tr class="hover:bg-gray-50/60 transition-colors <?= $f['confidence']==='high' ? 'bg-red-50/30' : '' ?>">
+        <td class="px-4 py-3">
+            <input type="checkbox" class="sppb-file-chk w-4 h-4 rounded border-gray-300"
+                   name="targets[]" value="<?= htmlspecialchars($f['rel']) ?>">
+        </td>
+        <td class="px-4 py-3">
+            <div class="flex items-center gap-1.5 max-w-md">
+                <span class="flex-shrink-0 text-sm"><?= $f['type']==='dir' ? '📂' : '📄' ?></span>
+                <div class="min-w-0 flex-1 bg-gray-50 border border-gray-100 rounded-lg px-2.5 py-1.5 overflow-hidden">
+                    <div class="font-mono text-xs break-all leading-snug" title="<?= htmlspecialchars($f['rel']) ?>">
+                        <?php if ($pathDir !== '.'): ?>
+                            <span class="text-gray-400"><?= htmlspecialchars($pathDir) ?>/</span>
+                        <?php endif; ?>
+                        <span class="text-gray-800 font-semibold"><?= htmlspecialchars($pathBase) ?></span>
+                    </div>
+                    <?php if ($isProtectedEntry): ?>
+                        <div class="mt-1 inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600">
+                            🛡 Required file — use Clean, not Delete
+                        </div>
+                    <?php endif; ?>
+                </div>
+                <button type="button"
+                        class="sppb-copy-btn flex-shrink-0 w-7 h-7 inline-flex items-center justify-center rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                        data-copy="<?= htmlspecialchars($f['rel']) ?>" title="Copy path" aria-label="Copy path">
+                    <span class="sppb-copy-icon">📋</span>
+                </button>
+            </div>
+        </td>
+        <td class="px-4 py-3">
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-gray-100 text-gray-600">
+                <?= $f['type']==='dir' ? '📂 DIR' : '📄 FILE' ?>
+            </span>
+        </td>
+        <td class="px-4 py-3">
+            <?php if ($f['confidence']==='high'): ?>
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700">🔴 High</span>
+            <?php else: ?>
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700">🟡 Medium</span>
+            <?php endif; ?>
+        </td>
+        <td class="px-4 py-3 text-xs">
+            <div class="text-amber-700 mb-1.5"><?= htmlspecialchars(\SppbscanHelper::shortReasonLabel($reasonsList)) ?></div>
+            <button type="button" class="sppb-code-issues-btn inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                    data-path="<?= htmlspecialchars($f['rel']) ?>"
+                    data-confidence="<?= htmlspecialchars($f['confidence']) ?>"
+                    data-reasons="<?= $reasonsJson ?>">
+                🧬 Code Issues<?= count($reasonsList) > 1 ? ' (' . count($reasonsList) . ')' : '' ?>
+            </button>
+        </td>
+        <td class="px-4 py-3 text-xs text-gray-500"><?= \SppbscanHelper::humanSize($f['size']) ?></td>
+        <td class="px-4 py-3 text-xs text-gray-400"><?= $f['mtime'] ? date('Y-m-d H:i',$f['mtime']) : '—' ?></td>
+    </tr>
+    <?php
+}
 ?>
 
 <!-- ── 1. Files ──────────────────────────────────────────────── -->
@@ -465,7 +534,7 @@ function sppb_section_close(): void {
         <div class="flex items-center justify-between mb-3">
             <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
                 <input type="checkbox" class="w-4 h-4 rounded border-gray-300"
-                       onclick="document.querySelectorAll('.sppb-file-chk').forEach(c=>c.checked=this.checked)">
+                       onclick="document.querySelectorAll('#sppb-files-form .sppb-file-chk').forEach(c=>c.checked=this.checked)">
                 Select all
             </label>
             <div class="flex items-center gap-2 text-xs text-gray-500">
@@ -487,71 +556,7 @@ function sppb_section_close(): void {
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-50">
-                <?php foreach ($fileFindings as $f): ?>
-                    <tr class="hover:bg-gray-50/60 transition-colors <?= $f['confidence']==='high' ? 'bg-red-50/30' : '' ?>">
-                        <td class="px-4 py-3">
-                            <input type="checkbox" class="sppb-file-chk w-4 h-4 rounded border-gray-300"
-                                   name="targets[]" value="<?= htmlspecialchars($f['rel']) ?>">
-                        </td>
-                        <td class="px-4 py-3">
-                            <?php
-                            $pathDir  = dirname($f['rel']);
-                            $pathBase = basename($f['rel']);
-                            $isProtectedEntry = in_array($f['rel'], ['index.php', 'administrator/index.php', 'api/index.php', 'includes/app.php'], true)
-                                || (bool) preg_match('#^(administrator/)?templates/[^/]+/index\.php$#i', $f['rel']);
-                            ?>
-                            <div class="flex items-center gap-1.5 max-w-md">
-                                <span class="flex-shrink-0 text-sm"><?= $f['type']==='dir' ? '📂' : '📄' ?></span>
-                                <div class="min-w-0 flex-1 bg-gray-50 border border-gray-100 rounded-lg px-2.5 py-1.5 overflow-hidden">
-                                    <div class="font-mono text-xs break-all leading-snug" title="<?= htmlspecialchars($f['rel']) ?>">
-                                        <?php if ($pathDir !== '.'): ?>
-                                            <span class="text-gray-400"><?= htmlspecialchars($pathDir) ?>/</span>
-                                        <?php endif; ?>
-                                        <span class="text-gray-800 font-semibold"><?= htmlspecialchars($pathBase) ?></span>
-                                    </div>
-                                    <?php if ($isProtectedEntry): ?>
-                                        <div class="mt-1 inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600">
-                                            🛡 Required file — use Clean, not Delete
-                                        </div>
-                                    <?php endif; ?>
-                                </div>
-                                <button type="button"
-                                        class="sppb-copy-btn flex-shrink-0 w-7 h-7 inline-flex items-center justify-center rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
-                                        data-copy="<?= htmlspecialchars($f['rel']) ?>" title="Copy path" aria-label="Copy path">
-                                    <span class="sppb-copy-icon">📋</span>
-                                </button>
-                            </div>
-                        </td>
-                        <td class="px-4 py-3">
-                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-gray-100 text-gray-600">
-                                <?= $f['type']==='dir' ? '📂 DIR' : '📄 FILE' ?>
-                            </span>
-                        </td>
-                        <td class="px-4 py-3">
-                            <?php if ($f['confidence']==='high'): ?>
-                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700">🔴 High</span>
-                            <?php else: ?>
-                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700">🟡 Medium</span>
-                            <?php endif; ?>
-                        </td>
-                        <td class="px-4 py-3 text-xs">
-                            <?php
-                            $reasonsList = $f['reasons'] ?? [$f['reason']];
-                            $blocksHtml  = array_map(fn($r) => \SppbscanHelper::formatReasonForDisplay($r), $reasonsList);
-                            $reasonsJson = htmlspecialchars(json_encode($blocksHtml), ENT_QUOTES);
-                            ?>
-                            <div class="text-amber-700 mb-1.5"><?= htmlspecialchars(\SppbscanHelper::shortReasonLabel($reasonsList)) ?></div>
-                            <button type="button" class="sppb-code-issues-btn inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
-                                    data-path="<?= htmlspecialchars($f['rel']) ?>"
-                                    data-confidence="<?= htmlspecialchars($f['confidence']) ?>"
-                                    data-reasons="<?= $reasonsJson ?>">
-                                🧬 Code Issues<?= count($reasonsList) > 1 ? ' (' . count($reasonsList) . ')' : '' ?>
-                            </button>
-                        </td>
-                        <td class="px-4 py-3 text-xs text-gray-500"><?= \SppbscanHelper::humanSize($f['size']) ?></td>
-                        <td class="px-4 py-3 text-xs text-gray-400"><?= $f['mtime'] ? date('Y-m-d H:i',$f['mtime']) : '—' ?></td>
-                    </tr>
-                <?php endforeach; ?>
+                <?php foreach ($fileFindings as $f): sppb_render_file_row($f); endforeach; ?>
                 </tbody>
             </table>
         </div>
@@ -570,6 +575,58 @@ function sppb_section_close(): void {
                 🗑 Delete selected
             </button>
             <span class="text-xs text-gray-400">Required core/template entry files can't be deleted — use Clean code to strip injected code instead. Only items flagged in this scan run can be acted on.</span>
+        </div>
+    </form>
+<?php endif; ?>
+<?php sppb_section_close(); ?>
+
+<!-- ── 1b. Cleanable Files ──────────────────────────────────────── -->
+<?php sppb_section_open('sec-cleanable', '🧹', 'Cleanable Files', $cleanableCount); ?>
+<?php if (empty($cleanableFindings)): ?>
+    <div class="flex items-center gap-3 text-green-700 bg-green-50 rounded-xl p-[10px]">
+        <span class="text-2xl">✅</span>
+        <span class="font-medium">No files with an auto-repairable infection pattern found.</span>
+    </div>
+<?php else: ?>
+    <div class="flex items-center gap-3 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3 mb-4 text-xs text-indigo-800">
+        <span class="text-lg flex-shrink-0">ℹ️</span>
+        <span>These files have a known, safely-bounded infection pattern (code prepended before Joomla's bootstrap/access guard, or a script injected right after <code class="bg-white/60 px-1 py-0.5 rounded">&lt;head&gt;</code>) that can be surgically stripped without touching the rest of the file. A timestamped backup is written before every repair.</span>
+    </div>
+    <form action="index.php?option=com_sppbscan&task=scanner.cleancode" method="post"
+          onsubmit="return confirm('Surgically clean the selected files? A timestamped backup of each original is kept alongside it.');">
+        <div class="flex items-center justify-between mb-3">
+            <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                <input type="checkbox" class="w-4 h-4 rounded border-gray-300"
+                       onclick="document.querySelectorAll('#sec-cleanable .sppb-file-chk').forEach(c=>c.checked=this.checked)">
+                Select all
+            </label>
+            <span class="text-xs text-gray-500"><?= $cleanableCount ?> file<?= $cleanableCount === 1 ? '' : 's' ?> eligible for auto-clean</span>
+        </div>
+        <div class="tbl-wrap rounded-xl border border-gray-100 overflow-hidden mb-4">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="bg-gray-50 border-b border-gray-100">
+                        <th class="w-10 px-4 py-3"></th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Path</th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Type</th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Severity</th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Reason</th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Size</th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Modified</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-50">
+                <?php foreach ($cleanableFindings as $f): sppb_render_file_row($f); endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <?= HTMLHelper::_('form.token') ?>
+        <div class="flex items-center gap-3">
+            <button type="submit"
+                    class="inline-flex items-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl shadow transition-colors">
+                🧹 Clean selected
+            </button>
+            <span class="text-xs text-gray-400">Only items flagged in this scan run can be acted on.</span>
         </div>
     </form>
 <?php endif; ?>

@@ -320,17 +320,36 @@ class SppbscanHelper
      *
      * Returns a human-readable reason string, or null if nothing matched.
      */
-    public static function checkCoreMasquerade(string $relPath, bool $isDir, array $sig): ?string
+    /**
+     * Short, collapsed preview of a file's own content, used to append a
+     * "Matched code:" snippet onto location-based reasons (masquerade
+     * paths, stray index.php, ...) that don't otherwise quote any code --
+     * without this, the code-analysis modal has nothing to show for these
+     * checks even though the file's actual content is exactly what a
+     * reviewer needs to see to judge the finding.
+     */
+    private static function filePreview(string $absPath, int $maxLen = 220): string
+    {
+        if ($absPath === '' || !is_file($absPath)) return '';
+        $chunk = @file_get_contents($absPath, false, null, 0, 4096);
+        if ($chunk === false || trim($chunk) === '') return '';
+        $preview = trim(preg_replace('/\s+/', ' ', $chunk));
+        return strlen($preview) > $maxLen ? substr($preview, 0, $maxLen) . '…' : $preview;
+    }
+
+    public static function checkCoreMasquerade(string $relPath, bool $isDir, array $sig, string $absPath = ''): ?string
     {
         $relPath = ltrim(str_replace('\\', '/', $relPath), '/');
         if ($relPath === '') return null;
 
         $base = basename($relPath);
         $ext  = strtolower(pathinfo($base, PATHINFO_EXTENSION));
+        $preview = $isDir ? '' : self::filePreview($absPath);
+        $suffix  = $preview !== '' ? " Matched code: {$preview}" : '';
 
         // 1. Exact known-masquerade relative paths.
         if (!$isDir && in_array($relPath, $sig['CORE_MASQUERADE_EXACT_PATHS'], true)) {
-            return 'Path masquerades as a legitimate Joomla core file, but no such file exists in a clean Joomla install — a stealthy dropper disguise.';
+            return 'Path masquerades as a legitimate Joomla core file, but no such file exists in a clean Joomla install — a stealthy dropper disguise.' . $suffix;
         }
 
         // 2. Hidden dot-file carrying an executable extension, anywhere.
@@ -341,7 +360,7 @@ class SppbscanHelper
         //    PhpStorm's .phpstorm.meta.php), which are exempted.
         if (!$isDir && $base !== '' && $base[0] === '.' && in_array($ext, $sig['EXEC_EXTS'], true)
             && !in_array(strtolower($base), array_map('strtolower', $sig['HIDDEN_DOTFILE_ALLOWLIST']), true)) {
-            return "Hidden dot-file with an executable extension (\"{$base}\") — legitimate Joomla code is never stored in hidden executable files.";
+            return "Hidden dot-file with an executable extension (\"{$base}\") — legitimate Joomla code is never stored in hidden executable files." . $suffix;
         }
 
         // 3. File placed directly (loosely) in a core directory whose full
@@ -359,10 +378,10 @@ class SppbscanHelper
                 $baseLower = strtolower($base);
                 if (!in_array($baseLower, $allowed, true)) {
                     if (in_array($ext, $sig['EXEC_EXTS'], true)) {
-                        return "Executable file placed directly in the core \"{$dir}/\" directory, which never holds a file by this name in a clean Joomla install — a core-path disguise.";
+                        return "Executable file placed directly in the core \"{$dir}/\" directory, which never holds a file by this name in a clean Joomla install — a core-path disguise." . $suffix;
                     }
                     if ($ext !== '' && !in_array($ext, $stubExts, true) && $baseLower !== '.htaccess') {
-                        return "Unexpected file (\"{$base}\") loose in the core \"{$dir}/\" directory — clean Joomla never ships this file, a common malware toolkit artifact.";
+                        return "Unexpected file (\"{$base}\") loose in the core \"{$dir}/\" directory — clean Joomla never ships this file, a common malware toolkit artifact." . $suffix;
                     }
                 }
             }
@@ -399,7 +418,9 @@ class SppbscanHelper
 
         foreach ($sig['TEMPLATE_FOLDER_MASQUERADE_PATTERNS'] as $re) {
             if (preg_match($re, $relPath)) {
-                return 'Path masquerades as a template asset folder that does not exist in a clean install of any known Joomla template — flagged regardless of file content (even a blank stub here is a known real-world compromise artifact).';
+                $preview = self::filePreview($absPath);
+                $suffix  = $preview !== '' ? " Matched code: {$preview}" : '';
+                return 'Path masquerades as a template asset folder that does not exist in a clean install of any known Joomla template — flagged regardless of file content (even a blank stub here is a known real-world compromise artifact).' . $suffix;
             }
         }
 
@@ -409,7 +430,27 @@ class SppbscanHelper
         if ($contents === false) return null;
         if (self::isStandardJoomlaStub($contents)) return null;
 
-        return 'Non-standard index.php — Joomla only ever places a blank "no direct access" stub here (outside a template\'s own root layout file); this one contains extra code, a common disguise for a webshell.';
+        $preview = trim(preg_replace('/\s+/', ' ', $contents));
+        $preview = strlen($preview) > 220 ? substr($preview, 0, 220) . '…' : $preview;
+
+        return "Non-standard index.php — Joomla only ever places a blank \"no direct access\" stub here (outside a template's own root layout file); this one contains extra code, a common disguise for a webshell. Matched code: {$preview}";
+    }
+
+    /**
+     * True if any reason in a finding's reasons list corresponds to a
+     * pattern this scanner can safely auto-repair (see
+     * cleanPrependedPayload() / cleanHeadTagInjection()) -- used to build
+     * the dedicated "Cleanable Files" tab in the UI, distinct from
+     * findings that only support review/delete.
+     */
+    public static function isCleanablePattern(array $reasonsList): bool
+    {
+        foreach ($reasonsList as $r) {
+            if (stripos($r, 'before the joomla bootstrap (_jexec)') !== false) return true;
+            if (stripos($r, "before its own joomla bootstrap/access guard") !== false) return true;
+            if (stripos($r, 'obfuscated script injected right after <head> tag') !== false) return true;
+        }
+        return false;
     }
 
     public static function humanSize(int $bytes): string

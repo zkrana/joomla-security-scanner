@@ -237,7 +237,7 @@ class SppbscanModelScanner extends BaseDatabaseModel
                 }
 
                 // core-path masquerade check (location-based, runs both modes)
-                $masq = SppbscanHelper::checkCoreMasquerade($relCheck, $isDir, $sig);
+                $masq = SppbscanHelper::checkCoreMasquerade($relCheck, $isDir, $sig, $path);
                 if ($masq !== null) { $flagged = true; $reasons[] = $masq; }
 
                 // stray index.php structural check (location-based, runs both modes)
@@ -296,7 +296,7 @@ class SppbscanModelScanner extends BaseDatabaseModel
                 if (preg_match($re, $it)) { $flaggedRoot = true; $reasonsRoot[] = 'Backup/duplicate configuration file — leaks the same credentials as configuration.php.'; break; }
             }
 
-            $masqRoot = SppbscanHelper::checkCoreMasquerade($relCheck, false, $sig);
+            $masqRoot = SppbscanHelper::checkCoreMasquerade($relCheck, false, $sig, $p);
             if ($masqRoot !== null) { $flaggedRoot = true; $reasonsRoot[] = $masqRoot; }
 
             $extR = strtolower(pathinfo($p, PATHINFO_EXTENSION));
