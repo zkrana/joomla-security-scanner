@@ -189,9 +189,9 @@ If you have any feedback or suggestions, please open an issue on the repository.
 
 ## 🙏 Thanks to
 
-Thank you, MD. Toufiqur Rahman, Paul Frankowski, Ofi Khan, and Md. Atick Eashrak Shuvo, for your valuable support and contributions in helping me to improve this tool.
+MD. Toufiqur Rahman, Paul Frankowski, Ofi Khan, and Md. Atick Eashrak Shuvo, for your valuable support and contributions in helping me to improve this tool.
 
-- [Ziaulkabir](https://github.com/ziaulkabir)
+- [ZKRANA](https://github.com/zkrana)
 
 ## 👨‍💻 Author
 
