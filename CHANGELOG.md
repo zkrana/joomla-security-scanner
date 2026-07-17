@@ -8,6 +8,22 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Unreleased]
 
+## [2.2.3] - 2026-07-17
+
+### Fixed
+
+- **The Settings screen's "Scheduled Scanning" / "Setup Guide" tabs didn't switch — clicking "Setup Guide" did nothing.** The tab markup and panels had been added but never wired up: there was no `.muru-settings-tab.active` styling and no click handler to toggle between panels, so the page just sat on whichever tab rendered first. Added the matching CSS active state (mirroring the existing results-tab styling) and a click handler that toggles the clicked tab and its matching panel, following the same active/hidden pattern already used elsewhere in the template.
+
+### Changed
+
+- **Renamed leftover `sppb-` CSS classes, JS functions, and PHP template helpers to `muru-`/`muru_`.** These were internal naming left over from the old SPPB Scan codebase (`sppb-tab`, `sppb-diff-block`, `sppbOpenCodeModal`, `sppb_section_open`, etc.) that the 2.2.0 rebrand had missed. Left untouched anything that names the actual third-party SP Page Builder extension being scanned — `sppbWarning`, `getSppbVersionWarning`, the `sppb_assets` finding key, and the `codex-sppb-*`/`codex_sppb*` malware filename patterns — since those refer to the real extension, not this app's own branding.
+
+## [2.2.2] - 2026-07-17
+
+### Fixed
+
+- **v2.2.1's fix wasn't enough — confirmed on a live install that "Run Scan" (and every other button) still 404'd.** The inheritance-based fix assumed `BaseController::getInstance()` would make every task method reflectable one way or another; on this real site it didn't. The entry point now bypasses Joomla's own "prefix.method" task resolution entirely for every `scanner.*` task: it parses the prefix itself, instantiates `MuruguardControllerScanner` directly, and calls the named method by hand. No more dependency on assumptions about how a given Joomla version resolves that dot-notation — verified against every action (`scan`, `delete`, `scheduledcheck`, and by extension `cleancode`/`cleanmenu`/`deleteassets`/`savesettings`) with a test harness built around the actual entry-point file.
+
 ## [2.2.1] - 2026-07-17
 
 ### Fixed

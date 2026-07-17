@@ -890,14 +890,14 @@ class MuruguardHelper
 
         $addedTrim = trim($replacement);
 
-        $html  = '<div class="sppb-diff-block">';
-        $html .= '<div class="sppb-diff-label sppb-diff-label-before">Before — Clean would remove ' . $removedLen . ' byte' . ($removedLen === 1 ? '' : 's') . '</div>';
-        $html .= '<pre class="sppb-diff-removed">' . htmlspecialchars($removedTrunc !== '' ? $removedTrunc : '(only whitespace)') . '</pre>';
+        $html  = '<div class="muru-diff-block">';
+        $html .= '<div class="muru-diff-label muru-diff-label-before">Before — Clean would remove ' . $removedLen . ' byte' . ($removedLen === 1 ? '' : 's') . '</div>';
+        $html .= '<pre class="muru-diff-removed">' . htmlspecialchars($removedTrunc !== '' ? $removedTrunc : '(only whitespace)') . '</pre>';
         if ($addedTrim !== '') {
-            $html .= '<div class="sppb-diff-label sppb-diff-label-after">After — replaced with</div>';
-            $html .= '<pre class="sppb-diff-added">' . htmlspecialchars($addedTrim) . '</pre>';
+            $html .= '<div class="muru-diff-label muru-diff-label-after">After — replaced with</div>';
+            $html .= '<pre class="muru-diff-added">' . htmlspecialchars($addedTrim) . '</pre>';
         } else {
-            $html .= '<div class="sppb-diff-label sppb-diff-label-after">After — removed entirely, nothing put in its place</div>';
+            $html .= '<div class="muru-diff-label muru-diff-label-after">After — removed entirely, nothing put in its place</div>';
         }
         $html .= '</div>';
         return $html;
@@ -1105,11 +1105,11 @@ class MuruguardHelper
             $lead  = trim($m[1]);
             $label = trim($m[2], ': ');
             $code  = trim($m[3]);
-            return '<div class="sppb-reason-block"><p>' . htmlspecialchars($lead) . '</p>'
-                 . '<div class="sppb-reason-code-label">' . htmlspecialchars($label) . '</div>'
-                 . '<pre class="sppb-reason-code">' . htmlspecialchars($code) . '</pre></div>';
+            return '<div class="muru-reason-block"><p>' . htmlspecialchars($lead) . '</p>'
+                 . '<div class="muru-reason-code-label">' . htmlspecialchars($label) . '</div>'
+                 . '<pre class="muru-reason-code">' . htmlspecialchars($code) . '</pre></div>';
         }
-        return '<div class="sppb-reason-block"><p>' . htmlspecialchars($reason) . '</p></div>';
+        return '<div class="muru-reason-block"><p>' . htmlspecialchars($reason) . '</p></div>';
     }
 
     /** A short, single-line summary for the table row (full detail lives in the modal). */

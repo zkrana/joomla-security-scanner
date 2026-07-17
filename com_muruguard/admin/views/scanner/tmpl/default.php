@@ -65,22 +65,27 @@ $rescanUrl  = 'index.php?option=com_muruguard&task=scanner.scan&rescan=1';
   .tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
   /* tabs */
-  .sppb-tab { color:#4b5563; background:transparent; border:1px solid transparent; cursor:pointer; }
-  .sppb-tab:hover { background:#fff; color:#111827; }
-  .sppb-tab.active { background:#fff; color:#4338ca; border-color:#e5e7eb; box-shadow:0 1px 2px rgba(0,0,0,.05); }
-  .sppb-panel.active { display:block; }
+  .muru-tab { color:#4b5563; background:transparent; border:1px solid transparent; cursor:pointer; }
+  .muru-tab:hover { background:#fff; color:#111827; }
+  .muru-tab.active { background:#fff; color:#4338ca; border-color:#e5e7eb; box-shadow:0 1px 2px rgba(0,0,0,.05); }
+  .muru-panel.active { display:block; }
+
+  /* settings sub-tabs (Scheduled Scanning / Setup Guide) */
+  .muru-settings-tab { color:#4b5563; background:transparent; border:1px solid transparent; cursor:pointer; }
+  .muru-settings-tab:hover { background:#fff; color:#111827; }
+  .muru-settings-tab.active { background:#fff; color:#4338ca; border-color:#e5e7eb; box-shadow:0 1px 2px rgba(0,0,0,.05); }
 
   /* copy-path button feedback */
-  .sppb-copy-btn.sppb-copied { color:#16a34a !important; background:#f0fdf4 !important; }
+  .muru-copy-btn.muru-copied { color:#16a34a !important; background:#f0fdf4 !important; }
 
   /* settings toggle switch */
-  .sppb-switch { display:inline-flex; cursor:pointer; }
-  .sppb-switch input { position:absolute; opacity:0; width:0; height:0; }
-  .sppb-switch-track { width:44px; height:24px; border-radius:9999px; background:#d1d5db; position:relative; transition:background .2s; flex-shrink:0; }
-  .sppb-switch-thumb { position:absolute; top:2px; left:2px; width:20px; height:20px; border-radius:9999px; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.15); transition:transform .2s; }
-  .sppb-switch input:checked + .sppb-switch-track { background:#4338ca; }
-  .sppb-switch input:checked + .sppb-switch-track .sppb-switch-thumb { transform:translateX(20px); }
-  .sppb-switch input:focus-visible + .sppb-switch-track { box-shadow:0 0 0 3px rgba(67,56,202,.3); }
+  .muru-switch { display:inline-flex; cursor:pointer; }
+  .muru-switch input { position:absolute; opacity:0; width:0; height:0; }
+  .muru-switch-track { width:44px; height:24px; border-radius:9999px; background:#d1d5db; position:relative; transition:background .2s; flex-shrink:0; }
+  .muru-switch-thumb { position:absolute; top:2px; left:2px; width:20px; height:20px; border-radius:9999px; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.15); transition:transform .2s; }
+  .muru-switch input:checked + .muru-switch-track { background:#4338ca; }
+  .muru-switch input:checked + .muru-switch-track .muru-switch-thumb { transform:translateX(20px); }
+  .muru-switch input:focus-visible + .muru-switch-track { box-shadow:0 0 0 3px rgba(67,56,202,.3); }
 
   /* ── Loading overlay & floating header-actions widget ────────────
      Deliberately PLAIN CSS (no Tailwind utility classes). Both the
@@ -113,16 +118,16 @@ $rescanUrl  = 'index.php?option=com_muruguard&task=scanner.scan&rescan=1';
   @keyframes muruguard-bar-slide { 0%{width:15%;margin-left:0} 50%{width:55%;margin-left:20%} 100%{width:15%;margin-left:100%} }
   .muruguard-overlay-note { color:#64748b; font-size:11px; line-height:1.6; margin:0; }
 
-  #sppb-header-actions { position: fixed; top: 64px; right: 20px; z-index: 999998; display: flex; align-items: flex-start; gap: 8px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-  #sppb-settings-btn { display:flex; align-items:center; gap:8px; background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:8px 16px; font-size:14px; font-weight:600; color:#374151; box-shadow:0 1px 3px rgba(0,0,0,.08); transition:box-shadow .2s, background .2s, color .2s; cursor:pointer; }
-  #sppb-settings-btn:hover { box-shadow:0 4px 10px rgba(0,0,0,.1); }
-  #sppb-settings-btn.sppb-settings-open { background:#4338ca; border-color:#4338ca; color:#fff; }
+  #muru-header-actions { position: fixed; top: 64px; right: 20px; z-index: 999998; display: flex; align-items: flex-start; gap: 8px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  #muru-settings-btn { display:flex; align-items:center; gap:8px; background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:8px 16px; font-size:14px; font-weight:600; color:#374151; box-shadow:0 1px 3px rgba(0,0,0,.08); transition:box-shadow .2s, background .2s, color .2s; cursor:pointer; }
+  #muru-settings-btn:hover { box-shadow:0 4px 10px rgba(0,0,0,.1); }
+  #muru-settings-btn.muru-settings-open { background:#4338ca; border-color:#4338ca; color:#fff; }
   #support-widget { position: relative; }
   #support-widget summary { list-style:none; cursor:pointer; user-select:none; display:flex; align-items:center; gap:8px; background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:8px 16px; font-size:14px; font-weight:600; color:#374151; box-shadow:0 1px 3px rgba(0,0,0,.08); transition:box-shadow .2s; }
   #support-widget summary::-webkit-details-marker { display:none; }
   #support-widget summary:hover { box-shadow:0 4px 10px rgba(0,0,0,.1); }
-  #support-widget .sppb-caret { color:#9ca3af; font-size:11px; transition:transform .2s; }
-  #support-widget[open] .sppb-caret { transform: rotate(180deg); }
+  #support-widget .muru-caret { color:#9ca3af; font-size:11px; transition:transform .2s; }
+  #support-widget[open] .muru-caret { transform: rotate(180deg); }
   #support-widget-menu { position:absolute; right:0; margin-top:8px; width:224px; background:#fff; border:1px solid #f3f4f6; border-radius:12px; box-shadow:0 10px 25px rgba(0,0,0,.12); overflow:hidden; }
   #support-widget-menu a { display:flex; align-items:center; gap:8px; padding:12px 16px; font-size:14px; color:#374151; text-decoration:none; border-bottom:1px solid #f9fafb; transition:background .15s; }
   #support-widget-menu a:last-child { border-bottom:0; }
@@ -132,29 +137,29 @@ $rescanUrl  = 'index.php?option=com_muruguard&task=scanner.scan&rescan=1';
      Same plain-CSS + re-parent-to-<body> treatment as the overlay and
      support widget above, for the same reason: Joomla's admin template
      transforms the content wrapper, which breaks `position: fixed`. */
-  #sppb-modal { display:none; position:fixed; inset:0; z-index:999997; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
-  #sppb-modal.sppb-show { display:block; }
-  #sppb-modal-backdrop { position:absolute; inset:0; background:rgba(15,23,42,.6); backdrop-filter:blur(2px); -webkit-backdrop-filter:blur(2px); }
-  #sppb-modal-dialog { position:relative; max-width:720px; width:calc(100% - 32px); max-height:calc(100% - 64px); margin:32px auto; background:#fff; border-radius:16px; box-shadow:0 20px 50px rgba(0,0,0,.3); display:flex; flex-direction:column; overflow:hidden; }
-  #sppb-modal-header { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:18px 20px; border-bottom:1px solid #f1f5f9; }
-  #sppb-modal-badge { display:inline-block; font-size:11px; font-weight:700; padding:2px 8px; border-radius:9999px; margin-bottom:6px; }
-  #sppb-modal-badge.high { background:#fee2e2; color:#b91c1c; }
-  #sppb-modal-badge.medium { background:#fef3c7; color:#92400e; }
-  #sppb-modal-path { font-family:ui-monospace,monospace; font-size:12.5px; color:#374151; word-break:break-all; }
-  #sppb-modal-close { flex-shrink:0; width:28px; height:28px; border-radius:9999px; background:#f3f4f6; color:#6b7280; font-size:14px; line-height:1; cursor:pointer; border:0; }
-  #sppb-modal-close:hover { background:#e5e7eb; color:#111827; }
-  #sppb-modal-body { padding:16px 20px 20px; overflow-y:auto; }
-  .sppb-reason-block { padding:12px 0; border-bottom:1px solid #f1f5f9; }
-  .sppb-reason-block:last-child { border-bottom:0; }
-  .sppb-reason-block p { font-size:13px; color:#374151; line-height:1.55; margin:0 0 8px; }
-  .sppb-reason-code-label { font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#9ca3af; margin-bottom:4px; }
-  .sppb-reason-code { font-family:ui-monospace,monospace; font-size:12px; line-height:1.6; color:#b91c1c; background:#fef2f2; border:1px solid #fee2e2; border-radius:8px; padding:10px 12px; white-space:pre-wrap; word-break:break-all; margin:0; }
-  .sppb-diff-block { padding:12px 0; border-top:2px dashed #e5e7eb; margin-top:4px; }
-  .sppb-diff-label { font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; margin-bottom:4px; }
-  .sppb-diff-label-before { color:#b91c1c; }
-  .sppb-diff-label-after { color:#15803d; margin-top:10px; }
-  .sppb-diff-removed { font-family:ui-monospace,monospace; font-size:12px; line-height:1.6; color:#b91c1c; background:#fef2f2; border:1px solid #fee2e2; border-radius:8px; padding:10px 12px; white-space:pre-wrap; word-break:break-all; margin:0; text-decoration:line-through; text-decoration-color:#fca5a5; }
-  .sppb-diff-added { font-family:ui-monospace,monospace; font-size:12px; line-height:1.6; color:#15803d; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:10px 12px; white-space:pre-wrap; word-break:break-all; margin:0; }
+  #muru-modal { display:none; position:fixed; inset:0; z-index:999997; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  #muru-modal.muru-show { display:block; }
+  #muru-modal-backdrop { position:absolute; inset:0; background:rgba(15,23,42,.6); backdrop-filter:blur(2px); -webkit-backdrop-filter:blur(2px); }
+  #muru-modal-dialog { position:relative; max-width:720px; width:calc(100% - 32px); max-height:calc(100% - 64px); margin:32px auto; background:#fff; border-radius:16px; box-shadow:0 20px 50px rgba(0,0,0,.3); display:flex; flex-direction:column; overflow:hidden; }
+  #muru-modal-header { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:18px 20px; border-bottom:1px solid #f1f5f9; }
+  #muru-modal-badge { display:inline-block; font-size:11px; font-weight:700; padding:2px 8px; border-radius:9999px; margin-bottom:6px; }
+  #muru-modal-badge.high { background:#fee2e2; color:#b91c1c; }
+  #muru-modal-badge.medium { background:#fef3c7; color:#92400e; }
+  #muru-modal-path { font-family:ui-monospace,monospace; font-size:12.5px; color:#374151; word-break:break-all; }
+  #muru-modal-close { flex-shrink:0; width:28px; height:28px; border-radius:9999px; background:#f3f4f6; color:#6b7280; font-size:14px; line-height:1; cursor:pointer; border:0; }
+  #muru-modal-close:hover { background:#e5e7eb; color:#111827; }
+  #muru-modal-body { padding:16px 20px 20px; overflow-y:auto; }
+  .muru-reason-block { padding:12px 0; border-bottom:1px solid #f1f5f9; }
+  .muru-reason-block:last-child { border-bottom:0; }
+  .muru-reason-block p { font-size:13px; color:#374151; line-height:1.55; margin:0 0 8px; }
+  .muru-reason-code-label { font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#9ca3af; margin-bottom:4px; }
+  .muru-reason-code { font-family:ui-monospace,monospace; font-size:12px; line-height:1.6; color:#b91c1c; background:#fef2f2; border:1px solid #fee2e2; border-radius:8px; padding:10px 12px; white-space:pre-wrap; word-break:break-all; margin:0; }
+  .muru-diff-block { padding:12px 0; border-top:2px dashed #e5e7eb; margin-top:4px; }
+  .muru-diff-label { font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; margin-bottom:4px; }
+  .muru-diff-label-before { color:#b91c1c; }
+  .muru-diff-label-after { color:#15803d; margin-top:10px; }
+  .muru-diff-removed { font-family:ui-monospace,monospace; font-size:12px; line-height:1.6; color:#b91c1c; background:#fef2f2; border:1px solid #fee2e2; border-radius:8px; padding:10px 12px; white-space:pre-wrap; word-break:break-all; margin:0; text-decoration:line-through; text-decoration-color:#fca5a5; }
+  .muru-diff-added { font-family:ui-monospace,monospace; font-size:12px; line-height:1.6; color:#15803d; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:10px 12px; white-space:pre-wrap; word-break:break-all; margin:0; }
 </style>
 
 <div id="muruguard-root" class="font-sans text-gray-800 relative">
@@ -214,14 +219,14 @@ if ($w !== null && $w['safe'] !== true):
 </div>
 
 <!-- ── Settings + Support (re-parented to <body> at runtime, see script) ── -->
-<div id="sppb-header-actions">
-    <button type="button" id="sppb-settings-btn" aria-pressed="false">
+<div id="muru-header-actions">
+    <button type="button" id="muru-settings-btn" aria-pressed="false">
         ⚙️ Settings
     </button>
     <details id="support-widget">
         <summary>
             💬 Support
-            <span class="sppb-caret">▾</span>
+            <span class="muru-caret">▾</span>
         </summary>
         <div id="support-widget-menu">
             <a href="mailto:zkranao@gmail.com" target="_blank" rel="noopener">☕ Buy me a coffee</a>
@@ -232,98 +237,147 @@ if ($w !== null && $w['safe'] !== true):
 </div>
 
 <!-- ── Code-analysis modal (re-parented to <body> at runtime, see script) ── -->
-<div id="sppb-modal">
-    <div id="sppb-modal-backdrop"></div>
-    <div id="sppb-modal-dialog" role="dialog" aria-modal="true">
-        <div id="sppb-modal-header">
+<div id="muru-modal">
+    <div id="muru-modal-backdrop"></div>
+    <div id="muru-modal-dialog" role="dialog" aria-modal="true">
+        <div id="muru-modal-header">
             <div>
-                <div id="sppb-modal-badge"></div>
-                <code id="sppb-modal-path"></code>
+                <div id="muru-modal-badge"></div>
+                <code id="muru-modal-path"></code>
             </div>
-            <button type="button" id="sppb-modal-close" aria-label="Close">✕</button>
+            <button type="button" id="muru-modal-close" aria-label="Close">✕</button>
         </div>
-        <div id="sppb-modal-body"></div>
+        <div id="muru-modal-body"></div>
     </div>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════
-     SETTINGS PANEL -- hidden by default, toggled by #sppb-settings-btn.
-     Lives outside #sppb-main-content (see below) so it works regardless
+     SETTINGS PANEL -- hidden by default, toggled by #muru-settings-btn.
+     Lives outside #muru-main-content (see below) so it works regardless
      of scan state, and is never shown at the same time as the results/
      scan-gate content.
      ══════════════════════════════════════════════════════════════ -->
-<div id="sppb-settings-panel" class="hidden">
+<div id="muru-settings-panel" class="hidden">
     <div class="flex items-center justify-between mb-6">
         <h2 class="text-lg font-bold text-gray-800 flex items-center gap-2">⚙️ Settings</h2>
-        <button type="button" id="sppb-settings-back" class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors shadow-sm">
+        <button type="button" id="muru-settings-back" class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors shadow-sm">
             ← Back to scanner
         </button>
     </div>
 
-    <form action="<?= Route::_('index.php?option=com_muruguard&task=scanner.savesettings') ?>" method="post">
-        <?= HTMLHelper::_('form.token') ?>
+    <div class="flex flex-wrap gap-1 p-1.5 bg-gray-50 border border-gray-200 rounded-xl mb-5 w-fit">
+        <button type="button" class="muru-settings-tab active flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors" data-settings-tab="scheduled">
+            ⏰ Scheduled Scanning
+        </button>
+        <button type="button" class="muru-settings-tab flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors" data-settings-tab="guide">
+            📖 Setup Guide
+        </button>
+    </div>
 
-        <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-5">
-            <div class="flex items-start justify-between gap-4 mb-1">
-                <div>
-                    <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">⏰ Scheduled Scanning (Webcron)</h3>
-                    <p class="text-xs text-gray-500 mt-1 max-w-xl">Point any cron system at the URL below and get an email only when something new shows up -- never on every run, never on the very first run (which just records a baseline).</p>
+    <div class="muru-settings-tabpanel active" data-settings-panel="scheduled">
+        <form action="<?= Route::_('index.php?option=com_muruguard&task=scanner.savesettings') ?>" method="post">
+            <?= HTMLHelper::_('form.token') ?>
+
+            <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-5">
+                <div class="flex items-start justify-between gap-4 mb-1">
+                    <div>
+                        <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">⏰ Scheduled Scanning (Webcron)</h3>
+                        <p class="text-xs text-gray-500 mt-1 max-w-xl">Point any cron system at the URL below and get an email only when something new shows up -- never on every run, never on the very first run (which just records a baseline).</p>
+                    </div>
+                    <label class="muru-switch flex-shrink-0" title="<?= $this->cronEnabled ? 'Enabled' : 'Disabled' ?>">
+                        <input type="checkbox" id="muru-cron-enabled" name="cron_enabled" value="1" <?= $this->cronEnabled ? 'checked' : '' ?>>
+                        <span class="muru-switch-track"><span class="muru-switch-thumb"></span></span>
+                    </label>
                 </div>
-                <label class="sppb-switch flex-shrink-0" title="<?= $this->cronEnabled ? 'Enabled' : 'Disabled' ?>">
-                    <input type="checkbox" id="sppb-cron-enabled" name="cron_enabled" value="1" <?= $this->cronEnabled ? 'checked' : '' ?>>
-                    <span class="sppb-switch-track"><span class="sppb-switch-thumb"></span></span>
-                </label>
-            </div>
 
-            <?php if ($this->lastScheduledRun): ?>
-                <div class="text-xs text-gray-500 mb-4">
-                    🕐 Last scheduled run: <span class="font-semibold text-gray-700"><?= date('Y-m-d H:i:s', $this->lastScheduledRun) ?></span>
-                </div>
-            <?php else: ?>
-                <div class="text-xs text-gray-400 mb-4">This has never run yet -- its first run only records a baseline, it won't email anything.</div>
-            <?php endif; ?>
+                <?php if ($this->lastScheduledRun): ?>
+                    <div class="text-xs text-gray-500 mb-4">
+                        🕐 Last scheduled run: <span class="font-semibold text-gray-700"><?= date('Y-m-d H:i:s', $this->lastScheduledRun) ?></span>
+                    </div>
+                <?php else: ?>
+                    <div class="text-xs text-gray-400 mb-4">This has never run yet -- its first run only records a baseline, it won't email anything.</div>
+                <?php endif; ?>
 
-            <div class="grid sm:grid-cols-2 gap-4 mb-4">
-                <div>
-                    <label class="block text-xs font-bold text-gray-600 mb-1.5" for="sppb-cron-token">Secret token</label>
-                    <div class="flex gap-2">
-                        <input type="text" id="sppb-cron-token" name="cron_token" value="<?= htmlspecialchars($this->cronToken) ?>"
-                               placeholder="e.g. a random 32-character string"
-                               class="flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
-                        <button type="button" id="sppb-cron-generate" class="flex-shrink-0 px-3 py-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-600 bg-gray-50 hover:bg-gray-100 transition-colors">🎲 Generate</button>
+                <div class="grid sm:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-600 mb-1.5" for="muru-cron-token">Secret token</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="muru-cron-token" name="cron_token" value="<?= htmlspecialchars($this->cronToken) ?>"
+                                   placeholder="e.g. a random 32-character string"
+                                   class="flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
+                            <button type="button" id="muru-cron-generate" class="flex-shrink-0 px-3 py-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-600 bg-gray-50 hover:bg-gray-100 transition-colors">🎲 Generate</button>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-600 mb-1.5" for="muru-alert-email">Alert email address</label>
+                        <input type="email" id="muru-alert-email" name="alert_email" value="<?= htmlspecialchars($this->alertEmail) ?>"
+                               placeholder="you@example.com (optional)"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
                     </div>
                 </div>
+
+                <div class="mb-5">
+                    <label class="block text-xs font-bold text-gray-600 mb-1.5">Webcron URL <span class="font-normal text-gray-400">(paste into your cron/host control panel)</span></label>
+                    <div class="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                        <code id="muru-webcron-url" class="flex-1 min-w-0 text-xs text-gray-600 break-all"><?= htmlspecialchars(Uri::root() . 'administrator/index.php?option=com_muruguard&task=scanner.scheduledcheck&token=' . $this->cronToken) ?></code>
+                        <button type="button" class="muru-copy-btn flex-shrink-0 w-7 h-7 inline-flex items-center justify-center rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                                data-copy="<?= htmlspecialchars(Uri::root() . 'administrator/index.php?option=com_muruguard&task=scanner.scheduledcheck&token=' . $this->cronToken) ?>" title="Copy URL" aria-label="Copy URL">
+                            <span class="muru-copy-icon">📋</span>
+                        </button>
+                    </div>
+                </div>
+
+                <button type="submit" class="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm">
+                    💾 Save Settings
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <div class="muru-settings-tabpanel hidden" data-settings-panel="guide">
+        <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-5">
+            <div class="flex items-start justify-between gap-4 mb-4">
                 <div>
-                    <label class="block text-xs font-bold text-gray-600 mb-1.5" for="sppb-alert-email">Alert email address</label>
-                    <input type="email" id="sppb-alert-email" name="alert_email" value="<?= htmlspecialchars($this->alertEmail) ?>"
-                           placeholder="you@example.com (optional)"
-                           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
+                    <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">📖 Setup Guide — Global Configuration</h3>
+                    <p class="text-xs text-gray-500 mt-1 max-w-xl">The 3 scheduled-scanning fields on the other tab are a shortcut for options that also live in Joomla's own Global Configuration screen. A few more advanced options only live there.</p>
                 </div>
+                <a href="index.php?option=com_config&view=component&component=com_muruguard"
+                   class="flex-shrink-0 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm whitespace-nowrap">
+                    🔧 Open Global Configuration
+                </a>
             </div>
 
-            <div class="mb-5">
-                <label class="block text-xs font-bold text-gray-600 mb-1.5">Webcron URL <span class="font-normal text-gray-400">(paste into your cron/host control panel)</span></label>
-                <div class="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
-                    <code id="sppb-webcron-url" class="flex-1 min-w-0 text-xs text-gray-600 break-all"><?= htmlspecialchars(Uri::root() . 'administrator/index.php?option=com_muruguard&task=scanner.scheduledcheck&token=' . $this->cronToken) ?></code>
-                    <button type="button" class="sppb-copy-btn flex-shrink-0 w-7 h-7 inline-flex items-center justify-center rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
-                            data-copy="<?= htmlspecialchars(Uri::root() . 'administrator/index.php?option=com_muruguard&task=scanner.scheduledcheck&token=' . $this->cronToken) ?>" title="Copy URL" aria-label="Copy URL">
-                        <span class="sppb-copy-icon">📋</span>
-                    </button>
-                </div>
+            <div class="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 mb-5">
+                <strong class="text-gray-700">System → Global Configuration → MuRu Guard</strong> — or use the shortcut button above.
             </div>
 
-            <button type="submit" class="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm">
-                💾 Save Settings
-            </button>
+            <div class="space-y-4">
+                <div class="border-l-2 border-indigo-200 pl-3">
+                    <div class="text-sm font-semibold text-gray-800">Max file scan size</div>
+                    <p class="text-xs text-gray-500 mt-0.5">Files larger than this are skipped during content-signature scanning, so scans stay fast on sites with large media libraries. Default is 2 MB — raise it if you suspect a payload hiding inside an unusually large file, lower it if scans are timing out on a slow host.</p>
+                </div>
+                <div class="border-l-2 border-indigo-200 pl-3">
+                    <div class="text-sm font-semibold text-gray-800">Extra allowed root directories</div>
+                    <p class="text-xs text-gray-500 mt-0.5">Comma-separated top-level folder names (e.g. <code class="bg-gray-100 px-1 rounded">old, backup, archive</code>) to treat as expected instead of flagging them just for existing at the webroot. Everything inside them is still scanned normally — this only silences the "unrecognized directory" finding for folders you know are legitimate.</p>
+                </div>
+                <div class="border-l-2 border-indigo-200 pl-3">
+                    <div class="text-sm font-semibold text-gray-800">Ignored paths (false positives)</div>
+                    <p class="text-xs text-gray-500 mt-0.5">One relative path per line — e.g. <code class="bg-gray-100 px-1 rounded">administrator/components/com_example/Controller/ConfigController.php</code> — to permanently skip a confirmed false positive from a legitimate third-party extension. Supports <code class="bg-gray-100 px-1 rounded">*</code> as a wildcard, e.g. <code class="bg-gray-100 px-1 rounded">administrator/components/com_example/*</code> to ignore an entire extension. Use sparingly, and only after you've actually reviewed the flagged code.</p>
+                </div>
+                <div class="border-l-2 border-indigo-200 pl-3">
+                    <div class="text-sm font-semibold text-gray-800">Scheduled scanning switch, secret token, alert email</div>
+                    <p class="text-xs text-gray-500 mt-0.5">The exact same 3 fields as the ⏰ Scheduled Scanning tab — editing them here or there has the same effect, both read and write the same setting.</p>
+                </div>
+            </div>
         </div>
-    </form>
+    </div>
 </div>
 
 <!-- Wrapper toggled off when the Settings panel is open -- see the
-     #sppb-settings-btn handler further down. Wraps BOTH the pre-scan
+     #muru-settings-btn handler further down. Wraps BOTH the pre-scan
      gate and the post-scan results below, so Settings works regardless
      of scan state. Pure outer wrap, no internal logic changed. -->
-<div id="sppb-main-content">
+<div id="muru-main-content">
 <?php if (!$this->scanned): ?>
 <!-- ══════════════════════════════════════════════════════════════
      SCAN GATE
@@ -371,9 +425,9 @@ $totalAreaCount = array_sum(array_map('count', $scanAreas));
             <div class="flex items-center justify-between gap-3 px-5 py-3 bg-gray-50 border-b border-gray-100">
                 <span class="font-bold text-gray-800 text-sm flex items-center gap-2">🗂 Directories &amp; checks to scan</span>
                 <label class="flex items-center gap-2 text-sm font-medium text-gray-600 cursor-pointer select-none">
-                    <input type="checkbox" id="sppb-area-all"
+                    <input type="checkbox" id="muru-area-all"
                            class="w-4 h-4 rounded border-gray-300"
-                           onclick="document.querySelectorAll('.sppb-area-chk').forEach(c=>c.checked=this.checked); sppbUpdateAreaCount();">
+                           onclick="document.querySelectorAll('.muru-area-chk').forEach(c=>c.checked=this.checked); muruUpdateAreaCount();">
                     Select all
                 </label>
             </div>
@@ -392,8 +446,8 @@ $totalAreaCount = array_sum(array_map('count', $scanAreas));
                                 <label class="flex items-start gap-2 text-sm text-gray-700 cursor-pointer hover:bg-gray-50 rounded-lg px-2 py-1.5 -mx-2 transition-colors">
                                     <input type="checkbox" name="scan_areas[]"
                                            value="<?= htmlspecialchars($key) ?>"
-                                           class="sppb-area-chk mt-0.5 w-4 h-4 rounded border-gray-300 flex-shrink-0"
-                                           onchange="sppbUpdateAreaCount()"
+                                           class="muru-area-chk mt-0.5 w-4 h-4 rounded border-gray-300 flex-shrink-0"
+                                           onchange="muruUpdateAreaCount()"
                                            <?= $isAreaChecked($key) ? 'checked' : '' ?>>
                                     <span class="leading-snug"><?= $label ?></span>
                                 </label>
@@ -404,7 +458,7 @@ $totalAreaCount = array_sum(array_map('count', $scanAreas));
             </div>
 
             <div class="px-5 py-2.5 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">
-                <span id="sppb-area-count"><?= $totalAreaCount ?></span> of <?= $totalAreaCount ?> areas selected
+                <span id="muru-area-count"><?= $totalAreaCount ?></span> of <?= $totalAreaCount ?> areas selected
             </div>
         </div>
 
@@ -439,7 +493,7 @@ $totalAreaCount = array_sum(array_map('count', $scanAreas));
         <span class="text-gray-400">Cached for 5 min</span>
         <?php if ($this->cronEnabled): ?>
             <span class="text-gray-300">·</span>
-            <button type="button" id="sppb-cron-status-badge" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors" title="Click to open Settings">
+            <button type="button" id="muru-cron-status-badge" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors" title="Click to open Settings">
                 ⏰ Scheduled scanning ON
             </button>
         <?php endif; ?>
@@ -556,14 +610,14 @@ foreach ($tabs as $t) { if ($t['count'] > 0) { $activeTab = $t['id']; break; } }
     <div class="flex flex-wrap gap-1 p-1.5 bg-gray-50 border-b border-gray-100" role="tablist">
         <?php foreach ($tabs as $t): ?>
             <button type="button"
-                    class="sppb-tab flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+                    class="muru-tab flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
                     data-tab="<?= $t['id'] ?>" role="tab">
                 <span><?= $t['emoji'] ?></span>
                 <span><?= $t['title'] ?></span>
                 <?php if ($t['count'] > 0): ?>
-                    <span class="sppb-tab-badge inline-flex items-center justify-center min-w-5 h-5 px-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full"><?= $t['count'] ?></span>
+                    <span class="muru-tab-badge inline-flex items-center justify-center min-w-5 h-5 px-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full"><?= $t['count'] ?></span>
                 <?php else: ?>
-                    <span class="sppb-tab-badge inline-flex items-center justify-center w-5 h-5 bg-green-500 text-white text-[10px] font-bold rounded-full">✓</span>
+                    <span class="muru-tab-badge inline-flex items-center justify-center w-5 h-5 bg-green-500 text-white text-[10px] font-bold rounded-full">✓</span>
                 <?php endif; ?>
             </button>
         <?php endforeach; ?>
@@ -572,16 +626,16 @@ foreach ($tabs as $t) { if ($t['count'] > 0) { $activeTab = $t['id']; break; } }
 
 <?php
 /* ── Helper: tab panel wrapper (ids match the $tabs 'id' above) ── */
-function sppb_section_open(string $id, string $emoji, string $title, int $count): void {
+function muru_section_open(string $id, string $emoji, string $title, int $count): void {
     $panel = preg_replace('/^sec-/', '', $id);
     $dot = $count > 0
         ? '<span class="inline-flex items-center justify-center min-w-5 h-5 px-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full ml-2">' . $count . '</span>'
         : '<span class="inline-flex items-center justify-center w-5 h-5 bg-green-500 text-white text-[10px] font-bold rounded-full ml-2">✓</span>';
-    echo '<section id="' . $id . '" class="sppb-panel hidden bg-white border border-gray-200 rounded-xl shadow-sm mb-4 overflow-hidden anim-in" data-panel="' . $panel . '">';
+    echo '<section id="' . $id . '" class="muru-panel hidden bg-white border border-gray-200 rounded-xl shadow-sm mb-4 overflow-hidden anim-in" data-panel="' . $panel . '">';
     echo '<div class="flex items-center gap-2 font-bold text-gray-800 p-3 border-b border-gray-100">' . $emoji . ' <span>' . $title . '</span>' . $dot . '</div>';
     echo '<div class="p-3">';
 }
-function sppb_section_close(): void {
+function muru_section_close(): void {
     echo '</div></section>';
 }
 
@@ -591,7 +645,7 @@ function sppb_section_close(): void {
  *  only actually renders a preview when the file's CURRENT on-disk
  *  content still has a pattern this scanner can auto-repair -- it never
  *  shows a preview for something Clean can't actually fix. */
-function sppb_render_file_row(array $f, bool $showCleanPreview = false): void {
+function muru_render_file_row(array $f, bool $showCleanPreview = false): void {
     $pathDir  = dirname($f['rel']);
     $pathBase = basename($f['rel']);
     $isProtectedEntry = \MuruguardHelper::isProtectedEntryPath($f['rel'], \MuruguardHelper::getSignatures());
@@ -606,7 +660,7 @@ function sppb_render_file_row(array $f, bool $showCleanPreview = false): void {
     ?>
     <tr class="hover:bg-gray-50/60 transition-colors <?= $f['confidence']==='high' ? 'bg-red-50/30' : '' ?>">
         <td class="px-4 py-3">
-            <input type="checkbox" class="sppb-file-chk w-4 h-4 rounded border-gray-300"
+            <input type="checkbox" class="muru-file-chk w-4 h-4 rounded border-gray-300"
                    name="targets[]" value="<?= htmlspecialchars($f['rel']) ?>">
         </td>
         <td class="px-4 py-3">
@@ -626,9 +680,9 @@ function sppb_render_file_row(array $f, bool $showCleanPreview = false): void {
                     <?php endif; ?>
                 </div>
                 <button type="button"
-                        class="sppb-copy-btn flex-shrink-0 w-7 h-7 inline-flex items-center justify-center rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                        class="muru-copy-btn flex-shrink-0 w-7 h-7 inline-flex items-center justify-center rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
                         data-copy="<?= htmlspecialchars($f['rel']) ?>" title="Copy path" aria-label="Copy path">
-                    <span class="sppb-copy-icon">📋</span>
+                    <span class="muru-copy-icon">📋</span>
                 </button>
             </div>
         </td>
@@ -646,7 +700,7 @@ function sppb_render_file_row(array $f, bool $showCleanPreview = false): void {
         </td>
         <td class="px-4 py-3 text-xs">
             <div class="text-amber-700 mb-1.5"><?= htmlspecialchars(\MuruguardHelper::shortReasonLabel($reasonsList)) ?></div>
-            <button type="button" class="sppb-code-issues-btn inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold <?= $diffHtml !== null ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200' ?> transition-colors"
+            <button type="button" class="muru-code-issues-btn inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold <?= $diffHtml !== null ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200' ?> transition-colors"
                     data-path="<?= htmlspecialchars($f['rel']) ?>"
                     data-confidence="<?= htmlspecialchars($f['confidence']) ?>"
                     data-reasons="<?= $reasonsJson ?>">
@@ -661,19 +715,19 @@ function sppb_render_file_row(array $f, bool $showCleanPreview = false): void {
 ?>
 
 <!-- ── 1. Files ──────────────────────────────────────────────── -->
-<?php sppb_section_open('sec-files', '📁', 'Suspicious Files &amp; Folders', $deletableCount); ?>
+<?php muru_section_open('sec-files', '📁', 'Suspicious Files &amp; Folders', $deletableCount); ?>
 <?php if (empty($deletableFindings)): ?>
     <div class="flex items-center gap-3 text-green-700 bg-green-50 rounded-xl p-[10px]">
         <span class="text-2xl">✅</span>
         <span class="font-medium">No deletable suspicious files detected.</span>
     </div>
 <?php else: ?>
-    <form action="index.php?option=com_muruguard&task=scanner.delete" method="post" id="sppb-files-form"
+    <form action="index.php?option=com_muruguard&task=scanner.delete" method="post" id="muru-files-form"
           onsubmit="return confirm('Delete selected files/folders? This cannot be undone.');">
         <div class="flex items-center justify-between mb-3">
             <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
                 <input type="checkbox" class="w-4 h-4 rounded border-gray-300"
-                       onclick="document.querySelectorAll('#sppb-files-form .sppb-file-chk').forEach(c=>c.checked=this.checked)">
+                       onclick="document.querySelectorAll('#muru-files-form .muru-file-chk').forEach(c=>c.checked=this.checked)">
                 Select all
             </label>
             <div class="flex items-center gap-2 text-xs text-gray-500">
@@ -695,7 +749,7 @@ function sppb_render_file_row(array $f, bool $showCleanPreview = false): void {
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-50">
-                <?php foreach ($deletableFindings as $f): sppb_render_file_row($f); endforeach; ?>
+                <?php foreach ($deletableFindings as $f): muru_render_file_row($f); endforeach; ?>
                 </tbody>
             </table>
         </div>
@@ -709,10 +763,10 @@ function sppb_render_file_row(array $f, bool $showCleanPreview = false): void {
         </div>
     </form>
 <?php endif; ?>
-<?php sppb_section_close(); ?>
+<?php muru_section_close(); ?>
 
 <!-- ── 1b. Cleanable Files ──────────────────────────────────────── -->
-<?php sppb_section_open('sec-cleanable', '🧹', 'Cleanable Files', $cleanableCount); ?>
+<?php muru_section_open('sec-cleanable', '🧹', 'Cleanable Files', $cleanableCount); ?>
 <?php if (empty($cleanableFindings)): ?>
     <div class="flex items-center gap-3 text-green-700 bg-green-50 rounded-xl p-[10px]">
         <span class="text-2xl">✅</span>
@@ -728,7 +782,7 @@ function sppb_render_file_row(array $f, bool $showCleanPreview = false): void {
         <div class="flex items-center justify-between mb-3">
             <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
                 <input type="checkbox" class="w-4 h-4 rounded border-gray-300"
-                       onclick="document.querySelectorAll('#sec-cleanable .sppb-file-chk').forEach(c=>c.checked=this.checked)">
+                       onclick="document.querySelectorAll('#sec-cleanable .muru-file-chk').forEach(c=>c.checked=this.checked)">
                 Select all
             </label>
             <span class="text-xs text-gray-500"><?= $cleanableCount ?> file<?= $cleanableCount === 1 ? '' : 's' ?> eligible for auto-clean</span>
@@ -747,7 +801,7 @@ function sppb_render_file_row(array $f, bool $showCleanPreview = false): void {
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-50">
-                <?php foreach ($cleanableFindings as $f): sppb_render_file_row($f, true); endforeach; ?>
+                <?php foreach ($cleanableFindings as $f): muru_render_file_row($f, true); endforeach; ?>
                 </tbody>
             </table>
         </div>
@@ -761,10 +815,10 @@ function sppb_render_file_row(array $f, bool $showCleanPreview = false): void {
         </div>
     </form>
 <?php endif; ?>
-<?php sppb_section_close(); ?>
+<?php muru_section_close(); ?>
 
 <!-- ── 2. Super Users ─────────────────────────────────────────── -->
-<?php sppb_section_open('sec-users', '👤', 'Super User Accounts', $suCount); ?>
+<?php muru_section_open('sec-users', '👤', 'Super User Accounts', $suCount); ?>
 <?php if (empty($dbFindings['superusers'])): ?>
     <div class="flex items-center gap-3 text-green-700 bg-green-50 rounded-xl p-[10px]">
         <span class="text-2xl">✅</span><span class="font-medium">No super user accounts found.</span>
@@ -803,10 +857,10 @@ function sppb_render_file_row(array $f, bool $showCleanPreview = false): void {
     </div>
     <p class="text-xs text-gray-400">Remove rogue accounts via <strong>Users → Manage</strong> — do not delete your own account.</p>
 <?php endif; ?>
-<?php sppb_section_close(); ?>
+<?php muru_section_close(); ?>
 
 <!-- ── 3. Menu XSS ───────────────────────────────────────────── -->
-<?php sppb_section_open('sec-menu', '🔗', 'Menu XSS Injections', $menuCount); ?>
+<?php muru_section_open('sec-menu', '🔗', 'Menu XSS Injections', $menuCount); ?>
 <?php if (empty($dbFindings['menu_xss'])): ?>
     <div class="flex items-center gap-3 text-green-700 bg-green-50 rounded-xl p-[10px]">
         <span class="text-2xl">✅</span><span class="font-medium">No injected menu items found.</span>
@@ -817,7 +871,7 @@ function sppb_render_file_row(array $f, bool $showCleanPreview = false): void {
         <div class="flex items-center justify-between mb-3">
             <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
                 <input type="checkbox" class="w-4 h-4 rounded border-gray-300"
-                       onclick="document.querySelectorAll('.sppb-menu-chk').forEach(c=>c.checked=this.checked)">
+                       onclick="document.querySelectorAll('.muru-menu-chk').forEach(c=>c.checked=this.checked)">
                 Select all
             </label>
         </div>
@@ -834,7 +888,7 @@ function sppb_render_file_row(array $f, bool $showCleanPreview = false): void {
                 <tbody class="divide-y divide-gray-50">
                 <?php foreach ($dbFindings['menu_xss'] as $m): ?>
                     <tr class="hover:bg-red-50/40 bg-red-50/20 transition-colors">
-                        <td class="px-4 py-3"><input type="checkbox" class="sppb-menu-chk w-4 h-4 rounded border-gray-300" name="menu_xss_ids[]" value="<?= (int)$m['id'] ?>"></td>
+                        <td class="px-4 py-3"><input type="checkbox" class="muru-menu-chk w-4 h-4 rounded border-gray-300" name="menu_xss_ids[]" value="<?= (int)$m['id'] ?>"></td>
                         <td class="px-4 py-3 text-xs font-mono text-gray-500"><?= (int)$m['id'] ?></td>
                         <td class="px-4 py-3 font-medium"><?= htmlspecialchars($m['title']) ?></td>
                         <td class="px-4 py-3"><code class="text-xs break-all text-gray-600"><?= htmlspecialchars($m['link']) ?></code></td>
@@ -854,10 +908,10 @@ function sppb_render_file_row(array $f, bool $showCleanPreview = false): void {
         </div>
     </form>
 <?php endif; ?>
-<?php sppb_section_close(); ?>
+<?php muru_section_close(); ?>
 
 <!-- ── 4. SPPB Assets ────────────────────────────────────────── -->
-<?php sppb_section_open('sec-assets', '🗄', 'SP Page Builder Asset Table', $assetCount); ?>
+<?php muru_section_open('sec-assets', '🗄', 'SP Page Builder Asset Table', $assetCount); ?>
 <?php if (empty($dbFindings['sppb_assets']) && empty($dbFindings['rogue_iconfont'])): ?>
     <div class="flex items-center gap-3 text-green-700 bg-green-50 rounded-xl p-[10px]">
         <span class="text-2xl">✅</span><span class="font-medium">No suspicious rows found in sppagebuilder_assets.</span>
@@ -917,7 +971,7 @@ function sppb_render_file_row(array $f, bool $showCleanPreview = false): void {
                 </h4>
                 <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
                     <input type="checkbox" class="w-4 h-4 rounded border-gray-300"
-                           onclick="document.querySelectorAll('.sppb-asset-chk').forEach(c=>c.checked=this.checked)">
+                           onclick="document.querySelectorAll('.muru-asset-chk').forEach(c=>c.checked=this.checked)">
                     Select all
                 </label>
             </div>
@@ -934,7 +988,7 @@ function sppb_render_file_row(array $f, bool $showCleanPreview = false): void {
                     <tbody class="divide-y divide-gray-50">
                     <?php foreach ($dbFindings['rogue_iconfont'] as $row): ?>
                         <tr class="hover:bg-red-50/40 bg-red-50/20 transition-colors">
-                            <td class="px-4 py-3"><input type="checkbox" class="sppb-asset-chk w-4 h-4 rounded border-gray-300" name="rogue_asset_ids[]" value="<?= (int)$row['id'] ?>"></td>
+                            <td class="px-4 py-3"><input type="checkbox" class="muru-asset-chk w-4 h-4 rounded border-gray-300" name="rogue_asset_ids[]" value="<?= (int)$row['id'] ?>"></td>
                             <td class="px-4 py-3 text-xs font-mono text-gray-500"><?= (int)$row['id'] ?></td>
                             <td class="px-4 py-3"><code class="text-xs bg-gray-100 px-1.5 py-0.5 rounded"><?= htmlspecialchars($row['name']) ?></code></td>
                             <td class="px-4 py-3 text-sm"><?= htmlspecialchars($row['title']) ?></td>
@@ -954,10 +1008,10 @@ function sppb_render_file_row(array $f, bool $showCleanPreview = false): void {
         </form>
     <?php endif; ?>
 <?php endif; ?>
-<?php sppb_section_close(); ?>
+<?php muru_section_close(); ?>
 
 <!-- ── 5. Template defacement ────────────────────────────────── -->
-<?php sppb_section_open('sec-template', '🖼', 'Template Styles Defacement', $deface); ?>
+<?php muru_section_open('sec-template', '🖼', 'Template Styles Defacement', $deface); ?>
 <?php if (empty($dbFindings['template_defacement'])): ?>
     <div class="flex items-center gap-3 text-green-700 bg-green-50 rounded-xl p-[10px]">
         <span class="text-2xl">✅</span><span class="font-medium">No defacement markers found in template_styles.</span>
@@ -986,10 +1040,10 @@ function sppb_render_file_row(array $f, bool $showCleanPreview = false): void {
     </div>
     <p class="text-xs text-gray-400">Review and restore these template styles from a clean backup.</p>
 <?php endif; ?>
-<?php sppb_section_close(); ?>
+<?php muru_section_close(); ?>
 
 <?php endif; // end $this->scanned ?>
-</div><!-- /#sppb-main-content -->
+</div><!-- /#muru-main-content -->
 
 </div><!-- #muruguard-root -->
 
@@ -1001,14 +1055,14 @@ function sppb_render_file_row(array $f, bool $showCleanPreview = false): void {
     // animating the collapsible sidebar, and a transformed ancestor
     // breaks `position: fixed` for any descendant, confining it to that
     // ancestor's box instead of the actual viewport.
-    ['muruguard-overlay', 'sppb-header-actions', 'sppb-modal'].forEach(function (id) {
+    ['muruguard-overlay', 'muru-header-actions', 'muru-modal'].forEach(function (id) {
         var el = document.getElementById(id);
         if (el && el.parentNode !== document.body) {
             document.body.appendChild(el);
         }
     });
 
-    sppbUpdateAreaCount();
+    muruUpdateAreaCount();
 
     var forms = [document.getElementById('muruguard-form'), document.getElementById('muruguard-rescan-form')];
     forms.forEach(function (form) {
@@ -1027,8 +1081,8 @@ function sppb_render_file_row(array $f, bool $showCleanPreview = false): void {
     });
 
     // ── Tabbed results ──────────────────────────────────────────
-    var tabs   = document.querySelectorAll('.sppb-tab');
-    var panels = document.querySelectorAll('.sppb-panel');
+    var tabs   = document.querySelectorAll('.muru-tab');
+    var panels = document.querySelectorAll('.muru-panel');
     function activateTab(id) {
         tabs.forEach(function (t) { t.classList.toggle('active', t.getAttribute('data-tab') === id); });
         panels.forEach(function (p) {
@@ -1043,38 +1097,53 @@ function sppb_render_file_row(array $f, bool $showCleanPreview = false): void {
     if (tabs.length) { activateTab(<?= json_encode($activeTab ?? 'files') ?>); }
 
     // ── Settings panel ───────────────────────────────────────────
-    // Swaps #sppb-main-content (whichever of scan-gate/results is
-    // currently rendered) for #sppb-settings-panel and back -- a plain
+    // Swaps #muru-main-content (whichever of scan-gate/results is
+    // currently rendered) for #muru-settings-panel and back -- a plain
     // two-way toggle, independent of the results tab system above.
-    var settingsBtn   = document.getElementById('sppb-settings-btn');
-    var settingsBack  = document.getElementById('sppb-settings-back');
-    var settingsPanel = document.getElementById('sppb-settings-panel');
-    var mainContent   = document.getElementById('sppb-main-content');
+    var settingsBtn   = document.getElementById('muru-settings-btn');
+    var settingsBack  = document.getElementById('muru-settings-back');
+    var settingsPanel = document.getElementById('muru-settings-panel');
+    var mainContent   = document.getElementById('muru-main-content');
     function openSettings() {
         if (!settingsPanel || !mainContent) return;
         mainContent.classList.add('hidden');
         settingsPanel.classList.remove('hidden');
-        settingsBtn.classList.add('sppb-settings-open');
+        settingsBtn.classList.add('muru-settings-open');
         settingsBtn.setAttribute('aria-pressed', 'true');
     }
     function closeSettings() {
         if (!settingsPanel || !mainContent) return;
         settingsPanel.classList.add('hidden');
         mainContent.classList.remove('hidden');
-        settingsBtn.classList.remove('sppb-settings-open');
+        settingsBtn.classList.remove('muru-settings-open');
         settingsBtn.setAttribute('aria-pressed', 'false');
     }
     if (settingsBtn) settingsBtn.addEventListener('click', openSettings);
-    var cronBadge = document.getElementById('sppb-cron-status-badge');
+    var cronBadge = document.getElementById('muru-cron-status-badge');
     if (cronBadge) cronBadge.addEventListener('click', openSettings);
     if (settingsBack) settingsBack.addEventListener('click', closeSettings);
+
+    // ── Settings sub-tabs (Scheduled Scanning / Setup Guide) ─────
+    var settingsTabs   = document.querySelectorAll('.muru-settings-tab');
+    var settingsPanels = document.querySelectorAll('.muru-settings-tabpanel');
+    settingsTabs.forEach(function (t) {
+        t.addEventListener('click', function () {
+            var id = t.getAttribute('data-settings-tab');
+            settingsTabs.forEach(function (st) { st.classList.toggle('active', st === t); });
+            settingsPanels.forEach(function (p) {
+                var on = p.getAttribute('data-settings-panel') === id;
+                p.classList.toggle('active', on);
+                p.classList.toggle('hidden', !on);
+            });
+        });
+    });
 
     // Live-updates the webcron URL preview as the token field changes,
     // and fills in a fresh random token on Generate -- purely client-side
     // convenience, nothing is saved until the Save Settings button posts.
-    var tokenField = document.getElementById('sppb-cron-token');
-    var urlEl      = document.getElementById('sppb-webcron-url');
-    var urlCopyBtn = urlEl ? urlEl.closest('div').querySelector('.sppb-copy-btn') : null;
+    var tokenField = document.getElementById('muru-cron-token');
+    var urlEl      = document.getElementById('muru-webcron-url');
+    var urlCopyBtn = urlEl ? urlEl.closest('div').querySelector('.muru-copy-btn') : null;
     var webcronBase = <?= json_encode(Uri::root() . 'administrator/index.php?option=com_muruguard&task=scanner.scheduledcheck&token=') ?>;
     function refreshWebcronUrl() {
         if (!tokenField || !urlEl) return;
@@ -1083,7 +1152,7 @@ function sppb_render_file_row(array $f, bool $showCleanPreview = false): void {
         if (urlCopyBtn) urlCopyBtn.setAttribute('data-copy', url);
     }
     if (tokenField) tokenField.addEventListener('input', refreshWebcronUrl);
-    var generateBtn = document.getElementById('sppb-cron-generate');
+    var generateBtn = document.getElementById('muru-cron-generate');
     if (generateBtn && tokenField) {
         generateBtn.addEventListener('click', function () {
             var bytes = new Uint8Array(24);
@@ -1099,26 +1168,26 @@ function sppb_render_file_row(array $f, bool $showCleanPreview = false): void {
     // inside a results panel that can be re-rendered/hidden by the tab
     // switcher above, so this stays correct regardless of DOM churn.
     document.addEventListener('click', function (e) {
-        var issuesBtn = e.target.closest('.sppb-code-issues-btn');
-        if (issuesBtn) { sppbOpenCodeModal(issuesBtn); return; }
+        var issuesBtn = e.target.closest('.muru-code-issues-btn');
+        if (issuesBtn) { muruOpenCodeModal(issuesBtn); return; }
 
-        var copyBtn = e.target.closest('.sppb-copy-btn');
-        if (copyBtn) { sppbCopyPath(copyBtn); return; }
+        var copyBtn = e.target.closest('.muru-copy-btn');
+        if (copyBtn) { muruCopyPath(copyBtn); return; }
 
-        if (e.target.id === 'sppb-modal-close' || e.target.id === 'sppb-modal-backdrop') {
-            sppbCloseCodeModal();
+        if (e.target.id === 'muru-modal-close' || e.target.id === 'muru-modal-backdrop') {
+            muruCloseCodeModal();
         }
     });
     document.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape') sppbCloseCodeModal();
+        if (e.key === 'Escape') muruCloseCodeModal();
     });
 })();
 
-function sppbOpenCodeModal(btn) {
-    var modal   = document.getElementById('sppb-modal');
-    var badge   = document.getElementById('sppb-modal-badge');
-    var pathEl  = document.getElementById('sppb-modal-path');
-    var bodyEl  = document.getElementById('sppb-modal-body');
+function muruOpenCodeModal(btn) {
+    var modal   = document.getElementById('muru-modal');
+    var badge   = document.getElementById('muru-modal-badge');
+    var pathEl  = document.getElementById('muru-modal-path');
+    var bodyEl  = document.getElementById('muru-modal-body');
     var conf    = btn.getAttribute('data-confidence') || 'medium';
     var blocks  = [];
     try { blocks = JSON.parse(btn.getAttribute('data-reasons') || '[]'); } catch (err) { blocks = []; }
@@ -1131,38 +1200,38 @@ function sppbOpenCodeModal(btn) {
     // nothing user-controlled reaches innerHTML unescaped here.
     bodyEl.innerHTML = blocks.join('');
 
-    modal.classList.add('sppb-show');
+    modal.classList.add('muru-show');
     document.body.style.overflow = 'hidden';
 }
 
-function sppbCloseCodeModal() {
-    var modal = document.getElementById('sppb-modal');
-    modal.classList.remove('sppb-show');
+function muruCloseCodeModal() {
+    var modal = document.getElementById('muru-modal');
+    modal.classList.remove('muru-show');
     document.body.style.overflow = '';
 }
 
-function sppbCopyPath(btn) {
+function muruCopyPath(btn) {
     var text = btn.getAttribute('data-copy') || '';
-    var icon = btn.querySelector('.sppb-copy-icon');
+    var icon = btn.querySelector('.muru-copy-icon');
 
     function showCopied() {
         if (!icon) return;
         icon.textContent = '✅';
-        btn.classList.add('sppb-copied');
+        btn.classList.add('muru-copied');
         setTimeout(function () {
             icon.textContent = '📋';
-            btn.classList.remove('sppb-copied');
+            btn.classList.remove('muru-copied');
         }, 1200);
     }
 
     if (navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(text).then(showCopied).catch(function () { sppbCopyPathFallback(text, showCopied); });
+        navigator.clipboard.writeText(text).then(showCopied).catch(function () { muruCopyPathFallback(text, showCopied); });
     } else {
-        sppbCopyPathFallback(text, showCopied);
+        muruCopyPathFallback(text, showCopied);
     }
 }
 
-function sppbCopyPathFallback(text, onDone) {
+function muruCopyPathFallback(text, onDone) {
     var ta = document.createElement('textarea');
     ta.value = text;
     ta.style.position = 'fixed';
@@ -1174,16 +1243,16 @@ function sppbCopyPathFallback(text, onDone) {
     document.body.removeChild(ta);
 }
 
-function sppbUpdateAreaCount() {
-    var boxes = document.querySelectorAll('.sppb-area-chk');
+function muruUpdateAreaCount() {
+    var boxes = document.querySelectorAll('.muru-area-chk');
     if (!boxes.length) return;
     var checked = 0;
     boxes.forEach(function (c) { if (c.checked) checked++; });
 
-    var countEl = document.getElementById('sppb-area-count');
+    var countEl = document.getElementById('muru-area-count');
     if (countEl) countEl.textContent = checked;
 
-    var master = document.getElementById('sppb-area-all');
+    var master = document.getElementById('muru-area-all');
     if (master) {
         master.checked = checked === boxes.length;
         master.indeterminate = checked > 0 && checked < boxes.length;
