@@ -1,6 +1,6 @@
 <?php
 /**
- * @package     com_sppbscan
+ * @package     com_muruguard
  * @author      ZKRANA <zkranao@gmail.com>
  * @license     MIT
  *
@@ -15,7 +15,7 @@ defined('_JEXEC') or die;
 use Joomla\CMS\Factory;
 use Joomla\CMS\Language\Text;
 
-class SppbscanHelper
+class MuruguardHelper
 {
     /**
      * Ensures the request is from a logged-in backend user with manage rights.
@@ -29,7 +29,7 @@ class SppbscanHelper
             throw new \Joomla\CMS\Exception\NotAllowed(Text::_('JERROR_ALERTNOAUTHOR'), 403);
         }
 
-        if (!$user->authorise('core.manage', 'com_sppbscan')) {
+        if (!$user->authorise('core.manage', 'com_muruguard')) {
             throw new \Joomla\CMS\Exception\NotAllowed(Text::_('JERROR_ALERTNOAUTHOR'), 403);
         }
     }
@@ -160,7 +160,7 @@ class SppbscanHelper
             ],
 
             'SAFE_COMPONENT_PATHS' => [
-                '/administrator/components/com_sppbscan/',
+                '/administrator/components/com_muruguard/',
                 '/administrator/components/com_rsfirewall/',
                 '/administrator/components/com_htprotect/',
                 '/administrator/components/com_akeeba/',
@@ -192,9 +192,13 @@ class SppbscanHelper
             // template) cannot function without it. Matched exactly for
             // the fixed entry points; matched by pattern for any
             // template's own root index.php since the template name
-            // varies per site.
+            // varies per site. Also covers the other files the bundled
+            // core-checksum manifest verifies (see
+            // getCoreChecksumManifest()) -- a checksum mismatch on any of
+            // these needs manual review/restore, never a one-click delete.
             'PROTECTED_ENTRY_FILES' => [
                 'index.php', 'administrator/index.php', 'api/index.php', 'includes/app.php',
+                'includes/framework.php', 'robots.txt.dist', 'htaccess.txt', 'web.config.txt',
             ],
             'PROTECTED_ENTRY_FILE_PATTERNS' => [
                 '#^(administrator/)?templates/[^/]+/index\.php$#i',
@@ -661,6 +665,70 @@ class SppbscanHelper
         return null;
     }
 
+    /**
+     * Loads the bundled per-Joomla-version SHA-256 checksum manifest for a
+     * curated set of security-critical, site-independent core files (see
+     * helpers/data/joomla_core_checksums.php for how it was generated and
+     * exactly which files/versions it covers). Cached in a static so the
+     * small data file is only read once per request no matter how many
+     * files get checksum-checked.
+     */
+    public static function getCoreChecksumManifest(): array
+    {
+        static $manifest = null;
+        if ($manifest === null) {
+            $path = __DIR__ . '/data/joomla_core_checksums.php';
+            $manifest = is_file($path) ? (include $path) : [];
+        }
+        return $manifest;
+    }
+
+    /**
+     * Reads the exact installed Joomla core version from
+     * administrator/manifests/files/joomla.xml -- the same file Joomla's
+     * own update-checker relies on, present in every install. Plain
+     * text/regex, no PHP execution, so this is safe to call against an
+     * untrusted/potentially-infected codebase.
+     */
+    public static function getInstalledJoomlaVersion(string $root): ?string
+    {
+        $path = $root . '/administrator/manifests/files/joomla.xml';
+        if (!is_file($path)) return null;
+        $contents = @file_get_contents($path, false, null, 0, 4096);
+        if ($contents === false) return null;
+        if (preg_match('/<version>\s*([0-9]+\.[0-9]+\.[0-9]+)\s*<\/version>/i', $contents, $m)) {
+            return $m[1];
+        }
+        return null;
+    }
+
+    /**
+     * Compares a core file's actual SHA-256 against the bundled official
+     * hash for the site's exact installed Joomla version. Returns null
+     * (no finding) whenever the version or path isn't covered by the
+     * manifest -- an unlisted version/file is a "we don't know" gap,
+     * never treated as evidence of tampering, so this can only ever add
+     * true findings on top of the existing heuristics, never introduce a
+     * false positive from missing coverage. A mismatch is unambiguous,
+     * byte-for-byte proof of tampering -- stronger than any heuristic
+     * pattern match elsewhere in this scanner.
+     */
+    public static function checkCoreFileChecksum(string $relPath, string $absPath, ?string $version, array $manifest): ?string
+    {
+        if ($version === null || !isset($manifest[$version])) return null;
+        $relNorm = ltrim(str_replace('\\', '/', $relPath), '/');
+        if (!isset($manifest[$version][$relNorm])) return null;
+        if (!is_file($absPath)) return null;
+        $actual = @hash_file('sha256', $absPath);
+        if ($actual === false) return null;
+        $expected = $manifest[$version][$relNorm];
+        if (hash_equals($expected, $actual)) return null;
+
+        return "Core file checksum mismatch — this file's content does not match the official Joomla {$version} release byte-for-byte "
+             . '(expected sha256 ' . substr($expected, 0, 12) . '…, found ' . substr($actual, 0, 12) . '…). '
+             . 'This is direct, unambiguous evidence of tampering, not a heuristic guess.';
+    }
+
     public static function checkCoreIndexIntegrity(string $contents): ?string
     {
         $info = self::checkPrependedPayload($contents);
@@ -705,14 +773,19 @@ class SppbscanHelper
         $info = self::checkPrependedPayload($contents);
         if ($info === null) return ['cleaned' => $contents, 'changed' => false];
 
+        $replacement = '<?php' . "\n";
         $before  = substr($contents, 0, $info['open_tag_pos']);
         $after   = substr($contents, $info['anchor_pos']);
-        $cleaned = $before . '<?php' . "\n" . $after;
+        $cleaned = $before . $replacement . $after;
 
         $preview = trim(preg_replace('/\s+/', ' ', $info['prefix']));
         $preview = strlen($preview) > 160 ? substr($preview, 0, 160) . '…' : $preview;
 
-        return ['cleaned' => $cleaned, 'changed' => true, 'removed_preview' => $preview];
+        return [
+            'cleaned' => $cleaned, 'changed' => true, 'removed_preview' => $preview,
+            'removed_start' => $info['open_tag_pos'], 'removed_end' => $info['anchor_pos'],
+            'replacement' => $replacement,
+        ];
     }
 
     /**
@@ -788,7 +861,71 @@ class SppbscanHelper
         $preview = trim(preg_replace('/\s+/', ' ', $info['block']));
         $preview = strlen($preview) > 160 ? substr($preview, 0, 160) . '…' : $preview;
 
-        return ['cleaned' => $cleaned, 'changed' => true, 'removed_preview' => $preview];
+        return [
+            'cleaned' => $cleaned, 'changed' => true, 'removed_preview' => $preview,
+            'removed_start' => $info['start'], 'removed_end' => $info['end'], 'replacement' => '',
+        ];
+    }
+
+    /**
+     * Renders a ready-made, pre-escaped HTML block showing exactly what
+     * the Clean action would remove (and add back, if anything) -- kept
+     * server-side, like formatReasonForDisplay(), so the client never
+     * parses or escapes free text, it just injects finished HTML. Takes
+     * the exact removed/replacement strings a clean*() function reports
+     * (see 'removed_start'/'removed_end'/'replacement' in
+     * cleanPrependedPayload()/cleanHeadTagInjection()) rather than trying
+     * to reverse-engineer the change from before/after content -- a
+     * generic character-diff is ambiguous whenever the removed region's
+     * boundary bytes repeat (e.g. a "<script...>" block sitting right
+     * after "<head>" -- both start with "<"), which silently misaligns
+     * the shown snippet by a few bytes. Using the exact positions the
+     * clean function already computed avoids that class of bug entirely.
+     */
+    public static function formatCleanPreview(string $removed, string $replacement): string
+    {
+        $removedLen = strlen($removed);
+        $removedTrim = trim($removed);
+        $removedTrunc = strlen($removedTrim) > 400 ? substr($removedTrim, 0, 400) . '…' : $removedTrim;
+
+        $addedTrim = trim($replacement);
+
+        $html  = '<div class="sppb-diff-block">';
+        $html .= '<div class="sppb-diff-label sppb-diff-label-before">Before — Clean would remove ' . $removedLen . ' byte' . ($removedLen === 1 ? '' : 's') . '</div>';
+        $html .= '<pre class="sppb-diff-removed">' . htmlspecialchars($removedTrunc !== '' ? $removedTrunc : '(only whitespace)') . '</pre>';
+        if ($addedTrim !== '') {
+            $html .= '<div class="sppb-diff-label sppb-diff-label-after">After — replaced with</div>';
+            $html .= '<pre class="sppb-diff-added">' . htmlspecialchars($addedTrim) . '</pre>';
+        } else {
+            $html .= '<div class="sppb-diff-label sppb-diff-label-after">After — removed entirely, nothing put in its place</div>';
+        }
+        $html .= '</div>';
+        return $html;
+    }
+
+    /**
+     * Read-only dry run of cleanCodeFiles()'s exact repair logic (same
+     * two functions, same order) against a file's CURRENT on-disk content
+     * -- never writes anything. Returns a ready-to-display HTML diff
+     * block when an auto-clean pattern is recognized, or null when it
+     * isn't (unreadable file, or no pattern this scanner knows how to
+     * auto-repair), so the UI can show an accurate "Preview Clean" only
+     * where clicking Clean would actually change something.
+     */
+    public static function previewCleanDiff(string $absPath): ?string
+    {
+        if (!is_file($absPath)) return null;
+        $contents = @file_get_contents($absPath);
+        if ($contents === false) return null;
+
+        $result = self::cleanPrependedPayload($contents);
+        if (!$result['changed']) {
+            $result = self::cleanHeadTagInjection($contents);
+        }
+        if (!$result['changed']) return null;
+
+        $removed = substr($contents, $result['removed_start'], $result['removed_end'] - $result['removed_start']);
+        return self::formatCleanPreview($removed, $result['replacement']);
     }
 
     /**
@@ -941,7 +1078,7 @@ class SppbscanHelper
         $highSignals = [
             'high-confidence exploit pattern', 'icon-font', 'malicious pattern', 'unrecognized', 'numeric',
             'non-standard index.php', 'core entry-point', 'stream-wrapper', 'backup/duplicate', 'bootstrap',
-            'masquerade', 'disguise', 'polyglot',
+            'masquerade', 'disguise', 'polyglot', 'checksum mismatch',
         ];
         $confidence = 'medium';
         foreach ($highSignals as $sigName) {

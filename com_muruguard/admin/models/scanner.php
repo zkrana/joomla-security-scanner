@@ -1,6 +1,6 @@
 <?php
 /**
- * @package     com_sppbscan
+ * @package     com_muruguard
  * @author      ZKRANA <zkranao@gmail.com>
  * @license     MIT
  */
@@ -11,9 +11,9 @@ use Joomla\CMS\MVC\Model\BaseDatabaseModel;
 use Joomla\CMS\Factory;
 use Joomla\CMS\Component\ComponentHelper;
 
-require_once JPATH_ADMINISTRATOR . '/components/com_sppbscan/helpers/sppbscan.php';
+require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/muruguard.php';
 
-class SppbscanModelScanner extends BaseDatabaseModel
+class MuruguardModelScanner extends BaseDatabaseModel
 {
     protected string $root;
     protected array $fileFindings = [];
@@ -37,7 +37,7 @@ class SppbscanModelScanner extends BaseDatabaseModel
      */
     protected function selectedAreas(): array
     {
-        return (array) Factory::getApplication()->getSession()->get('sppbscan.scan_areas', []);
+        return (array) Factory::getApplication()->getSession()->get('muruguard.scan_areas', []);
     }
 
     /** True if $key was selected (or if nothing was explicitly selected). */
@@ -57,8 +57,8 @@ class SppbscanModelScanner extends BaseDatabaseModel
         $forceRescan = Factory::getApplication()->input->getBool('rescan', false);
 
         if (!$forceRescan) {
-            $cached = $session->get('sppbscan.filefindings');
-            $cachedAt = $session->get('sppbscan.filefindings_time', 0);
+            $cached = $session->get('muruguard.filefindings');
+            $cachedAt = $session->get('muruguard.filefindings_time', 0);
             if (is_array($cached) && (time() - $cachedAt) < 300) {
                 $this->fileFindings = $cached;
                 return $this->fileFindings;
@@ -66,8 +66,8 @@ class SppbscanModelScanner extends BaseDatabaseModel
         }
 
         $this->scanFilesystem();
-        $session->set('sppbscan.filefindings', $this->fileFindings);
-        $session->set('sppbscan.filefindings_time', time());
+        $session->set('muruguard.filefindings', $this->fileFindings);
+        $session->set('muruguard.filefindings_time', time());
         return $this->fileFindings;
     }
 
@@ -80,7 +80,7 @@ class SppbscanModelScanner extends BaseDatabaseModel
     /** True if a scan result is already sitting in the session cache. */
     public function hasCachedScan(): bool
     {
-        $cached = Factory::getApplication()->getSession()->get('sppbscan.filefindings');
+        $cached = Factory::getApplication()->getSession()->get('muruguard.filefindings');
         return is_array($cached);
     }
 
@@ -93,9 +93,121 @@ class SppbscanModelScanner extends BaseDatabaseModel
         $session = Factory::getApplication()->getSession();
         $this->scanFilesystem();
         $now = time();
-        $session->set('sppbscan.filefindings', $this->fileFindings);
-        $session->set('sppbscan.filefindings_time', $now);
+        $session->set('muruguard.filefindings', $this->fileFindings);
+        $session->set('muruguard.filefindings_time', $now);
         return $now;
+    }
+
+    /**
+     * Full scan + diff-against-last-run, for the scheduled/webcron entry
+     * point (see ScannerController::scheduledcheck()). There's no HTTP
+     * session in a cron context, so the set of finding keys from the
+     * PREVIOUS run is persisted in a small JSON file this component owns
+     * (see loadLastScanKeys()/saveLastScanKeys() below) rather than the
+     * session -- no new DB table, and deliberately NOT the component's
+     * config params (see scanHistoryFilePath() for why).
+     *
+     * Deliberately never sends anything itself -- it only decides WHAT is
+     * new, so the Joomla-Mailer-specific code stays in the controller.
+     * On the very first run ever (no previous snapshot exists yet) this
+     * only records a baseline and reports isFirstRun = true, so the
+     * caller can skip alerting on a site's entire pre-existing finding
+     * list the first time this ever runs.
+     */
+    public function runScheduledCheck(): array
+    {
+        $this->scanFilesystem();
+        $this->scanDatabase();
+
+        $currentKeys = array_keys($this->fileFindings);
+        sort($currentKeys);
+
+        $previousKeys = $this->loadLastScanKeys();
+        $this->saveLastScanKeys($currentKeys);
+
+        $newKeys = $previousKeys === null ? [] : array_values(array_diff($currentKeys, $previousKeys));
+        $newFindings = [];
+        foreach ($newKeys as $rel) {
+            if (isset($this->fileFindings[$rel])) $newFindings[$rel] = $this->fileFindings[$rel];
+        }
+
+        return [
+            'newFindings' => $newFindings,
+            'newCount'    => count($newFindings),
+            'totalCount'  => count($this->fileFindings),
+            'isFirstRun'  => $previousKeys === null,
+        ];
+    }
+
+    /**
+     * Deliberately a plain JSON file under this component's own data/
+     * folder, NOT a key inside #__extensions.params -- Joomla's own
+     * Global Configuration save for this component replaces that whole
+     * params blob with just the config.xml-declared fields, which would
+     * silently wipe an internal bookkeeping key living there every time
+     * an admin saves Options, with no error or warning. A dedicated file
+     * is immune to that entirely and needs no schema/migration.
+     */
+    private function scanHistoryFilePath(): string
+    {
+        return JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/scan-history.json';
+    }
+
+    /** Null means the scheduled check has never run on this site. For the Settings panel's "Last run" indicator. */
+    public function getLastScheduledRunTime(): ?int
+    {
+        $path = $this->scanHistoryFilePath();
+        if (!is_file($path)) return null;
+
+        $contents = @file_get_contents($path);
+        if ($contents === false) return null;
+
+        $decoded = json_decode($contents, true);
+        return is_array($decoded) && isset($decoded['saved_at']) ? (int) $decoded['saved_at'] : null;
+    }
+
+    /** Null means "never run before" (as opposed to an empty array, which means the last run found nothing). */
+    private function loadLastScanKeys(): ?array
+    {
+        $path = $this->scanHistoryFilePath();
+        if (!is_file($path)) return null;
+
+        $contents = @file_get_contents($path);
+        if ($contents === false) return null;
+
+        $decoded = json_decode($contents, true);
+        if (!is_array($decoded) || !isset($decoded['keys']) || !is_array($decoded['keys'])) return null;
+        return $decoded['keys'];
+    }
+
+    private function saveLastScanKeys(array $keys): void
+    {
+        $path = $this->scanHistoryFilePath();
+        @file_put_contents($path, json_encode(['keys' => $keys, 'saved_at' => time()]));
+    }
+
+    /**
+     * Persists the 3 scheduled-scanning settings into this component's
+     * own extension params -- the same storage Global Configuration reads
+     * from, so the in-page Settings panel and System > Global
+     * Configuration > MuRu Guard always agree with each other. Safe
+     * from the wipe risk documented on scanHistoryFilePath() because it
+     * ONLY ever touches these 3 known keys, never the internal scan
+     * history (which deliberately never lives in this params blob at
+     * all anymore).
+     */
+    public function saveScheduledSettings(bool $enabled, string $token, string $email): void
+    {
+        $table = new \Joomla\CMS\Table\Extension($this->getDatabase());
+        if (!$table->load(['element' => 'com_muruguard', 'type' => 'component'])) return;
+
+        $params = json_decode((string) $table->params, true);
+        if (!is_array($params)) $params = [];
+        $params['cron_enabled'] = $enabled ? 1 : 0;
+        $params['cron_token'] = $token;
+        $params['alert_email'] = $email;
+        $table->params = json_encode($params);
+        $table->store();
     }
 
     // ------------------------------------------------------------------
@@ -104,8 +216,8 @@ class SppbscanModelScanner extends BaseDatabaseModel
 
     public function scanFilesystem(): void
     {
-        $sig = SppbscanHelper::getSignatures();
-        $params = ComponentHelper::getParams('com_sppbscan');
+        $sig = MuruguardHelper::getSignatures();
+        $params = ComponentHelper::getParams('com_muruguard');
         $maxSize = (int) ($params->get('max_file_scan_size', 2 * 1024 * 1024));
 
         $extraRootDirs = array_filter(array_map('trim', explode(',', (string) $params->get('extra_root_dirs', ''))));
@@ -120,21 +232,21 @@ class SppbscanModelScanner extends BaseDatabaseModel
             return false;
         };
 
-        $selfLogPattern  = '/^\.sppbscan-[a-f0-9]{16}\.(log|lock)$/i';
+        $selfLogPattern  = '/^\.muruguard-[a-f0-9]{16}\.(log|lock)$/i';
         $googleVerifyPattern = '/^google[a-f0-9]{16,}\.html$/i';
         // Safety-backup copies this scanner's own "Clean code" action
         // writes before overwriting an infected file -- deliberately kept
         // on disk for manual review/rollback, so they shouldn't re-appear
         // as a "new" finding on the next scan (they still contain the
         // original malicious content by design, that's the whole point).
-        $selfBackupPattern = '/\.sppbscan-\d{8}-\d{6}\.bak$/i';
+        $selfBackupPattern = '/\.muruguard-\d{8}-\d{6}\.bak$/i';
 
         foreach ($sig['SCAN_CONFIG'] as $relDir => $mode) {
             if (!$this->isAreaSelected($relDir)) continue;
             $dir = $this->root . '/' . $relDir;
             if (!is_dir($dir)) continue;
 
-            SppbscanHelper::walkDir($dir, function (string $path, bool $isDir) use ($sig, $mode, $maxSize, $isIgnored, $selfBackupPattern) {
+            MuruguardHelper::walkDir($dir, function (string $path, bool $isDir) use ($sig, $mode, $maxSize, $isIgnored, $selfBackupPattern) {
                 foreach ($sig['SAFE_COMPONENT_PATHS'] as $safeFrag) {
                     if (stripos($path, $safeFrag) !== false) return;
                 }
@@ -194,7 +306,7 @@ class SppbscanModelScanner extends BaseDatabaseModel
                 // 'upload' mode strict structural checks
                 if ($mode === 'upload') {
                     if ($isDir) {
-                        if (preg_match('/^\d+$/', $basename) && !SppbscanHelper::isDateLikeNumericFolderName($basename)) {
+                        if (preg_match('/^\d+$/', $basename) && !MuruguardHelper::isDateLikeNumericFolderName($basename)) {
                             $flagged = true;
                             $reasons[] = "Folder name is purely numeric (\"{$basename}\") and isn't a normal date/ID component — a common automated-malware-drop pattern.";
                         }
@@ -203,7 +315,7 @@ class SppbscanModelScanner extends BaseDatabaseModel
                         $isBlankStub = false;
                         if ($ext === 'php' && strcasecmp($basename, 'index.php') === 0) {
                             $stubContents = @file_get_contents($path, false, null, 0, 4096);
-                            if ($stubContents !== false && SppbscanHelper::isStandardJoomlaStub($stubContents)) {
+                            if ($stubContents !== false && MuruguardHelper::isStandardJoomlaStub($stubContents)) {
                                 $isBlankStub = true;
                             }
                         }
@@ -231,24 +343,24 @@ class SppbscanModelScanner extends BaseDatabaseModel
                 // content signature scan runs in both modes, files only
                 if (!$isDir) {
                     $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
-                    if (SppbscanHelper::scanFileContent($path, $ext, $sig, $maxSize, $reasons)) {
+                    if (MuruguardHelper::scanFileContent($path, $ext, $sig, $maxSize, $reasons)) {
                         $flagged = true;
                     }
                 }
 
                 // core-path masquerade check (location-based, runs both modes)
-                $masq = SppbscanHelper::checkCoreMasquerade($relCheck, $isDir, $sig, $path);
+                $masq = MuruguardHelper::checkCoreMasquerade($relCheck, $isDir, $sig, $path);
                 if ($masq !== null) { $flagged = true; $reasons[] = $masq; }
 
                 // stray index.php structural check (location-based, runs both modes)
                 if (!$isDir && !$isKnownSafeEntry) {
-                    $strayIdx = SppbscanHelper::checkStrayIndexPhp($relCheck, $path, $sig);
+                    $strayIdx = MuruguardHelper::checkStrayIndexPhp($relCheck, $path, $sig);
                     if ($strayIdx !== null) { $flagged = true; $reasons[] = $strayIdx; }
                 }
 
                 if ($flagged) {
                     $this->seenAbs[$path] = true;
-                    SppbscanHelper::recordFinding($this->fileFindings, $path, $this->root, $reasons, $isDir);
+                    MuruguardHelper::recordFinding($this->fileFindings, $path, $this->root, $reasons, $isDir);
                 }
             });
         }
@@ -267,12 +379,12 @@ class SppbscanModelScanner extends BaseDatabaseModel
             if (is_dir($p)) {
                 if (!in_array(strtolower($it), array_map('strtolower', $sig['KNOWN_ROOT_DIRS']), true)) {
                     $this->seenAbs[$p] = true;
-                    SppbscanHelper::recordFinding($this->fileFindings, $p, $this->root,
+                    MuruguardHelper::recordFinding($this->fileFindings, $p, $this->root,
                         'Unrecognized directory directly in the Joomla webroot — not part of a standard install.', true);
-                    SppbscanHelper::walkDir($p, function (string $innerPath, bool $innerIsDir) {
+                    MuruguardHelper::walkDir($p, function (string $innerPath, bool $innerIsDir) {
                         if ($innerIsDir || isset($this->seenAbs[$innerPath])) return;
                         $this->seenAbs[$innerPath] = true;
-                        SppbscanHelper::recordFinding($this->fileFindings, $innerPath, $this->root,
+                        MuruguardHelper::recordFinding($this->fileFindings, $innerPath, $this->root,
                             'Inside an unrecognized top-level webroot directory.', false);
                     });
                 }
@@ -296,11 +408,11 @@ class SppbscanModelScanner extends BaseDatabaseModel
                 if (preg_match($re, $it)) { $flaggedRoot = true; $reasonsRoot[] = 'Backup/duplicate configuration file — leaks the same credentials as configuration.php.'; break; }
             }
 
-            $masqRoot = SppbscanHelper::checkCoreMasquerade($relCheck, false, $sig, $p);
+            $masqRoot = MuruguardHelper::checkCoreMasquerade($relCheck, false, $sig, $p);
             if ($masqRoot !== null) { $flaggedRoot = true; $reasonsRoot[] = $masqRoot; }
 
             $extR = strtolower(pathinfo($p, PATHINFO_EXTENSION));
-            SppbscanHelper::scanFileContent($p, $extR, $sig, $maxSize, $reasonsRoot);
+            MuruguardHelper::scanFileContent($p, $extR, $sig, $maxSize, $reasonsRoot);
             if (count($reasonsRoot) > ($flaggedRoot ? 1 : 0)) $flaggedRoot = true;
 
             $benignStaticExts = ['css', 'jpg', 'jpeg', 'png', 'gif', 'svg', 'ico', 'webp', 'woff', 'woff2', 'ttf', 'eot', 'map'];
@@ -311,11 +423,18 @@ class SppbscanModelScanner extends BaseDatabaseModel
 
             if ($flaggedRoot) {
                 $this->seenAbs[$p] = true;
-                SppbscanHelper::recordFinding($this->fileFindings, $p, $this->root, $reasonsRoot, false);
+                MuruguardHelper::recordFinding($this->fileFindings, $p, $this->root, $reasonsRoot, false);
             }
         }
 
-        // Core entry-point integrity + content-signature scan
+        // Core entry-point integrity + content-signature scan, plus (when
+        // the site's exact Joomla version is covered by the bundled
+        // manifest) a byte-for-byte checksum comparison against the
+        // official release -- unambiguous proof of tampering, independent
+        // of and stronger than every heuristic check here.
+        $joomlaVersion = MuruguardHelper::getInstalledJoomlaVersion($this->root);
+        $checksumManifest = MuruguardHelper::getCoreChecksumManifest();
+
         $coreEntries = $this->isAreaSelected('core_entry') ? $sig['CORE_ENTRY_POINTS'] : [];
         foreach ($coreEntries as $relEntry) {
             $absEntry = $this->root . '/' . $relEntry;
@@ -326,15 +445,37 @@ class SppbscanModelScanner extends BaseDatabaseModel
             if ($contents === false) continue;
 
             $reasonsEntry = [];
-            $issue = SppbscanHelper::checkCoreIndexIntegrity($contents);
+            $issue = MuruguardHelper::checkCoreIndexIntegrity($contents);
             if ($issue !== null) $reasonsEntry[] = $issue;
 
             $ext = strtolower(pathinfo($absEntry, PATHINFO_EXTENSION));
-            SppbscanHelper::scanFileContent($absEntry, $ext, $sig, $maxSize, $reasonsEntry);
+            MuruguardHelper::scanFileContent($absEntry, $ext, $sig, $maxSize, $reasonsEntry);
+
+            $checksumIssue = MuruguardHelper::checkCoreFileChecksum($relEntry, $absEntry, $joomlaVersion, $checksumManifest);
+            if ($checksumIssue !== null) $reasonsEntry[] = $checksumIssue;
 
             if (!empty($reasonsEntry)) {
                 $this->seenAbs[$absEntry] = true;
-                SppbscanHelper::recordFinding($this->fileFindings, $absEntry, $this->root, $reasonsEntry, false);
+                MuruguardHelper::recordFinding($this->fileFindings, $absEntry, $this->root, $reasonsEntry, false);
+            }
+        }
+
+        // Checksum-only pass for the remaining manifest-covered static
+        // files (includes/framework.php, robots.txt.dist, htaccess.txt,
+        // web.config.txt) -- none of these paths are reached by any other
+        // scan pass above, so there's no risk of a second recordFinding()
+        // call on the same file silently overwriting an earlier finding.
+        if ($this->isAreaSelected('core_entry') && $joomlaVersion !== null && isset($checksumManifest[$joomlaVersion])) {
+            $staticCoreFiles = ['includes/framework.php', 'robots.txt.dist', 'htaccess.txt', 'web.config.txt'];
+            foreach ($staticCoreFiles as $relEntry) {
+                $absEntry = $this->root . '/' . $relEntry;
+                if (isset($this->seenAbs[$absEntry]) || !is_file($absEntry)) continue;
+
+                $checksumIssue = MuruguardHelper::checkCoreFileChecksum($relEntry, $absEntry, $joomlaVersion, $checksumManifest);
+                if ($checksumIssue !== null) {
+                    $this->seenAbs[$absEntry] = true;
+                    MuruguardHelper::recordFinding($this->fileFindings, $absEntry, $this->root, [$checksumIssue], false);
+                }
             }
         }
     }
@@ -348,7 +489,7 @@ class SppbscanModelScanner extends BaseDatabaseModel
         if (!$this->isAreaSelected('database')) return;
 
         $db  = $this->getDatabase();
-        $sig = SppbscanHelper::getSignatures();
+        $sig = MuruguardHelper::getSignatures();
 
         try {
             $query = $db->getQuery(true)
@@ -504,7 +645,7 @@ class SppbscanModelScanner extends BaseDatabaseModel
     public function deleteTargets(array $targets): array
     {
         $this->fileFindings = $this->getFileFindings();
-        $sig = SppbscanHelper::getSignatures();
+        $sig = MuruguardHelper::getSignatures();
         $rootReal = realpath($this->root);
         $protectedAbs = array_map(fn($d) => $rootReal . DIRECTORY_SEPARATOR . $d, $sig['PROTECTED_TOP_DIRS']);
         $flash = [];
@@ -518,19 +659,19 @@ class SppbscanModelScanner extends BaseDatabaseModel
             if (basename($abs) === 'configuration.php') { $flash[] = "SKIPPED (protected): $relPath"; continue; }
             if (in_array($abs, $protectedAbs, true) || $abs === $rootReal) { $flash[] = "SKIPPED (protected top-level directory): $relPath"; continue; }
 
-            if (SppbscanHelper::isProtectedEntryPath($relPath, $sig)) {
+            if (MuruguardHelper::isProtectedEntryPath($relPath, $sig)) {
                 $flash[] = "SKIPPED (required core entry file — use \"Clean code\" to strip injected code instead of deleting): $relPath";
                 continue;
             }
 
             if (is_dir($abs)) {
-                $flash[] = SppbscanHelper::deleteRecursive($abs) ? "DELETED (folder): $relPath" : "FAILED (permissions?): $relPath";
+                $flash[] = MuruguardHelper::deleteRecursive($abs) ? "DELETED (folder): $relPath" : "FAILED (permissions?): $relPath";
             } elseif (is_file($abs)) {
                 $flash[] = @unlink($abs) ? "DELETED: $relPath" : "FAILED (permissions?): $relPath";
             }
         }
 
-        Factory::getApplication()->getSession()->set('sppbscan.filefindings', null);
+        Factory::getApplication()->getSession()->set('muruguard.filefindings', null);
         return $flash;
     }
 
@@ -578,16 +719,16 @@ class SppbscanModelScanner extends BaseDatabaseModel
             $contents = @file_get_contents($abs);
             if ($contents === false) { $flash[] = "SKIPPED (unreadable): $relPath"; continue; }
 
-            $result = SppbscanHelper::cleanPrependedPayload($contents);
+            $result = MuruguardHelper::cleanPrependedPayload($contents);
             if (!$result['changed']) {
-                $result = SppbscanHelper::cleanHeadTagInjection($contents);
+                $result = MuruguardHelper::cleanHeadTagInjection($contents);
             }
             if (!$result['changed']) {
                 $flash[] = "SKIPPED (no auto-cleanable pattern recognized here — review the Code Issues details and clean manually): $relPath";
                 continue;
             }
 
-            $backup = $abs . '.sppbscan-' . date('Ymd-His') . '.bak';
+            $backup = $abs . '.muruguard-' . date('Ymd-His') . '.bak';
             if (@copy($abs, $backup) === false) {
                 $flash[] = "SKIPPED (couldn't create a safety backup, nothing was changed): $relPath";
                 continue;
@@ -605,8 +746,8 @@ class SppbscanModelScanner extends BaseDatabaseModel
             clearstatcache(true, $abs);
             $verifyContents = @file_get_contents($abs);
             $stillInfected = $verifyContents !== false && (
-                SppbscanHelper::cleanPrependedPayload($verifyContents)['changed']
-                || SppbscanHelper::cleanHeadTagInjection($verifyContents)['changed']
+                MuruguardHelper::cleanPrependedPayload($verifyContents)['changed']
+                || MuruguardHelper::cleanHeadTagInjection($verifyContents)['changed']
             );
             if ($stillInfected) {
                 $flash[] = "WARNING: wrote the file but re-reading it still shows the same infection pattern — something on the server (a cache, a file-integrity/restore tool, or another process) may be reverting the change. Backup kept at " . basename($backup) . ": $relPath";
@@ -616,14 +757,14 @@ class SppbscanModelScanner extends BaseDatabaseModel
             $flash[] = "CLEANED (removed: {$result['removed_preview']}) — original backed up as " . basename($backup) . ": $relPath";
         }
 
-        Factory::getApplication()->getSession()->set('sppbscan.filefindings', null);
+        Factory::getApplication()->getSession()->set('muruguard.filefindings', null);
         return $flash;
     }
 
     public function cleanMenuXss(array $ids): array
     {
         $db = $this->getDatabase();
-        $sig = SppbscanHelper::getSignatures();
+        $sig = MuruguardHelper::getSignatures();
         $flash = [];
 
         foreach ($ids as $id) {
@@ -633,7 +774,7 @@ class SppbscanModelScanner extends BaseDatabaseModel
             $paramsJson = $db->loadResult();
             if ($paramsJson === null) { $flash[] = "SKIPPED (row not found): id $id"; continue; }
 
-            $result = SppbscanHelper::cleanMenuParamsXss((string) $paramsJson, array_values($sig['MENU_XSS_PATTERNS']));
+            $result = MuruguardHelper::cleanMenuParamsXss((string) $paramsJson, array_values($sig['MENU_XSS_PATTERNS']));
             if (!$result['changed']) { $flash[] = "SKIPPED (couldn't safely parse params — clean manually): id $id"; continue; }
 
             $update = $db->getQuery(true)->update($db->quoteName('#__menu'))

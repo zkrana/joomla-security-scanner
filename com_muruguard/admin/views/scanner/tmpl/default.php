@@ -1,6 +1,6 @@
 <?php
 /**
- * @package     com_sppbscan
+ * @package     com_muruguard
  * @author      ZKRANA <zkranao@gmail.com>
  * @license     MIT
  */
@@ -14,21 +14,22 @@ use Joomla\CMS\Factory;
 use Joomla\CMS\MVC\View\HtmlView;
 use Joomla\CMS\Toolbar\ToolbarHelper;
 use Joomla\CMS\Toolbar\ToolbarInterface;
+use Joomla\CMS\Uri\Uri;
 
-/** @var SppbscanViewScanner $this */
+/** @var MuruguardViewScanner $this */
 $fileFindings = $this->fileFindings ?? [];
 $dbFindings   = $this->dbFindings   ?? [];
 $suspiciousSU = !empty($dbFindings['superusers'])
     ? array_filter($dbFindings['superusers'], fn($u) => $u['suspicious'])
     : [];
 
-$scanUrl    = 'index.php?option=com_sppbscan&task=scanner.scan';
-$rescanUrl  = 'index.php?option=com_sppbscan&task=scanner.scan&rescan=1';
+$scanUrl    = 'index.php?option=com_muruguard&task=scanner.scan';
+$rescanUrl  = 'index.php?option=com_muruguard&task=scanner.scan&rescan=1';
 ?>
 
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
-  // Scope every Tailwind utility class to elements inside #sppbscan-root,
+  // Scope every Tailwind utility class to elements inside #muruguard-root,
   // and disable Tailwind's global reset (preflight). Without this, the
   // CDN build resets margin/box-sizing/line-height on EVERY element on
   // the admin page (not just ours), and several of its utility class
@@ -37,28 +38,28 @@ $rescanUrl  = 'index.php?option=com_sppbscan&task=scanner.scan&rescan=1';
   // breaking the sidebar, post-install messages, and other admin chrome
   // sitting outside this component.
   tailwind.config = {
-    important: '#sppbscan-root',
+    important: '#muruguard-root',
     corePlugins: { preflight: false },
   };
 </script>
 <style>
-  @keyframes sppbscan-spin { to { transform: rotate(360deg); } }
-  @keyframes sppbscan-fade-up { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
-  @keyframes sppbscan-pulse-ring { 0%,100%{opacity:.4;transform:scale(1)} 50%{opacity:.8;transform:scale(1.08)} }
-  .spinner { animation: sppbscan-spin 0.8s linear infinite; }
-  .anim-in { animation: sppbscan-fade-up 0.4s ease both; }
-  .shield-pulse { animation: sppbscan-pulse-ring 2.5s ease-in-out infinite; }
+  @keyframes muruguard-spin { to { transform: rotate(360deg); } }
+  @keyframes muruguard-fade-up { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes muruguard-pulse-ring { 0%,100%{opacity:.4;transform:scale(1)} 50%{opacity:.8;transform:scale(1.08)} }
+  .spinner { animation: muruguard-spin 0.8s linear infinite; }
+  .anim-in { animation: muruguard-fade-up 0.4s ease both; }
+  .shield-pulse { animation: muruguard-pulse-ring 2.5s ease-in-out infinite; }
 
   /* Base resets scoped to our component only, replacing what Tailwind's
      preflight would normally do globally (now disabled above). */
-  #sppbscan-root, #sppbscan-root * { box-sizing: border-box; }
-  #sppbscan-root { line-height: 1.55; -webkit-font-smoothing: antialiased; }
-  #sppbscan-root h1, #sppbscan-root h2, #sppbscan-root h3, #sppbscan-root h4, #sppbscan-root p { margin: 0; }
-  #sppbscan-root a { color: inherit; text-decoration: none; }
-  #sppbscan-root button { font: inherit; cursor: pointer; background: none; border: 0; padding: 0; -webkit-appearance: none; appearance: none; }
-  #sppbscan-root table { border-collapse: collapse; width: 100%; }
-  #sppbscan-root pre  { white-space: pre-wrap; word-break: break-all; }
-  #sppbscan-root code { font-family: ui-monospace, monospace; }
+  #muruguard-root, #muruguard-root * { box-sizing: border-box; }
+  #muruguard-root { line-height: 1.55; -webkit-font-smoothing: antialiased; }
+  #muruguard-root h1, #muruguard-root h2, #muruguard-root h3, #muruguard-root h4, #muruguard-root p { margin: 0; }
+  #muruguard-root a { color: inherit; text-decoration: none; }
+  #muruguard-root button { font: inherit; cursor: pointer; background: none; border: 0; padding: 0; -webkit-appearance: none; appearance: none; }
+  #muruguard-root table { border-collapse: collapse; width: 100%; }
+  #muruguard-root pre  { white-space: pre-wrap; word-break: break-all; }
+  #muruguard-root code { font-family: ui-monospace, monospace; }
 
   /* scrollable table wrapper */
   .tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -72,37 +73,51 @@ $rescanUrl  = 'index.php?option=com_sppbscan&task=scanner.scan&rescan=1';
   /* copy-path button feedback */
   .sppb-copy-btn.sppb-copied { color:#16a34a !important; background:#f0fdf4 !important; }
 
-  /* ── Loading overlay & floating support widget ──────────────────
-     Deliberately PLAIN CSS (no Tailwind utility classes). Both elements
-     get re-parented to <body> at runtime via JS: Joomla's admin template
+  /* settings toggle switch */
+  .sppb-switch { display:inline-flex; cursor:pointer; }
+  .sppb-switch input { position:absolute; opacity:0; width:0; height:0; }
+  .sppb-switch-track { width:44px; height:24px; border-radius:9999px; background:#d1d5db; position:relative; transition:background .2s; flex-shrink:0; }
+  .sppb-switch-thumb { position:absolute; top:2px; left:2px; width:20px; height:20px; border-radius:9999px; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.15); transition:transform .2s; }
+  .sppb-switch input:checked + .sppb-switch-track { background:#4338ca; }
+  .sppb-switch input:checked + .sppb-switch-track .sppb-switch-thumb { transform:translateX(20px); }
+  .sppb-switch input:focus-visible + .sppb-switch-track { box-shadow:0 0 0 3px rgba(67,56,202,.3); }
+
+  /* ── Loading overlay & floating header-actions widget ────────────
+     Deliberately PLAIN CSS (no Tailwind utility classes). Both the
+     overlay and the header-actions wrapper (Settings + Support) get
+     re-parented to <body> at runtime via JS: Joomla's admin template
      applies a CSS transform to the content wrapper while animating the
      collapsible sidebar, and a transformed ancestor breaks
      `position: fixed` (it gets confined to that ancestor's box instead
      of the real viewport -- which is why the overlay was appearing
      pinned near the sidebar instead of centered). Re-parenting to <body>
-     escapes that, but also takes these elements outside #sppbscan-root,
+     escapes that, but also takes these elements outside #muruguard-root,
      so they can no longer rely on the Tailwind scoping above. */
-  #sppbscan-overlay {
+  #muruguard-overlay {
     position: fixed; inset: 0; z-index: 999999; display: none;
     align-items: center; justify-content: center;
     background: rgba(15,23,42,.86);
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
-  #sppbscan-overlay.sppbscan-show { display: flex; }
-  .sppbscan-overlay-card { display:flex; flex-direction:column; align-items:center; text-align:center; max-width:320px; padding:0 16px; }
-  .sppbscan-overlay-icon-wrap { position:relative; width:64px; height:64px; margin-bottom:20px; display:flex; align-items:center; justify-content:center; font-size:30px; }
-  .sppbscan-overlay-spinner { position:absolute; inset:0; border-radius:9999px; border:4px solid rgba(255,255,255,.12); border-top-color:#3b82f6; animation: sppbscan-spin .8s linear infinite; }
-  .sppbscan-overlay-icon { animation: sppbscan-icon-pulse 1.6s ease-in-out infinite; }
-  @keyframes sppbscan-icon-pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
-  .sppbscan-overlay-title { color:#fff; font-weight:700; font-size:16px; margin:0 0 8px; }
-  .sppbscan-overlay-status { color:#94a3b8; font-size:14px; margin:0 0 20px; min-height:18px; transition:opacity .3s; }
-  .sppbscan-overlay-track { width:224px; height:6px; border-radius:9999px; background:rgba(255,255,255,.1); overflow:hidden; margin-bottom:16px; }
-  .sppbscan-overlay-bar { height:100%; border-radius:9999px; background:linear-gradient(90deg,#3b82f6,#60a5fa); width:30%; animation: sppbscan-bar-slide 1.8s ease-in-out infinite; }
-  @keyframes sppbscan-bar-slide { 0%{width:15%;margin-left:0} 50%{width:55%;margin-left:20%} 100%{width:15%;margin-left:100%} }
-  .sppbscan-overlay-note { color:#64748b; font-size:11px; line-height:1.6; margin:0; }
+  #muruguard-overlay.muruguard-show { display: flex; }
+  .muruguard-overlay-card { display:flex; flex-direction:column; align-items:center; text-align:center; max-width:320px; padding:0 16px; }
+  .muruguard-overlay-icon-wrap { position:relative; width:64px; height:64px; margin-bottom:20px; display:flex; align-items:center; justify-content:center; font-size:30px; }
+  .muruguard-overlay-spinner { position:absolute; inset:0; border-radius:9999px; border:4px solid rgba(255,255,255,.12); border-top-color:#3b82f6; animation: muruguard-spin .8s linear infinite; }
+  .muruguard-overlay-icon { animation: muruguard-icon-pulse 1.6s ease-in-out infinite; }
+  @keyframes muruguard-icon-pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+  .muruguard-overlay-title { color:#fff; font-weight:700; font-size:16px; margin:0 0 8px; }
+  .muruguard-overlay-status { color:#94a3b8; font-size:14px; margin:0 0 20px; min-height:18px; transition:opacity .3s; }
+  .muruguard-overlay-track { width:224px; height:6px; border-radius:9999px; background:rgba(255,255,255,.1); overflow:hidden; margin-bottom:16px; }
+  .muruguard-overlay-bar { height:100%; border-radius:9999px; background:linear-gradient(90deg,#3b82f6,#60a5fa); width:30%; animation: muruguard-bar-slide 1.8s ease-in-out infinite; }
+  @keyframes muruguard-bar-slide { 0%{width:15%;margin-left:0} 50%{width:55%;margin-left:20%} 100%{width:15%;margin-left:100%} }
+  .muruguard-overlay-note { color:#64748b; font-size:11px; line-height:1.6; margin:0; }
 
-  #support-widget { position: fixed; top: 64px; right: 20px; z-index: 999998; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  #sppb-header-actions { position: fixed; top: 64px; right: 20px; z-index: 999998; display: flex; align-items: flex-start; gap: 8px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  #sppb-settings-btn { display:flex; align-items:center; gap:8px; background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:8px 16px; font-size:14px; font-weight:600; color:#374151; box-shadow:0 1px 3px rgba(0,0,0,.08); transition:box-shadow .2s, background .2s, color .2s; cursor:pointer; }
+  #sppb-settings-btn:hover { box-shadow:0 4px 10px rgba(0,0,0,.1); }
+  #sppb-settings-btn.sppb-settings-open { background:#4338ca; border-color:#4338ca; color:#fff; }
+  #support-widget { position: relative; }
   #support-widget summary { list-style:none; cursor:pointer; user-select:none; display:flex; align-items:center; gap:8px; background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:8px 16px; font-size:14px; font-weight:600; color:#374151; box-shadow:0 1px 3px rgba(0,0,0,.08); transition:box-shadow .2s; }
   #support-widget summary::-webkit-details-marker { display:none; }
   #support-widget summary:hover { box-shadow:0 4px 10px rgba(0,0,0,.1); }
@@ -134,9 +149,15 @@ $rescanUrl  = 'index.php?option=com_sppbscan&task=scanner.scan&rescan=1';
   .sppb-reason-block p { font-size:13px; color:#374151; line-height:1.55; margin:0 0 8px; }
   .sppb-reason-code-label { font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#9ca3af; margin-bottom:4px; }
   .sppb-reason-code { font-family:ui-monospace,monospace; font-size:12px; line-height:1.6; color:#b91c1c; background:#fef2f2; border:1px solid #fee2e2; border-radius:8px; padding:10px 12px; white-space:pre-wrap; word-break:break-all; margin:0; }
+  .sppb-diff-block { padding:12px 0; border-top:2px dashed #e5e7eb; margin-top:4px; }
+  .sppb-diff-label { font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; margin-bottom:4px; }
+  .sppb-diff-label-before { color:#b91c1c; }
+  .sppb-diff-label-after { color:#15803d; margin-top:10px; }
+  .sppb-diff-removed { font-family:ui-monospace,monospace; font-size:12px; line-height:1.6; color:#b91c1c; background:#fef2f2; border:1px solid #fee2e2; border-radius:8px; padding:10px 12px; white-space:pre-wrap; word-break:break-all; margin:0; text-decoration:line-through; text-decoration-color:#fca5a5; }
+  .sppb-diff-added { font-family:ui-monospace,monospace; font-size:12px; line-height:1.6; color:#15803d; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:10px 12px; white-space:pre-wrap; word-break:break-all; margin:0; }
 </style>
 
-<div id="sppbscan-root" class="font-sans text-gray-800 relative">
+<div id="muruguard-root" class="font-sans text-gray-800 relative">
 
 <?php
 /* ── SPPB version warning banner ───────────────────────────────── */
@@ -179,31 +200,36 @@ if ($w !== null && $w['safe'] !== true):
 <?php endif; ?>
 
 <!-- ── Loading overlay (re-parented to <body> at runtime, see script) ── -->
-<div id="sppbscan-overlay">
-    <div class="sppbscan-overlay-card">
-        <div class="sppbscan-overlay-icon-wrap">
-            <div class="sppbscan-overlay-spinner"></div>
-            <span class="sppbscan-overlay-icon">🛡️</span>
+<div id="muruguard-overlay">
+    <div class="muruguard-overlay-card">
+        <div class="muruguard-overlay-icon-wrap">
+            <div class="muruguard-overlay-spinner"></div>
+            <span class="muruguard-overlay-icon">🛡️</span>
         </div>
-        <h3 class="sppbscan-overlay-title">Scanning your Joomla installation</h3>
-        <p id="sppbscan-loading-status" class="sppbscan-overlay-status">Starting scan…</p>
-        <div class="sppbscan-overlay-track"><div class="sppbscan-overlay-bar"></div></div>
-        <p class="sppbscan-overlay-note">This usually takes 10–30 seconds depending on site size — please don't close this tab.</p>
+        <h3 class="muruguard-overlay-title">Scanning your Joomla installation</h3>
+        <p id="muruguard-loading-status" class="muruguard-overlay-status">Starting scan…</p>
+        <div class="muruguard-overlay-track"><div class="muruguard-overlay-bar"></div></div>
+        <p class="muruguard-overlay-note">This usually takes 10–30 seconds depending on site size — please don't close this tab.</p>
     </div>
 </div>
 
-<!-- ── Support widget (re-parented to <body> at runtime, see script) ── -->
-<details id="support-widget">
-    <summary>
-        💬 Support
-        <span class="sppb-caret">▾</span>
-    </summary>
-    <div id="support-widget-menu">
-        <a href="mailto:zkranao@gmail.com" target="_blank" rel="noopener">☕ Buy me a coffee</a>
-        <a href="mailto:zkranao@gmail.com" target="_blank" rel="noopener">✉️ Email support</a>
-        <a href="https://www.linkedin.com/in/zkranadevs/" target="_blank" rel="noopener">💼 LinkedIn</a>
-    </div>
-</details>
+<!-- ── Settings + Support (re-parented to <body> at runtime, see script) ── -->
+<div id="sppb-header-actions">
+    <button type="button" id="sppb-settings-btn" aria-pressed="false">
+        ⚙️ Settings
+    </button>
+    <details id="support-widget">
+        <summary>
+            💬 Support
+            <span class="sppb-caret">▾</span>
+        </summary>
+        <div id="support-widget-menu">
+            <a href="mailto:zkranao@gmail.com" target="_blank" rel="noopener">☕ Buy me a coffee</a>
+            <a href="mailto:zkranao@gmail.com" target="_blank" rel="noopener">✉️ Email support</a>
+            <a href="https://www.linkedin.com/in/zkranadevs/" target="_blank" rel="noopener">💼 LinkedIn</a>
+        </div>
+    </details>
+</div>
 
 <!-- ── Code-analysis modal (re-parented to <body> at runtime, see script) ── -->
 <div id="sppb-modal">
@@ -220,6 +246,84 @@ if ($w !== null && $w['safe'] !== true):
     </div>
 </div>
 
+<!-- ══════════════════════════════════════════════════════════════
+     SETTINGS PANEL -- hidden by default, toggled by #sppb-settings-btn.
+     Lives outside #sppb-main-content (see below) so it works regardless
+     of scan state, and is never shown at the same time as the results/
+     scan-gate content.
+     ══════════════════════════════════════════════════════════════ -->
+<div id="sppb-settings-panel" class="hidden">
+    <div class="flex items-center justify-between mb-6">
+        <h2 class="text-lg font-bold text-gray-800 flex items-center gap-2">⚙️ Settings</h2>
+        <button type="button" id="sppb-settings-back" class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors shadow-sm">
+            ← Back to scanner
+        </button>
+    </div>
+
+    <form action="<?= Route::_('index.php?option=com_muruguard&task=scanner.savesettings') ?>" method="post">
+        <?= HTMLHelper::_('form.token') ?>
+
+        <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-5">
+            <div class="flex items-start justify-between gap-4 mb-1">
+                <div>
+                    <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">⏰ Scheduled Scanning (Webcron)</h3>
+                    <p class="text-xs text-gray-500 mt-1 max-w-xl">Point any cron system at the URL below and get an email only when something new shows up -- never on every run, never on the very first run (which just records a baseline).</p>
+                </div>
+                <label class="sppb-switch flex-shrink-0" title="<?= $this->cronEnabled ? 'Enabled' : 'Disabled' ?>">
+                    <input type="checkbox" id="sppb-cron-enabled" name="cron_enabled" value="1" <?= $this->cronEnabled ? 'checked' : '' ?>>
+                    <span class="sppb-switch-track"><span class="sppb-switch-thumb"></span></span>
+                </label>
+            </div>
+
+            <?php if ($this->lastScheduledRun): ?>
+                <div class="text-xs text-gray-500 mb-4">
+                    🕐 Last scheduled run: <span class="font-semibold text-gray-700"><?= date('Y-m-d H:i:s', $this->lastScheduledRun) ?></span>
+                </div>
+            <?php else: ?>
+                <div class="text-xs text-gray-400 mb-4">This has never run yet -- its first run only records a baseline, it won't email anything.</div>
+            <?php endif; ?>
+
+            <div class="grid sm:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1.5" for="sppb-cron-token">Secret token</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="sppb-cron-token" name="cron_token" value="<?= htmlspecialchars($this->cronToken) ?>"
+                               placeholder="e.g. a random 32-character string"
+                               class="flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
+                        <button type="button" id="sppb-cron-generate" class="flex-shrink-0 px-3 py-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-600 bg-gray-50 hover:bg-gray-100 transition-colors">🎲 Generate</button>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1.5" for="sppb-alert-email">Alert email address</label>
+                    <input type="email" id="sppb-alert-email" name="alert_email" value="<?= htmlspecialchars($this->alertEmail) ?>"
+                           placeholder="you@example.com (optional)"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
+                </div>
+            </div>
+
+            <div class="mb-5">
+                <label class="block text-xs font-bold text-gray-600 mb-1.5">Webcron URL <span class="font-normal text-gray-400">(paste into your cron/host control panel)</span></label>
+                <div class="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                    <code id="sppb-webcron-url" class="flex-1 min-w-0 text-xs text-gray-600 break-all"><?= htmlspecialchars(Uri::root() . 'administrator/index.php?option=com_muruguard&task=scanner.scheduledcheck&token=' . $this->cronToken) ?></code>
+                    <button type="button" class="sppb-copy-btn flex-shrink-0 w-7 h-7 inline-flex items-center justify-center rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                            data-copy="<?= htmlspecialchars(Uri::root() . 'administrator/index.php?option=com_muruguard&task=scanner.scheduledcheck&token=' . $this->cronToken) ?>" title="Copy URL" aria-label="Copy URL">
+                        <span class="sppb-copy-icon">📋</span>
+                    </button>
+                </div>
+            </div>
+
+            <button type="submit" class="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm">
+                💾 Save Settings
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- Wrapper toggled off when the Settings panel is open -- see the
+     #sppb-settings-btn handler further down. Wraps BOTH the pre-scan
+     gate and the post-scan results below, so Settings works regardless
+     of scan state. Pure outer wrap, no internal logic changed. -->
+<div id="sppb-main-content">
 <?php if (!$this->scanned): ?>
 <!-- ══════════════════════════════════════════════════════════════
      SCAN GATE
@@ -249,7 +353,7 @@ $totalAreaCount = array_sum(array_map('count', $scanAreas));
             <div class="absolute w-24 h-24 rounded-full bg-indigo-200/50 shield-pulse"></div>
             <div class="relative text-5xl">🛡️</div>
         </div>
-        <h2 class="text-2xl font-extrabold text-gray-900 mb-2">SP Page Builder Infection Scanner</h2>
+        <h2 class="text-2xl font-extrabold text-gray-900 mb-2">MuRu Guard Security Scanner</h2>
         <p class="text-gray-500 text-sm leading-relaxed max-w-lg mx-auto">
             Choose the areas you want to scan, then click <strong class="text-gray-700">Run Scan</strong>.
             Checks the filesystem and database for malware, rogue admin accounts, XSS injections,
@@ -258,7 +362,7 @@ $totalAreaCount = array_sum(array_map('count', $scanAreas));
         </p>
     </div>
 
-    <form action="<?= Route::_($scanUrl) ?>" method="post" id="sppbscan-form" class="w-full max-w-3xl">
+    <form action="<?= Route::_($scanUrl) ?>" method="post" id="muruguard-form" class="w-full max-w-3xl">
         <?= HTMLHelper::_('form.token') ?>
         <input type="hidden" name="areas_submitted" value="1">
 
@@ -333,9 +437,15 @@ $totalAreaCount = array_sum(array_map('count', $scanAreas));
         <span class="font-bold text-gray-900"><?= date('Y-m-d H:i:s', $this->scanStartedAt) ?></span>
         <span class="text-gray-300">·</span>
         <span class="text-gray-400">Cached for 5 min</span>
+        <?php if ($this->cronEnabled): ?>
+            <span class="text-gray-300">·</span>
+            <button type="button" id="sppb-cron-status-badge" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors" title="Click to open Settings">
+                ⏰ Scheduled scanning ON
+            </button>
+        <?php endif; ?>
     </div>
     <div class="flex items-center gap-2">
-        <form action="index.php?option=com_sppbscan&task=scanner.reset" method="post" style="margin:0">
+        <form action="index.php?option=com_muruguard&task=scanner.reset" method="post" style="margin:0">
             <?= HTMLHelper::_('form.token') ?>
             <button type="submit"
                     class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-gray-300
@@ -344,7 +454,7 @@ $totalAreaCount = array_sum(array_map('count', $scanAreas));
                 ⚙ Change scan areas
             </button>
         </form>
-        <form action="<?= Route::_($rescanUrl) ?>" method="post" id="sppbscan-rescan-form" style="margin:0">
+        <form action="<?= Route::_($rescanUrl) ?>" method="post" id="muruguard-rescan-form" style="margin:0">
             <?= HTMLHelper::_('form.token') ?>
             <button type="submit"
                     class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-gray-300
@@ -407,15 +517,9 @@ $stats = [
     <?php endforeach; ?>
 </div>
 
-<!-- Heuristic notice -->
-<div class="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-xl px-5 py-3 mb-6 text-sm text-blue-800">
-    <span class="text-xl flex-shrink-0">ℹ️</span>
-    <span>This is a heuristic scanner. Pair it with a full server-side malware scan <strong>(ClamAV / Imunify360)</strong> before declaring the site clean.</span>
-</div>
-
 <?php
 /* ── Tab navigation ── */
-$sig = \SppbscanHelper::getSignatures();
+$sig = \MuruguardHelper::getSignatures();
 // Not-deletable = an auto-cleanable infection pattern, OR a genuinely
 // required core/template entry file that deleteTargets() refuses to
 // touch regardless, OR a known code-area file (component/module/plugin/
@@ -427,9 +531,9 @@ $sig = \SppbscanHelper::getSignatures();
 // exactly one of the two tabs below -- nothing silently disappears, and
 // "Suspicious Files" only ever lists things the Delete button can
 // actually safely act on.
-$notDeletable = fn($f) => \SppbscanHelper::isCleanablePattern($f['reasons'] ?? [$f['reason']])
-    || \SppbscanHelper::isProtectedEntryPath($f['rel'], $sig)
-    || \SppbscanHelper::isContentOnlyCodeAreaFinding($f['rel'], $f['reasons'] ?? [$f['reason']], $sig);
+$notDeletable = fn($f) => \MuruguardHelper::isCleanablePattern($f['reasons'] ?? [$f['reason']])
+    || \MuruguardHelper::isProtectedEntryPath($f['rel'], $sig)
+    || \MuruguardHelper::isContentOnlyCodeAreaFinding($f['rel'], $f['reasons'] ?? [$f['reason']], $sig);
 $cleanableFindings = array_filter($fileFindings, $notDeletable);
 $cleanableCount = count($cleanableFindings);
 $deletableFindings = array_filter($fileFindings, fn($f) => !$notDeletable($f));
@@ -482,13 +586,22 @@ function sppb_section_close(): void {
 }
 
 /** Shared <tr> markup for a file finding -- used by both the Suspicious
- *  Files and Cleanable Files tabs so the two stay visually identical. */
-function sppb_render_file_row(array $f): void {
+ *  Files and Cleanable Files tabs so the two stay visually identical.
+ *  $showCleanPreview is only turned on for the Cleanable Files tab, and
+ *  only actually renders a preview when the file's CURRENT on-disk
+ *  content still has a pattern this scanner can auto-repair -- it never
+ *  shows a preview for something Clean can't actually fix. */
+function sppb_render_file_row(array $f, bool $showCleanPreview = false): void {
     $pathDir  = dirname($f['rel']);
     $pathBase = basename($f['rel']);
-    $isProtectedEntry = \SppbscanHelper::isProtectedEntryPath($f['rel'], \SppbscanHelper::getSignatures());
+    $isProtectedEntry = \MuruguardHelper::isProtectedEntryPath($f['rel'], \MuruguardHelper::getSignatures());
     $reasonsList = $f['reasons'] ?? [$f['reason']];
-    $blocksHtml  = array_map(fn($r) => \SppbscanHelper::formatReasonForDisplay($r), $reasonsList);
+    $blocksHtml  = array_map(fn($r) => \MuruguardHelper::formatReasonForDisplay($r), $reasonsList);
+    $diffHtml = null;
+    if ($showCleanPreview && $f['type'] !== 'dir') {
+        $diffHtml = \MuruguardHelper::previewCleanDiff($f['abs']);
+        if ($diffHtml !== null) $blocksHtml[] = $diffHtml;
+    }
     $reasonsJson = htmlspecialchars(json_encode($blocksHtml), ENT_QUOTES);
     ?>
     <tr class="hover:bg-gray-50/60 transition-colors <?= $f['confidence']==='high' ? 'bg-red-50/30' : '' ?>">
@@ -532,15 +645,15 @@ function sppb_render_file_row(array $f): void {
             <?php endif; ?>
         </td>
         <td class="px-4 py-3 text-xs">
-            <div class="text-amber-700 mb-1.5"><?= htmlspecialchars(\SppbscanHelper::shortReasonLabel($reasonsList)) ?></div>
-            <button type="button" class="sppb-code-issues-btn inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+            <div class="text-amber-700 mb-1.5"><?= htmlspecialchars(\MuruguardHelper::shortReasonLabel($reasonsList)) ?></div>
+            <button type="button" class="sppb-code-issues-btn inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold <?= $diffHtml !== null ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200' ?> transition-colors"
                     data-path="<?= htmlspecialchars($f['rel']) ?>"
                     data-confidence="<?= htmlspecialchars($f['confidence']) ?>"
                     data-reasons="<?= $reasonsJson ?>">
-                🧬 Code Issues<?= count($reasonsList) > 1 ? ' (' . count($reasonsList) . ')' : '' ?>
+                🧬 Code Issues<?= count($reasonsList) > 1 ? ' (' . count($reasonsList) . ')' : '' ?><?= $diffHtml !== null ? ' + 🔍 Preview' : '' ?>
             </button>
         </td>
-        <td class="px-4 py-3 text-xs text-gray-500"><?= \SppbscanHelper::humanSize($f['size']) ?></td>
+        <td class="px-4 py-3 text-xs text-gray-500"><?= \MuruguardHelper::humanSize($f['size']) ?></td>
         <td class="px-4 py-3 text-xs text-gray-400"><?= $f['mtime'] ? date('Y-m-d H:i',$f['mtime']) : '—' ?></td>
     </tr>
     <?php
@@ -555,7 +668,7 @@ function sppb_render_file_row(array $f): void {
         <span class="font-medium">No deletable suspicious files detected.</span>
     </div>
 <?php else: ?>
-    <form action="index.php?option=com_sppbscan&task=scanner.delete" method="post" id="sppb-files-form"
+    <form action="index.php?option=com_muruguard&task=scanner.delete" method="post" id="sppb-files-form"
           onsubmit="return confirm('Delete selected files/folders? This cannot be undone.');">
         <div class="flex items-center justify-between mb-3">
             <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
@@ -610,7 +723,7 @@ function sppb_render_file_row(array $f): void {
         <span class="text-lg flex-shrink-0">ℹ️</span>
         <span>These files have a known, safely-bounded infection pattern (code prepended before Joomla's bootstrap/access guard, or a script injected right after <code class="bg-white/60 px-1 py-0.5 rounded">&lt;head&gt;</code>) that can be surgically stripped without touching the rest of the file. A timestamped backup is written before every repair.</span>
     </div>
-    <form action="index.php?option=com_sppbscan&task=scanner.cleancode" method="post"
+    <form action="index.php?option=com_muruguard&task=scanner.cleancode" method="post"
           onsubmit="return confirm('Surgically clean the selected files? A timestamped backup of each original is kept alongside it.');">
         <div class="flex items-center justify-between mb-3">
             <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
@@ -634,7 +747,7 @@ function sppb_render_file_row(array $f): void {
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-50">
-                <?php foreach ($cleanableFindings as $f): sppb_render_file_row($f); endforeach; ?>
+                <?php foreach ($cleanableFindings as $f): sppb_render_file_row($f, true); endforeach; ?>
                 </tbody>
             </table>
         </div>
@@ -699,7 +812,7 @@ function sppb_render_file_row(array $f): void {
         <span class="text-2xl">✅</span><span class="font-medium">No injected menu items found.</span>
     </div>
 <?php else: ?>
-    <form action="index.php?option=com_sppbscan&task=scanner.cleanmenu" method="post"
+    <form action="index.php?option=com_muruguard&task=scanner.cleanmenu" method="post"
           onsubmit="return confirm('Surgically clean XSS from the selected menu rows?');">
         <div class="flex items-center justify-between mb-3">
             <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
@@ -794,7 +907,7 @@ function sppb_render_file_row(array $f): void {
         </div>
     <?php endif; ?>
     <?php if (!empty($dbFindings['rogue_iconfont'])): ?>
-        <form action="index.php?option=com_sppbscan&task=scanner.deleteassets" method="post"
+        <form action="index.php?option=com_muruguard&task=scanner.deleteassets" method="post"
               onsubmit="return confirm('Delete selected rogue iconfont rows?');">
             <div class="flex items-center justify-between mb-3">
                 <h4 class="font-bold text-gray-700">Rogue iconfont registrations
@@ -875,18 +988,10 @@ function sppb_render_file_row(array $f): void {
 <?php endif; ?>
 <?php sppb_section_close(); ?>
 
-<!-- Footer notice -->
-<div class="flex items-center gap-3 bg-gray-50 border border-gray-200 rounded-xl px-5 py-4 mt-2 text-sm text-gray-500">
-    <span class="text-xl">🧹</span>
-    <span>When you're done, uninstall this component via
-        <strong class="text-gray-700">Extensions → Manage → Manage</strong>
-        to remove it from your site completely.
-    </span>
-</div>
-
 <?php endif; // end $this->scanned ?>
+</div><!-- /#sppb-main-content -->
 
-</div><!-- #sppbscan-root -->
+</div><!-- #muruguard-root -->
 
 <script>
 (function () {
@@ -896,7 +1001,7 @@ function sppb_render_file_row(array $f): void {
     // animating the collapsible sidebar, and a transformed ancestor
     // breaks `position: fixed` for any descendant, confining it to that
     // ancestor's box instead of the actual viewport.
-    ['sppbscan-overlay', 'support-widget', 'sppb-modal'].forEach(function (id) {
+    ['muruguard-overlay', 'sppb-header-actions', 'sppb-modal'].forEach(function (id) {
         var el = document.getElementById(id);
         if (el && el.parentNode !== document.body) {
             document.body.appendChild(el);
@@ -905,11 +1010,11 @@ function sppb_render_file_row(array $f): void {
 
     sppbUpdateAreaCount();
 
-    var forms = [document.getElementById('sppbscan-form'), document.getElementById('sppbscan-rescan-form')];
+    var forms = [document.getElementById('muruguard-form'), document.getElementById('muruguard-rescan-form')];
     forms.forEach(function (form) {
         if (!form) return;
         form.addEventListener('submit', function () {
-            sppbscanShowOverlay();
+            muruguardShowOverlay();
         });
     });
 
@@ -936,6 +1041,58 @@ function sppb_render_file_row(array $f): void {
         t.addEventListener('click', function () { activateTab(t.getAttribute('data-tab')); });
     });
     if (tabs.length) { activateTab(<?= json_encode($activeTab ?? 'files') ?>); }
+
+    // ── Settings panel ───────────────────────────────────────────
+    // Swaps #sppb-main-content (whichever of scan-gate/results is
+    // currently rendered) for #sppb-settings-panel and back -- a plain
+    // two-way toggle, independent of the results tab system above.
+    var settingsBtn   = document.getElementById('sppb-settings-btn');
+    var settingsBack  = document.getElementById('sppb-settings-back');
+    var settingsPanel = document.getElementById('sppb-settings-panel');
+    var mainContent   = document.getElementById('sppb-main-content');
+    function openSettings() {
+        if (!settingsPanel || !mainContent) return;
+        mainContent.classList.add('hidden');
+        settingsPanel.classList.remove('hidden');
+        settingsBtn.classList.add('sppb-settings-open');
+        settingsBtn.setAttribute('aria-pressed', 'true');
+    }
+    function closeSettings() {
+        if (!settingsPanel || !mainContent) return;
+        settingsPanel.classList.add('hidden');
+        mainContent.classList.remove('hidden');
+        settingsBtn.classList.remove('sppb-settings-open');
+        settingsBtn.setAttribute('aria-pressed', 'false');
+    }
+    if (settingsBtn) settingsBtn.addEventListener('click', openSettings);
+    var cronBadge = document.getElementById('sppb-cron-status-badge');
+    if (cronBadge) cronBadge.addEventListener('click', openSettings);
+    if (settingsBack) settingsBack.addEventListener('click', closeSettings);
+
+    // Live-updates the webcron URL preview as the token field changes,
+    // and fills in a fresh random token on Generate -- purely client-side
+    // convenience, nothing is saved until the Save Settings button posts.
+    var tokenField = document.getElementById('sppb-cron-token');
+    var urlEl      = document.getElementById('sppb-webcron-url');
+    var urlCopyBtn = urlEl ? urlEl.closest('div').querySelector('.sppb-copy-btn') : null;
+    var webcronBase = <?= json_encode(Uri::root() . 'administrator/index.php?option=com_muruguard&task=scanner.scheduledcheck&token=') ?>;
+    function refreshWebcronUrl() {
+        if (!tokenField || !urlEl) return;
+        var url = webcronBase + encodeURIComponent(tokenField.value || '');
+        urlEl.textContent = url;
+        if (urlCopyBtn) urlCopyBtn.setAttribute('data-copy', url);
+    }
+    if (tokenField) tokenField.addEventListener('input', refreshWebcronUrl);
+    var generateBtn = document.getElementById('sppb-cron-generate');
+    if (generateBtn && tokenField) {
+        generateBtn.addEventListener('click', function () {
+            var bytes = new Uint8Array(24);
+            (window.crypto || window.msCrypto).getRandomValues(bytes);
+            var token = Array.prototype.map.call(bytes, function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+            tokenField.value = token;
+            refreshWebcronUrl();
+        });
+    }
 
     // ── Code-analysis modal ─────────────────────────────────────
     // Event delegation, not per-button listeners -- the button set lives
@@ -970,8 +1127,8 @@ function sppbOpenCodeModal(btn) {
     badge.className = conf === 'high' ? 'high' : 'medium';
     pathEl.textContent = btn.getAttribute('data-path') || '';
     // blocks[] is pre-rendered, escaped HTML built server-side in
-    // SppbscanHelper::formatReasonForDisplay() -- nothing user-controlled
-    // reaches innerHTML unescaped here.
+    // MuruguardHelper::formatReasonForDisplay() / formatCleanPreview() --
+    // nothing user-controlled reaches innerHTML unescaped here.
     bodyEl.innerHTML = blocks.join('');
 
     modal.classList.add('sppb-show');
@@ -1033,11 +1190,11 @@ function sppbUpdateAreaCount() {
     }
 }
 
-function sppbscanShowOverlay() {
-    var overlay  = document.getElementById('sppbscan-overlay');
-    var statusEl = document.getElementById('sppbscan-loading-status');
+function muruguardShowOverlay() {
+    var overlay  = document.getElementById('muruguard-overlay');
+    var statusEl = document.getElementById('muruguard-loading-status');
 
-    overlay.classList.add('sppbscan-show');
+    overlay.classList.add('muruguard-show');
 
     var messages = [
         'Starting scan…',

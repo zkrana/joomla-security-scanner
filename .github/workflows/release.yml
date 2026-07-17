@@ -23,28 +23,28 @@ jobs:
 
       - name: Sanity-check manifest version matches tag
         run: |
-          manifest_version=$(grep -oPm1 "(?<=<version>)[^<]+" com_sppbscan/sppbscan.xml || true)
+          manifest_version=$(grep -oPm1 "(?<=<version>)[^<]+" com_muruguard/muruguard.xml || true)
           tag_version="${{ steps.version.outputs.version }}"
           if [ -z "$manifest_version" ]; then
-            echo "::error::Could not find com_sppbscan/sppbscan.xml or its <version> tag."
+            echo "::error::Could not find com_muruguard/muruguard.xml or its <version> tag."
             exit 1
           fi
           if [ "$manifest_version" != "$tag_version" ]; then
-            echo "::warning::Tag is v$tag_version but sppbscan.xml <version> is $manifest_version -- update the manifest before releasing."
+            echo "::warning::Tag is v$tag_version but muruguard.xml <version> is $manifest_version -- update the manifest before releasing."
           fi
 
       - name: Build installable zip
         run: |
           mkdir -p dist
-          cd com_sppbscan
-          zip -r "../dist/com_sppbscan-${{ steps.version.outputs.version }}.zip" . -x ".*"
+          cd com_muruguard
+          zip -r "../dist/com_muruguard-${{ steps.version.outputs.version }}.zip" . -x ".*"
           cd ..
 
       - name: Verify manifest sits at zip root
         run: |
-          zip_file="dist/com_sppbscan-${{ steps.version.outputs.version }}.zip"
-          if ! unzip -l "$zip_file" | grep -qE '^\s*[0-9]+.*\ssppbscan\.xml$'; then
-            echo "::error::sppbscan.xml is not at the root of the built zip. Joomla install will fail."
+          zip_file="dist/com_muruguard-${{ steps.version.outputs.version }}.zip"
+          if ! unzip -l "$zip_file" | grep -qE '^\s*[0-9]+.*\smuruguard\.xml$'; then
+            echo "::error::muruguard.xml is not at the root of the built zip. Joomla install will fail."
             exit 1
           fi
 
@@ -72,5 +72,5 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/com_sppbscan-${{ steps.version.outputs.version }}.zip
+          files: dist/com_muruguard-${{ steps.version.outputs.version }}.zip
           body_path: dist/release-notes.md

@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<config>
+    <fieldset name="component" label="COM_MURUGUARD_CONFIG_FIELDSET_LABEL">
+        <field
+            name="max_file_scan_size"
+            type="number"
+            default="2097152"
+            label="COM_MURUGUARD_CONFIG_MAX_FILE_SIZE_LABEL"
+            description="COM_MURUGUARD_CONFIG_MAX_FILE_SIZE_DESC"
+        />
+        <field
+            name="scan_media"
+            type="radio"
+            layout="joomla.form.field.radio.switcher"
+            default="1"
+            label="COM_MURUGUARD_CONFIG_SCAN_MEDIA_LABEL"
+            description="COM_MURUGUARD_CONFIG_SCAN_MEDIA_DESC"
+        >
+            <option value="0">JNO</option>
+            <option value="1">JYES</option>
+        </field>
+        <field
+            name="scan_jce"
+            type="radio"
+            layout="joomla.form.field.radio.switcher"
+            default="1"
+            label="COM_MURUGUARD_CONFIG_SCAN_JCE_LABEL"
+            description="COM_MURUGUARD_CONFIG_SCAN_JCE_DESC"
+        >
+            <option value="0">JNO</option>
+            <option value="1">JYES</option>
+        </field>
+        <field
+            name="extra_root_dirs"
+            type="textarea"
+            rows="2"
+            label="COM_MURUGUARD_CONFIG_EXTRA_ROOT_DIRS_LABEL"
+            description="COM_MURUGUARD_CONFIG_EXTRA_ROOT_DIRS_DESC"
+        />
+        <field
+            name="ignored_paths"
+            type="textarea"
+            rows="4"
+            label="COM_MURUGUARD_CONFIG_IGNORED_PATHS_LABEL"
+            description="COM_MURUGUARD_CONFIG_IGNORED_PATHS_DESC"
+        />
+    </fieldset>
+    <fieldset name="scheduled" label="COM_MURUGUARD_CONFIG_FIELDSET_SCHEDULED_LABEL">
+        <field
+            name="cron_enabled"
+            type="radio"
+            layout="joomla.form.field.radio.switcher"
+            default="0"
+            label="COM_MURUGUARD_CONFIG_CRON_ENABLED_LABEL"
+            description="COM_MURUGUARD_CONFIG_CRON_ENABLED_DESC"
+        >
+            <option value="0">JNO</option>
+            <option value="1">JYES</option>
+        </field>
+        <field
+            name="cron_token"
+            type="text"
+            label="COM_MURUGUARD_CONFIG_CRON_TOKEN_LABEL"
+            description="COM_MURUGUARD_CONFIG_CRON_TOKEN_DESC"
+        />
+        <field
+            name="alert_email"
+            type="email"
+            label="COM_MURUGUARD_CONFIG_ALERT_EMAIL_LABEL"
+            description="COM_MURUGUARD_CONFIG_ALERT_EMAIL_DESC"
+        />
+    </fieldset>
+</config>

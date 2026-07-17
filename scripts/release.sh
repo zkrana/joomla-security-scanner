@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Automates the release steps this project does by hand:
-#   1. bump <version> in com_sppbscan/sppbscan.xml
+#   1. bump <version> in com_muruguard/muruguard.xml
 #   2. verify CHANGELOG.md has a matching entry (this is what GitHub
 #      Actions uses as the release notes -- see .github/workflows/release.yml)
 #   3. remove a stray local build zip if one is sitting in the repo root
@@ -27,7 +27,7 @@ fi
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-MANIFEST="com_sppbscan/sppbscan.xml"
+MANIFEST="com_muruguard/muruguard.xml"
 CHANGELOG="CHANGELOG.md"
 TAG="v$VERSION"
 
@@ -58,15 +58,15 @@ fi
 
 # This project has a habit of accidentally committing a local build zip --
 # make sure one isn't sitting in the repo root before releasing.
-if [[ -f "com_sppbscan.zip" ]]; then
-  echo "Removing stray com_sppbscan.zip"
-  rm -f "com_sppbscan.zip"
+if [[ -f "com_muruguard.zip" ]]; then
+  echo "Removing stray com_muruguard.zip"
+  rm -f "com_muruguard.zip"
 fi
 
 # Refuse to sweep in unrelated work into the release commit -- only the
 # manifest/changelog (and the stray-zip removal above) should be dirty at
 # this point. Everything else should already be committed on its own.
-DIRTY_OTHER="$(git status --porcelain -- . ":!$MANIFEST" ":!$CHANGELOG" ":!com_sppbscan.zip")"
+DIRTY_OTHER="$(git status --porcelain -- . ":!$MANIFEST" ":!$CHANGELOG" ":!com_muruguard.zip")"
 if [[ -n "$DIRTY_OTHER" ]]; then
   echo "Error: there are other uncommitted changes -- commit or stash them first:" >&2
   echo "$DIRTY_OTHER" >&2

@@ -1,3 +1,4 @@
 .DS_Store
-com_sppbscan.zip
+com_muruguard.zip
 dist/
+com_muruguard/admin/helpers/data/scan-history.json

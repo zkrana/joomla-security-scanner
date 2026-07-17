@@ -8,6 +8,27 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-07-17
+
+### ⚠️ Breaking: SPPB Scan is rebranded to MuRu Guard
+
+**SPPB Scan is rebranded to MuRu Guard** in this version. The Joomla extension element changes (`com_sppbscan` → `com_muruguard`), along with every class name, the language file, and the admin menu entry (now **MuRu Guard**). Joomla treats this as a **different extension**, not an in-place upgrade: on a site that already has the old `com_sppbscan` installed, uninstall it first, then install this package fresh. Scan history and settings do not carry over automatically since they live under the old element name.
+
+### Added
+
+- **Core-file checksum verification.** The scanner now detects your exact installed Joomla version (from `administrator/manifests/files/joomla.xml`) and compares `index.php`, `administrator/index.php`, `api/index.php`, `includes/app.php`, `includes/framework.php`, `robots.txt.dist`, `htaccess.txt`, and `web.config.txt` against bundled official SHA-256 hashes for the latest patch of the 4.4 LTS, 5.x, and 6.x Joomla lines. A mismatch is byte-for-byte proof of tampering, independent of every pattern-based check — and it already caught a real gap: a backdoor appended after a file's closing `?>` tag (no `base64_decode`, no recognizable signature) that every existing heuristic missed entirely. An unlisted Joomla version simply skips this check — never a false positive from missing coverage.
+- **Clean preview.** In the Cleanable Files tab, the 🧬 Code Issues modal now shows a 🔍 Preview section with the exact bytes Clean would remove (and what replaces them, if anything) for any file with a recognized auto-fix pattern — computed read-only against the file's current content, never written to disk. Files with no recognized auto-fix pattern correctly show no preview button, so the UI never promises a fix that won't happen.
+- **Scheduled scanning via webcron**, with a dedicated in-page **⚙️ Settings panel** (next to the existing 💬 Support button — click it to swap the whole page for a Settings view, click "← Back to scanner" to return). From there you can flip a switch to enable/disable scheduled scanning, generate a secret token with one click, set an alert email, and copy the ready-to-use webcron URL — no trip to Global Configuration required (though System → Global Configuration → MuRu Guard still works too, and both stay in sync). Point any cron system (server crontab, host control panel, or a free external cron service) at that URL with `curl`/`wget` — no SSH, no login, no CSRF token needed. Runs the same detection as a manual scan and emails only when something new appears since the last run — never on every run, and never on the very first run (which just records a baseline). A status badge on the main dashboard shows "⏰ Scheduled scanning ON" whenever it's active, click it to jump straight into Settings.
+
+### Fixed
+
+- **Scheduled scanning was completely unreachable.** Found during a self-directed security review of this component: the admin entry point required a logged-in Super User session for *every* task, including the new webcron endpoint — so a real cron/curl request (which has no Joomla session) was rejected before its own secret-token check ever ran. The entry point now exempts only that one task from the blanket session check; every other action is gated exactly as before.
+- The scheduled-scan history (used to compute "what's new since last run") was being stored inside this component's own config params — the exact same storage System → Global Configuration saves to. Saving Global Configuration for any reason would have silently wiped that history with no warning, since Joomla's config save replaces the whole params blob with just the declared fields. It now lives in its own small file instead, immune to that entirely.
+
+### Removed
+
+- The "pair this with ClamAV/Imunify360" and "uninstall when you're done" footer notices, from both the scanner page and this README — noise, not signal.
+
 ## [2.1.11] - 2026-07-17
 
 ### Fixed
