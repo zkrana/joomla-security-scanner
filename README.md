@@ -189,7 +189,7 @@ If you have any feedback or suggestions, please open an issue on the repository.
 
 ## 🙏 Thanks to
 
-MD. Toufiqur Rahman, Paul Frankowski, Ofi Khan, and Md. Atick Eashrak Shuvo, for your valuable support and contributions in helping me to improve this tool.
+**MD. Toufiqur Rahman**, **Paul Frankowski**, **Ofi Khan**, and **Md. Atick Eashrak Shuvo**, for your valuable support and contributions in helping me to improve this tool.
 
 - [ZKRANA](https://github.com/zkrana)
 
