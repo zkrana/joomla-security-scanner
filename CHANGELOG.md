@@ -8,6 +8,12 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Unreleased]
 
+## [2.1.11] - 2026-07-17
+
+### Fixed
+
+- **A legitimate, actively-used component/module/plugin/library/template file with a backdoor snippet injected into it could land in the "Suspicious Files" tab with only a Delete option.** That's a real, needed file with malicious content added, not a foreign dropped file — deleting it would break the site. Findings inside real code directories that are flagged *only* by a content-signature match (no filename/location red flag alongside it) are now routed to the "Cleanable Files" tab instead, where the safe outcome is either an auto-clean or a clear "no pattern recognized, review manually" message — never an outright delete.
+
 ## [2.1.10] - 2026-07-16
 
 ### Changed

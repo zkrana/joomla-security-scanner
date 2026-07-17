@@ -418,11 +418,18 @@ $stats = [
 $sig = \SppbscanHelper::getSignatures();
 // Not-deletable = an auto-cleanable infection pattern, OR a genuinely
 // required core/template entry file that deleteTargets() refuses to
-// touch regardless. Every finding lands in exactly one of the two tabs
-// below -- nothing silently disappears, and "Suspicious Files" only
-// ever lists things the Delete button can actually act on.
+// touch regardless, OR a known code-area file (component/module/plugin/
+// library/template source) flagged ONLY by a content-signature match --
+// i.e. a legitimate, actively-used file with something malicious injected
+// into it, not a foreign dropped file, so deleting it would break real
+// site functionality even though this scanner has no auto-clean pattern
+// for this particular infection shape yet. Every finding lands in
+// exactly one of the two tabs below -- nothing silently disappears, and
+// "Suspicious Files" only ever lists things the Delete button can
+// actually safely act on.
 $notDeletable = fn($f) => \SppbscanHelper::isCleanablePattern($f['reasons'] ?? [$f['reason']])
-    || \SppbscanHelper::isProtectedEntryPath($f['rel'], $sig);
+    || \SppbscanHelper::isProtectedEntryPath($f['rel'], $sig)
+    || \SppbscanHelper::isContentOnlyCodeAreaFinding($f['rel'], $f['reasons'] ?? [$f['reason']], $sig);
 $cleanableFindings = array_filter($fileFindings, $notDeletable);
 $cleanableCount = count($cleanableFindings);
 $deletableFindings = array_filter($fileFindings, fn($f) => !$notDeletable($f));

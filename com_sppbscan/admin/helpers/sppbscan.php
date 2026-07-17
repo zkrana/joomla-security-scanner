@@ -464,6 +464,42 @@ class SppbscanHelper
         return false;
     }
 
+    /** True if $relPath sits inside one of SCAN_CONFIG's 'code' directories (components, modules, plugins, libraries, templates, cli, bin, ...) -- an area where real, actively-used source files are expected to exist. */
+    public static function isCodeAreaPath(string $relPath, array $sig): bool
+    {
+        $relNorm = ltrim(str_replace('\\', '/', $relPath), '/');
+        foreach ($sig['SCAN_CONFIG'] as $dir => $mode) {
+            if ($mode !== 'code') continue;
+            if ($relNorm === $dir || strpos($relNorm, $dir . '/') === 0) return true;
+        }
+        return false;
+    }
+
+    /**
+     * True when a finding inside a real code directory (see
+     * isCodeAreaPath()) is flagged ONLY by content-signature matches --
+     * i.e. every one of its reasons is a "Content signature: ..." hit,
+     * with no structural/location red flag (core-masquerade, stray
+     * index.php, unrecognized directory, suspicious filename, ...)
+     * alongside it. That's the exact shape of a legitimate, actively-used
+     * file that had a backdoor snippet injected into otherwise-normal
+     * code, not a foreign file an attacker dropped -- the file's name and
+     * location are completely unremarkable, only its content is
+     * compromised. Deleting it outright would take down real site
+     * functionality, so it must never be offered as a one-click-delete
+     * candidate even when no auto-clean pattern recognizes this specific
+     * infection -- landing in the Cleanable Files tab for manual review
+     * is the safe outcome, not the destructive one.
+     */
+    public static function isContentOnlyCodeAreaFinding(string $relPath, array $reasonsList, array $sig): bool
+    {
+        if (empty($reasonsList) || !self::isCodeAreaPath($relPath, $sig)) return false;
+        foreach ($reasonsList as $r) {
+            if (stripos((string) $r, 'Content signature:') !== 0) return false;
+        }
+        return true;
+    }
+
     public static function humanSize(int $bytes): string
     {
         $units = ['B', 'KB', 'MB', 'GB'];
