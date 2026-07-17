@@ -8,6 +8,12 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-07-17
+
+### Fixed
+
+- **"Run Scan" (and every other button — Delete, Clean, Clean menu XSS, Delete assets) did nothing on a real install, silently falling through to a "404 View not found: muruguard" error.** `BaseController::getInstance()` always instantiates the base `MuruguardController` class; it does *not* automatically switch to `MuruguardControllerScanner` just because the task carries a `scanner.` prefix — Joomla only strips that prefix to get the method name, then looks for it as a reflectable method on the object it already created. Since `scan()`, `delete()`, `cleancode()`, `cleanmenu()`, `deleteassets()`, `scheduledcheck()`, and `savesettings()` all lived on the separate `MuruguardControllerScanner` class, none of them were ever actually reachable. `MuruguardController` now extends `MuruguardControllerScanner` instead of the base Joomla controller directly, so every task method is inherited onto the exact object Joomla dispatches to. This bug predates the MuRu Guard rebrand — it was present in the SPPB Scan codebase too, just never caught since nothing in this project's history had been run against real, unmocked Joomla task dispatch until now.
+
 ## [2.2.0] - 2026-07-17
 
 ### ⚠️ Breaking: SPPB Scan is rebranded to MuRu Guard
