@@ -1,10 +1,20 @@
 # 🛡️ MuRu Guard Security Scanner (Joomla Extension)
 
+![Downloads](https://img.shields.io/github/downloads/zkrana/joomla-security-scanner/total)
+
 A Joomla extension that detects and helps remove malware left behind by the **SP Page Builder `uploadCustomIcon` unauthenticated RCE vulnerability** (versions prior to 6.6.2). It also checks the **JCE editor component (`com_jce`)**, which has been reported as a secondary infection vector on sites compromised through SPPB.
 
 Installs like any other Joomla extension. Runs inside the Joomla administrator, behind Joomla's own authentication and ACL — no separate access key, no public-facing scanner file, nothing to remember to delete afterward.
 
 Need Help? <a href="https://www.linkedin.com/in/zkranadevs/">Reach Me</a> or Email me at <a href="mailto:zkranao@gmail.com">zkranao@gmail.com</a>
+
+---
+
+## 🚧 Temporary: GitHub Releases are currently down
+
+GitHub is having a platform-side GitHub Actions outage — workflow runs stuck in "Queued" indefinitely or failing at startup before any job even runs. This isn't specific to this repo's code or workflow config (already checked billing, permissions, and runner config, and reported it to GitHub Support); it's blocking the automated pipeline from publishing new release zips to the [Releases](../../releases) page.
+
+**Until GitHub resolves it, grab the latest installable zip directly from the [`dist/`](dist) folder in this repo instead** — it's built the exact same way the release pipeline normally would, just committed here as a stand-in. This notice comes down once Releases are working again.
 
 ---
 
@@ -203,6 +213,8 @@ And if you found it useful, a ⭐ on the repository helps others find it too.
 ## 📝 Feedback
 
 If you have any feedback or suggestions, please open an issue on the repository.
+
+**Got a feature you'd like to see next?** More detection coverage, deeper auto-cleanup, better reporting, something else entirely — [open an issue](../../issues) and let me know what would actually be useful to you.
 
 ---
 
