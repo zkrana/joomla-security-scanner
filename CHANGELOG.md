@@ -8,6 +8,13 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Unreleased]
 
+## [2.4.1] - 2026-07-21
+
+### Changed
+
+- **Simplified the scan-gate screen.** Opening the scanner now shows just the hero (icon, title, description) and a single **🔍 Run a Scan** button, instead of the full directory/checks picker sitting inline on the page. Clicking the button opens a modal with the same "🗂 Directories & checks to scan" picker (Select all + the 4 grouped sections), with its own **Run** button that starts the scan -- the picker itself didn't change, just where it lives.
+- **Settings → Protection is now the default tab**, ahead of Scheduled Scanning and Setup Guide, since it's the primary place most people will want to land after installing Protection Mode.
+
 ## [2.4.0] - 2026-07-21
 
 ### Added

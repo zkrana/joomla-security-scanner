@@ -14,7 +14,7 @@ Need Help? <a href="https://www.linkedin.com/in/zkranadevs/">Reach Me</a> or Ema
 
 GitHub is having a platform-side GitHub Actions outage — workflow runs stuck in "Queued" indefinitely or failing at startup before any job even runs. This isn't specific to this repo's code or workflow config (already checked billing, permissions, and runner config, and reported it to GitHub Support); it's blocking the automated pipeline from publishing new release zips to the [Releases](../../releases) page.
 
-**Until GitHub resolves it, grab the latest installable zip directly from the [`dist/`](dist) folder in this repo instead** — it's built the exact same way the release pipeline normally would, just committed here as a stand-in. This notice comes down once Releases are working again.
+**Until GitHub resolves it, grab the latest installable zips directly from the [`dist/`](dist) folder in this repo instead** — they're built the exact same way the release pipeline normally would, just committed here as a stand-in. This now includes **two** zips (see below): the scanner component itself, and its new companion real-time protection plugin. This notice comes down once Releases are working again.
 
 ---
 
@@ -34,6 +34,7 @@ In June 2026, a critical unauthenticated RCE was disclosed in SP Page Builder ve
 
 | Category | Detail |
 |---|---|
+| 🛡️ **Protection Mode (new)** | A companion plugin checks **every request to the site in real time** — not just when you open the scanner — for webshell interaction, the SPPB `uploadCustomIcon` RCE, known malware-drop filenames, path-traversal probes, and brute-force login attempts, with independent opt-in switches to actually block high-confidence matches and brute-force IPs. Everything detected shows up in a sectioned **Protection Log** (IP, time, rule, severity, blocked/logged-only). See [🛡️ Protection Mode](#-protection-mode-real-time-attack-blocking) below |
 | 🗂 Filesystem scan | Walks `media/`, `images/`, `templates/`, `tmp/`, `cache/`, the SPPB and JCE component directories, core Joomla entry points, and the webroot itself |
 | 🧬 Content signatures | Flags known webshell patterns (`eval(base64_decode(...))`, `assert($_POST...)`, `gsocket`, generic shells like c99/r57/WSO), stream-wrapper payload loading (`zip://`, `phar://`, `compress.zlib://`), `chr()`-from-byte-array decoding, string-lookup obfuscation, self-replicating dropper logic, and `<head>`-tag script injection |
 | 🚪 Core entry-point integrity | Checks `index.php`, `administrator/index.php`, `api/index.php`, and `includes/app.php` for any code executing *before* Joomla's `_JEXEC` bootstrap — the exact pattern used by real-world "prepended payload" infections |
@@ -51,26 +52,30 @@ In June 2026, a critical unauthenticated RCE was disclosed in SP Page Builder ve
 
 ## 📦 Installation
 
-This ships as a standard Joomla component package (`com_muruguard`) — no manual file uploads, no key generation, no separate URL to protect.
+This ships as **two** standard Joomla extension packages — no manual file uploads, no key generation, no separate URL to protect:
 
-### 1. Download the package
+- **`com_muruguard`** — the scanner component itself. Required.
+- **`plg_muruguardshield`** — the companion real-time Protection Mode plugin. Optional, but install it too if you want live attack/brute-force blocking, not just on-demand scanning — see [🛡️ Protection Mode](#-protection-mode-real-time-attack-blocking) below.
 
-Grab the latest `com_muruguard-X.X.X.zip` from the [Releases](../../releases) page.
+### 1. Download the packages
+
+> ⚠️ **Releases are currently down** (see the notice at the top of this page) — grab **both** `com_muruguard-X.X.X.zip` and `plg_muruguardshield-X.X.X.zip` from the [`dist/`](dist) folder in this repo instead of the Releases page, until that's fixed.
 
 ### 2. Install via the Joomla administrator
 
 1. Log into your Joomla administrator as a Super User.
 2. Go to **System → Import → Extensions** (or **System → Manage → Install** on older Joomla versions).
-3. Upload the zip, or point Joomla at it via **Install from Folder / URL**.
+3. Upload `com_muruguard-X.X.X.zip` first, then `plg_muruguardshield-X.X.X.zip` (or point Joomla at either one via **Install from Folder / URL**).
 4. Once installed, the scanner appears under **Components → MuRu Guard** in the admin sidebar.
+5. If you installed the plugin, enable it under **System → Manage → Plugins**, search "MuRu Guard Shield", and toggle it on. It does nothing until enabled here *and* until Protection Mode is turned on from the scanner's own Settings panel — see below.
 
 ### 3. Set permissions (optional but recommended)
 
-By default, only Super Users can access the component. If you want to delegate scanning to a trusted admin without granting full Super User rights, go to **System → Users → Access Levels / Permissions** and grant the `com_muruguard` **Manage** or **Scan** permission to the relevant user group.
+By default, only Super Users can access the component. If you want to delegate scanning to a trusted admin without granting full Super User rights, go to **System → Users → Access Levels / Permissions** and grant the `com_muruguard` **Manage**, **Clean**, **Delete**, or **Change Settings** permission to the relevant user group.
 
 ### 4. Run a scan
 
-Open **Components → MuRu Guard → Scan**. Click **Run Scan**. Results are shown grouped by confidence level, with checkboxes for the items you want to act on.
+Open **Components → MuRu Guard → Scan**. Click **🔍 Run a Scan** — this opens a modal where you pick which directories and checks to include (or just leave everything selected), then click **Run** inside it. Results are shown grouped by confidence level, with checkboxes for the items you want to act on.
 
 No API keys, no separate login screen, no public URL to lock down afterward — access control is entirely handled by Joomla's existing user/session/ACL system, and the component is only reachable by an authenticated admin session with the right permission, the same as any other Joomla component.
 
@@ -122,6 +127,23 @@ If the scan finds something:
 
 ---
 
+## 🛡️ Protection Mode (real-time attack blocking)
+
+On-demand scanning finds an infection *after* it's already happened. Protection Mode, via the companion **`plg_muruguardshield`** plugin, checks every single request to your site as it happens — the only extension type Joomla runs on every page load, before routing even happens.
+
+1. Install and enable `plg_muruguardshield` (see Installation above) — it does nothing on its own, it's entirely controlled from the scanner's own Settings panel.
+2. In **Components → MuRu Guard → ⚙️ Settings → 🛡️ Protection** (this is the default tab), turn on:
+   - **Protection Mode** — the master switch. Detects and logs every match. Safe to leave on by itself: zero risk of blocking a real visitor.
+   - **Actively block high-confidence attack patterns** *(opt-in)* — rejects webshell interaction, a direct probe against the SPPB `uploadCustomIcon` RCE, and known malware-drop filenames with a 403, instead of only logging them. Lower-confidence matches (path-traversal probes, known scanner User-Agents) are always logged only, never auto-blocked, since those are broad enough to occasionally match legitimate traffic.
+   - **Block brute-force login attempts** *(opt-in)* — rejects further backend login attempts from an IP once it crosses a threshold (default 5 failures in 15 minutes, both configurable).
+3. Everything detected — blocked or not — appears in the **Protection Log** right below those switches, sectioned into **Attack Pattern Matches** and **Brute-Force Login Attempts**, each row showing IP, timestamp, severity, matched rule, and whether it was actually blocked.
+
+All three switches are **off by default**. Already-authenticated, non-guest admin sessions are exempt from request-pattern blocking, so a legitimate action can never trip a false block and lock you out of your own site — brute-force blocking has no such exemption, since it only ever targets pre-authentication login attempts.
+
+> ⚠️ If your site sits behind a reverse proxy or CDN that doesn't forward the real client IP, every visitor can appear as one IP to this plugin — check that your setup forwards `REMOTE_ADDR` correctly before relying on brute-force blocking in production.
+
+---
+
 ## ⏰ Scheduled scanning (webcron alerts)
 
 Point any cron system at a webcron URL and get an email only when something **new** shows up — not on every run, and never on the very first run (which just records a baseline).
@@ -167,9 +189,9 @@ Other recommendations:
 
 ## 🗑️ Uninstalling
 
-Since this is a standard Joomla extension, removal is a normal uninstall — no separate cleanup step needed:
+Since these are standard Joomla extensions, removal is a normal uninstall — no separate cleanup step needed:
 
-**System → Manage → Extensions**, filter by "MuRu Guard", select it, and click **Uninstall**. This removes the component's files and its database tables (scan logs, findings history) in one action.
+**System → Manage → Extensions**, filter by "MuRu Guard", select the component (and the `plg_muruguardshield` plugin, if installed), and click **Uninstall**. This removes each extension's files and database records in one action. Uninstalling the plugin alone (keeping the component) simply turns off real-time protection while leaving on-demand scanning intact.
 
 ---
 
@@ -192,11 +214,12 @@ Since this is a standard Joomla extension, removal is a normal uninstall — no 
 
 - Access is governed entirely by Joomla's own authentication and ACL — there is no separate secret key, login screen, or public-facing URL to protect
 - Only users with the `com_muruguard` component permission (Super Users by default) can view results or trigger actions
-- All state-changing actions (delete, clean) require a Joomla CSRF token, consistent with core Joomla components
+- All state-changing actions (delete, clean, Protection Mode settings) require a Joomla CSRF token, consistent with core Joomla components
 - File deletion is restricted to paths the **current scan run** actually flagged — a compromised admin session still cannot be turned into a general-purpose file browser or delete tool
 - Menu params cleaning only ever removes matched injection patterns (or blanks a corrupted `item_id`) — it never touches fields that don't match a known signature
 - No file content is ever executed or included — only read as text for pattern matching
 - Scan and action logs are stored in the extension's own database tables, viewable from the component's admin screens
+- `plg_muruguardshield` has no settings of its own — it is entirely configured from the component's Settings panel, wraps every check in a try/catch, and fails open (silently does nothing) if the component isn't installed or a check throws, since a bug in a plugin that runs on every page load must never be able to take the whole site down
 
 ---
 

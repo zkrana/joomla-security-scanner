@@ -160,6 +160,20 @@ $rescanUrl  = 'index.php?option=com_muruguard&task=scanner.scan&rescan=1';
   .muru-diff-label-after { color:#15803d; margin-top:10px; }
   .muru-diff-removed { font-family:ui-monospace,monospace; font-size:12px; line-height:1.6; color:#b91c1c; background:#fef2f2; border:1px solid #fee2e2; border-radius:8px; padding:10px 12px; white-space:pre-wrap; word-break:break-all; margin:0; text-decoration:line-through; text-decoration-color:#fca5a5; }
   .muru-diff-added { font-family:ui-monospace,monospace; font-size:12px; line-height:1.6; color:#15803d; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:10px 12px; white-space:pre-wrap; word-break:break-all; margin:0; }
+
+  /* ── Scan-area picker modal -- same fixed/re-parent-to-<body> treatment
+     as the code-analysis modal above, for the same reason (Joomla's
+     admin template transforms the content wrapper, which breaks
+     `position: fixed`). */
+  #muru-scan-modal { display:none; position:fixed; inset:0; z-index:999997; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  #muru-scan-modal.muru-show { display:block; }
+  #muru-scan-modal-backdrop { position:absolute; inset:0; background:rgba(15,23,42,.6); backdrop-filter:blur(2px); -webkit-backdrop-filter:blur(2px); }
+  #muru-scan-modal-dialog { position:relative; max-width:760px; width:calc(100% - 32px); max-height:calc(100% - 64px); margin:32px auto; background:#fff; border-radius:16px; box-shadow:0 20px 50px rgba(0,0,0,.3); display:flex; flex-direction:column; overflow:hidden; }
+  #muru-scan-modal-header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:18px 20px; border-bottom:1px solid #f1f5f9; }
+  #muru-scan-modal-close { flex-shrink:0; width:28px; height:28px; border-radius:9999px; background:#f3f4f6; color:#6b7280; font-size:14px; line-height:1; cursor:pointer; border:0; }
+  #muru-scan-modal-close:hover { background:#e5e7eb; color:#111827; }
+  #muru-scan-modal-body { padding:18px 20px; overflow-y:auto; }
+  #muru-scan-modal-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 20px; border-top:1px solid #f1f5f9; background:#fafafa; }
 </style>
 
 <div id="muruguard-root" class="font-sans text-gray-800 relative">
@@ -266,21 +280,21 @@ if ($w !== null && $w['safe'] !== true):
     </div>
 
     <div class="flex flex-wrap gap-1 p-1.5 bg-gray-50 border border-gray-200 rounded-xl mb-5 w-fit">
-        <button type="button" class="muru-settings-tab active flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors" data-settings-tab="scheduled">
-            ⏰ <?= Text::_('COM_MURUGUARD_SETTINGS_TAB_SCHEDULED') ?>
-        </button>
-        <button type="button" class="muru-settings-tab flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors" data-settings-tab="protection">
+        <button type="button" class="muru-settings-tab active flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors" data-settings-tab="protection">
             🛡️ <?= Text::_('COM_MURUGUARD_SETTINGS_TAB_PROTECTION') ?>
             <?php if ($this->shieldEnabled): ?>
                 <span class="inline-flex items-center justify-center w-2 h-2 rounded-full bg-emerald-500"></span>
             <?php endif; ?>
+        </button>
+        <button type="button" class="muru-settings-tab flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors" data-settings-tab="scheduled">
+            ⏰ <?= Text::_('COM_MURUGUARD_SETTINGS_TAB_SCHEDULED') ?>
         </button>
         <button type="button" class="muru-settings-tab flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors" data-settings-tab="guide">
             📖 <?= Text::_('COM_MURUGUARD_SETTINGS_TAB_GUIDE') ?>
         </button>
     </div>
 
-    <div class="muru-settings-tabpanel active" data-settings-panel="scheduled">
+    <div class="muru-settings-tabpanel hidden" data-settings-panel="scheduled">
         <?php if (!$this->canAdmin): ?>
         <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-5">
             <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2 mb-3">⏰ <?= Text::_('COM_MURUGUARD_SCHEDULED_TITLE') ?></h3>
@@ -417,7 +431,7 @@ if ($w !== null && $w['safe'] !== true):
         </div>
     </div>
 
-    <div class="muru-settings-tabpanel hidden" data-settings-panel="protection">
+    <div class="muru-settings-tabpanel active" data-settings-panel="protection">
         <?php if (!$this->shieldPluginActive): ?>
         <div class="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-5 text-xs text-amber-800">
             <span class="text-base leading-none">⚠️</span>
@@ -646,23 +660,47 @@ $totalAreaCount = array_sum(array_map(fn($g) => count($g['areas']), $scanAreas))
         </p>
     </div>
 
-    <form action="<?= Route::_($scanUrl) ?>" method="post" id="muruguard-form" class="w-full max-w-3xl">
+    <form action="<?= Route::_($scanUrl) ?>" method="post" id="muruguard-form" class="w-full max-w-3xl flex flex-col items-center gap-3">
         <?= HTMLHelper::_('form.token') ?>
         <input type="hidden" name="areas_submitted" value="1">
 
-        <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden mb-6">
-            <!-- Picker header / master select-all -->
-            <div class="flex items-center justify-between gap-3 px-5 py-3 bg-gray-50 border-b border-gray-100">
-                <span class="font-bold text-gray-800 text-sm flex items-center gap-2">🗂 <?= Text::_('COM_MURUGUARD_AREAS_HEADER') ?></span>
-                <label class="flex items-center gap-2 text-sm font-medium text-gray-600 cursor-pointer select-none">
-                    <input type="checkbox" id="muru-area-all"
-                           class="w-4 h-4 rounded border-gray-300"
-                           onclick="document.querySelectorAll('.muru-area-chk').forEach(c=>c.checked=this.checked); muruUpdateAreaCount();">
-                    <?= Text::_('COM_MURUGUARD_SELECT_ALL') ?>
-                </label>
-            </div>
+        <button type="button" id="muru-open-scan-modal"
+                class="inline-flex items-center gap-2 px-8 py-3.5 bg-indigo-600 hover:bg-indigo-700
+                       text-white font-bold rounded-xl shadow-lg hover:shadow-xl
+                       transition-all duration-200 hover:-translate-y-0.5 text-base">
+            🔍 <?= Text::_('COM_MURUGUARD_RUN_SCAN_BTN') ?>
+        </button>
+        <div class="flex items-center gap-2 text-xs text-gray-400 bg-gray-50 border border-gray-100 rounded-lg px-4 py-2">
+            <span>⏱</span>
+            <span><?= Text::_('COM_MURUGUARD_SCAN_TIME_NOTE') ?></span>
+        </div>
+    </form>
+</div>
 
-            <div class="p-5 grid gap-6 sm:grid-cols-2">
+<!-- ══════════════════════════════════════════════════════════════
+     SCAN-AREA PICKER MODAL -- opened by #muru-open-scan-modal above.
+     Every field inside carries form="muruguard-form" because this
+     whole div gets re-parented to <body> at runtime (see script), which
+     physically moves it out of that <form>'s DOM subtree; the form=""
+     attribute is what keeps these inputs submitting with it regardless
+     of where in the document they actually live.
+     ══════════════════════════════════════════════════════════════ -->
+<div id="muru-scan-modal">
+    <div id="muru-scan-modal-backdrop"></div>
+    <div id="muru-scan-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="muru-scan-modal-title">
+        <div id="muru-scan-modal-header">
+            <span id="muru-scan-modal-title" class="font-bold text-gray-800 text-sm flex items-center gap-2">🗂 <?= Text::_('COM_MURUGUARD_AREAS_HEADER') ?></span>
+            <button type="button" id="muru-scan-modal-close" aria-label="<?= Text::_('COM_MURUGUARD_MODAL_CLOSE') ?>">✕</button>
+        </div>
+        <div id="muru-scan-modal-body">
+            <label class="flex items-center justify-end gap-2 text-sm font-medium text-gray-600 cursor-pointer select-none mb-4">
+                <input type="checkbox" id="muru-area-all"
+                       class="w-4 h-4 rounded border-gray-300"
+                       onclick="document.querySelectorAll('.muru-area-chk').forEach(c=>c.checked=this.checked); muruUpdateAreaCount();">
+                <?= Text::_('COM_MURUGUARD_SELECT_ALL') ?>
+            </label>
+
+            <div class="grid gap-6 sm:grid-cols-2">
                 <?php foreach ($scanAreas as $groupKey => $group):
                     $meta = $groupIcons[$groupKey] ?? ['icon' => '📦', 'chip' => 'bg-gray-100 text-gray-500'];
                 ?>
@@ -674,7 +712,7 @@ $totalAreaCount = array_sum(array_map(fn($g) => count($g['areas']), $scanAreas))
                         <div class="space-y-1">
                             <?php foreach ($group['areas'] as $key => $label): ?>
                                 <label class="flex items-start gap-2 text-sm text-gray-700 cursor-pointer hover:bg-gray-50 rounded-lg px-2 py-1.5 -mx-2 transition-colors">
-                                    <input type="checkbox" name="scan_areas[]"
+                                    <input type="checkbox" name="scan_areas[]" form="muruguard-form"
                                            value="<?= htmlspecialchars($key) ?>"
                                            class="muru-area-chk mt-0.5 w-4 h-4 rounded border-gray-300 flex-shrink-0"
                                            onchange="muruUpdateAreaCount()"
@@ -686,25 +724,18 @@ $totalAreaCount = array_sum(array_map(fn($g) => count($g['areas']), $scanAreas))
                     </div>
                 <?php endforeach; ?>
             </div>
-
-            <div class="px-5 py-2.5 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">
-                <?= Text::sprintf('COM_MURUGUARD_AREA_COUNT_TEXT', '<span id="muru-area-count">' . $totalAreaCount . '</span>', $totalAreaCount) ?>
-            </div>
         </div>
 
-        <div class="flex flex-col items-center gap-3">
-            <button type="submit"
-                    class="inline-flex items-center gap-2 px-8 py-3.5 bg-indigo-600 hover:bg-indigo-700
-                           text-white font-bold rounded-xl shadow-lg hover:shadow-xl
-                           transition-all duration-200 hover:-translate-y-0.5 text-base">
+        <div id="muru-scan-modal-footer">
+            <span class="text-xs text-gray-400">
+                <?= Text::sprintf('COM_MURUGUARD_AREA_COUNT_TEXT', '<span id="muru-area-count">' . $totalAreaCount . '</span>', $totalAreaCount) ?>
+            </span>
+            <button type="submit" form="muruguard-form"
+                    class="inline-flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm">
                 🔍 <?= Text::_('COM_MURUGUARD_RUN_SCAN_BTN') ?>
             </button>
-            <div class="flex items-center gap-2 text-xs text-gray-400 bg-gray-50 border border-gray-100 rounded-lg px-4 py-2">
-                <span>⏱</span>
-                <span><?= Text::_('COM_MURUGUARD_SCAN_TIME_NOTE') ?></span>
-            </div>
         </div>
-    </form>
+    </div>
 </div>
 
 <?php else: ?>
@@ -1331,7 +1362,7 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
     // animating the collapsible sidebar, and a transformed ancestor
     // breaks `position: fixed` for any descendant, confining it to that
     // ancestor's box instead of the actual viewport.
-    ['muruguard-overlay', 'muru-header-actions', 'muru-modal'].forEach(function (id) {
+    ['muruguard-overlay', 'muru-header-actions', 'muru-modal', 'muru-scan-modal'].forEach(function (id) {
         var el = document.getElementById(id);
         if (el && el.parentNode !== document.body) {
             document.body.appendChild(el);
@@ -1438,6 +1469,25 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
             refreshWebcronUrl();
         });
     }
+
+    // ── Scan-area picker modal ───────────────────────────────────
+    var scanModal   = document.getElementById('muru-scan-modal');
+    var openScanBtn = document.getElementById('muru-open-scan-modal');
+    function openScanModal() {
+        if (scanModal) scanModal.classList.add('muru-show');
+    }
+    function closeScanModal() {
+        if (scanModal) scanModal.classList.remove('muru-show');
+    }
+    if (openScanBtn) openScanBtn.addEventListener('click', openScanModal);
+    document.addEventListener('click', function (e) {
+        if (e.target.id === 'muru-scan-modal-close' || e.target.id === 'muru-scan-modal-backdrop') {
+            closeScanModal();
+        }
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') closeScanModal();
+    });
 
     // ── Code-analysis modal ─────────────────────────────────────
     // Event delegation, not per-button listeners -- the button set lives
