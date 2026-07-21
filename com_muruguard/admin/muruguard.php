@@ -33,8 +33,9 @@ if ($task !== 'scanner.scheduledcheck') {
 }
 
 // Every real action (scan, delete, cleancode, cleanmenu, deleteassets,
-// scheduledcheck, savesettings) is submitted as task="scanner.<method>".
-// BaseController::getInstance()'s own "prefix.method" resolution turned
+// scheduledcheck, savesettings, saveshieldsettings, clearattacklog) is
+// submitted as task="scanner.<method>". BaseController::getInstance()'s
+// own "prefix.method" resolution turned
 // out not to reliably route these to MuruguardControllerScanner in
 // practice -- they were silently falling through to the default display
 // task instead, a real bug seen on a live install. Dispatching this

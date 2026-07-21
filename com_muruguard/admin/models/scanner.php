@@ -10,6 +10,7 @@ defined('_JEXEC') or die;
 use Joomla\CMS\MVC\Model\BaseDatabaseModel;
 use Joomla\CMS\Factory;
 use Joomla\CMS\Component\ComponentHelper;
+use Joomla\CMS\Language\Text;
 
 require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/muruguard.php';
 
@@ -208,6 +209,48 @@ class MuruguardModelScanner extends BaseDatabaseModel
         $params['alert_email'] = $email;
         $table->params = json_encode($params);
         $table->store();
+    }
+
+    /**
+     * Same storage the plg_system_muruguardshield plugin reads from on
+     * every request via ComponentHelper::getParams('com_muruguard') --
+     * this is the only place that plugin's behaviour is actually
+     * configured, there is no separate plugin-side settings screen.
+     */
+    public function saveShieldSettings(bool $enabled, bool $blockPatterns, bool $blockBruteForce, int $threshold, int $window): void
+    {
+        $table = new \Joomla\CMS\Table\Extension($this->getDatabase());
+        if (!$table->load(['element' => 'com_muruguard', 'type' => 'component'])) return;
+
+        $params = json_decode((string) $table->params, true);
+        if (!is_array($params)) $params = [];
+        $params['shield_enabled'] = $enabled ? 1 : 0;
+        $params['shield_block_patterns'] = $blockPatterns ? 1 : 0;
+        $params['shield_block_bruteforce'] = $blockBruteForce ? 1 : 0;
+        $params['shield_bruteforce_threshold'] = max(2, min(50, $threshold));
+        $params['shield_bruteforce_window'] = max(1, min(1440, $window));
+        $table->params = json_encode($params);
+        $table->store();
+    }
+
+    /**
+     * True only if plg_system_muruguardshield is both installed AND
+     * enabled -- the Settings panel uses this to warn when the shield
+     * toggles are turned on but have no extension actually reading them,
+     * since that combination looks configured but silently does nothing.
+     */
+    public function isShieldPluginActive(): bool
+    {
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->select($db->quoteName('enabled'))
+            ->from($db->quoteName('#__extensions'))
+            ->where($db->quoteName('type') . ' = ' . $db->quote('plugin'))
+            ->where($db->quoteName('folder') . ' = ' . $db->quote('system'))
+            ->where($db->quoteName('element') . ' = ' . $db->quote('muruguardshield'));
+
+        $db->setQuery($query);
+        return (bool) $db->loadResult();
     }
 
     // ------------------------------------------------------------------
@@ -652,22 +695,22 @@ class MuruguardModelScanner extends BaseDatabaseModel
 
         foreach ($targets as $relPath) {
             $relPath = (string) $relPath;
-            if (!isset($this->fileFindings[$relPath])) { $flash[] = "SKIPPED (not flagged): $relPath"; continue; }
+            if (!isset($this->fileFindings[$relPath])) { $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_NOT_FLAGGED', $relPath); continue; }
             $abs = realpath($this->root . '/' . $relPath);
-            if ($abs === false) { $flash[] = "SKIPPED (file vanished): $relPath"; continue; }
-            if (strpos($abs, $rootReal . DIRECTORY_SEPARATOR) !== 0) { $flash[] = "SKIPPED (outside root): $relPath"; continue; }
-            if (basename($abs) === 'configuration.php') { $flash[] = "SKIPPED (protected): $relPath"; continue; }
-            if (in_array($abs, $protectedAbs, true) || $abs === $rootReal) { $flash[] = "SKIPPED (protected top-level directory): $relPath"; continue; }
+            if ($abs === false) { $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_VANISHED', $relPath); continue; }
+            if (strpos($abs, $rootReal . DIRECTORY_SEPARATOR) !== 0) { $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_OUTSIDE_ROOT', $relPath); continue; }
+            if (basename($abs) === 'configuration.php') { $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_PROTECTED', $relPath); continue; }
+            if (in_array($abs, $protectedAbs, true) || $abs === $rootReal) { $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_PROTECTED_DIR', $relPath); continue; }
 
             if (MuruguardHelper::isProtectedEntryPath($relPath, $sig)) {
-                $flash[] = "SKIPPED (required core entry file — use \"Clean code\" to strip injected code instead of deleting): $relPath";
+                $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_REQUIRED_ENTRY', $relPath);
                 continue;
             }
 
             if (is_dir($abs)) {
-                $flash[] = MuruguardHelper::deleteRecursive($abs) ? "DELETED (folder): $relPath" : "FAILED (permissions?): $relPath";
+                $flash[] = MuruguardHelper::deleteRecursive($abs) ? Text::sprintf('COM_MURUGUARD_FLASH_DELETED_FOLDER', $relPath) : Text::sprintf('COM_MURUGUARD_FLASH_FAILED_PERMISSIONS', $relPath);
             } elseif (is_file($abs)) {
-                $flash[] = @unlink($abs) ? "DELETED: $relPath" : "FAILED (permissions?): $relPath";
+                $flash[] = @unlink($abs) ? Text::sprintf('COM_MURUGUARD_FLASH_DELETED', $relPath) : Text::sprintf('COM_MURUGUARD_FLASH_FAILED_PERMISSIONS', $relPath);
             }
         }
 
@@ -694,15 +737,15 @@ class MuruguardModelScanner extends BaseDatabaseModel
 
         foreach ($targets as $relPath) {
             $relPath = (string) $relPath;
-            if (!isset($this->fileFindings[$relPath])) { $flash[] = "SKIPPED (not flagged): $relPath"; continue; }
+            if (!isset($this->fileFindings[$relPath])) { $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_NOT_FLAGGED', $relPath); continue; }
 
             $abs = realpath($this->root . '/' . $relPath);
-            if ($abs === false || !is_file($abs)) { $flash[] = "SKIPPED (file vanished): $relPath"; continue; }
-            if (strpos($abs, $rootReal . DIRECTORY_SEPARATOR) !== 0) { $flash[] = "SKIPPED (outside root): $relPath"; continue; }
+            if ($abs === false || !is_file($abs)) { $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_VANISHED', $relPath); continue; }
+            if (strpos($abs, $rootReal . DIRECTORY_SEPARATOR) !== 0) { $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_OUTSIDE_ROOT', $relPath); continue; }
 
             $ext = strtolower(pathinfo($abs, PATHINFO_EXTENSION));
             if (!in_array($ext, $cleanableExts, true)) {
-                $flash[] = "SKIPPED (not an auto-cleanable file type): $relPath";
+                $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_NOT_CLEANABLE_TYPE', $relPath);
                 continue;
             }
 
@@ -712,29 +755,29 @@ class MuruguardModelScanner extends BaseDatabaseModel
             // "successful" clean silently doesn't stick on shared
             // hosting -- gets its own clear, actionable message.
             if (!is_writable($abs)) {
-                $flash[] = "SKIPPED (file is not writable by PHP — fix file ownership/permissions on the server, then retry): $relPath";
+                $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_NOT_WRITABLE', $relPath);
                 continue;
             }
 
             $contents = @file_get_contents($abs);
-            if ($contents === false) { $flash[] = "SKIPPED (unreadable): $relPath"; continue; }
+            if ($contents === false) { $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_UNREADABLE', $relPath); continue; }
 
             $result = MuruguardHelper::cleanPrependedPayload($contents);
             if (!$result['changed']) {
                 $result = MuruguardHelper::cleanHeadTagInjection($contents);
             }
             if (!$result['changed']) {
-                $flash[] = "SKIPPED (no auto-cleanable pattern recognized here — review the Code Issues details and clean manually): $relPath";
+                $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_NO_PATTERN', $relPath);
                 continue;
             }
 
             $backup = $abs . '.muruguard-' . date('Ymd-His') . '.bak';
             if (@copy($abs, $backup) === false) {
-                $flash[] = "SKIPPED (couldn't create a safety backup, nothing was changed): $relPath";
+                $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_NO_BACKUP', $relPath);
                 continue;
             }
             if (@file_put_contents($abs, $result['cleaned']) === false) {
-                $flash[] = "FAILED (couldn't write the cleaned file — original is untouched, backup kept at " . basename($backup) . "): $relPath";
+                $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_FAILED_WRITE', basename($backup), $relPath);
                 continue;
             }
 
@@ -750,11 +793,11 @@ class MuruguardModelScanner extends BaseDatabaseModel
                 || MuruguardHelper::cleanHeadTagInjection($verifyContents)['changed']
             );
             if ($stillInfected) {
-                $flash[] = "WARNING: wrote the file but re-reading it still shows the same infection pattern — something on the server (a cache, a file-integrity/restore tool, or another process) may be reverting the change. Backup kept at " . basename($backup) . ": $relPath";
+                $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_WARNING_REVERTED', basename($backup), $relPath);
                 continue;
             }
 
-            $flash[] = "CLEANED (removed: {$result['removed_preview']}) — original backed up as " . basename($backup) . ": $relPath";
+            $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_CLEANED', $result['removed_preview'], basename($backup), $relPath);
         }
 
         Factory::getApplication()->getSession()->set('muruguard.filefindings', null);
@@ -772,17 +815,17 @@ class MuruguardModelScanner extends BaseDatabaseModel
             $query = $db->getQuery(true)->select('params')->from($db->quoteName('#__menu'))->where($db->quoteName('id') . ' = ' . $id);
             $db->setQuery($query);
             $paramsJson = $db->loadResult();
-            if ($paramsJson === null) { $flash[] = "SKIPPED (row not found): id $id"; continue; }
+            if ($paramsJson === null) { $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_ROW_NOT_FOUND', $id); continue; }
 
             $result = MuruguardHelper::cleanMenuParamsXss((string) $paramsJson, array_values($sig['MENU_XSS_PATTERNS']));
-            if (!$result['changed']) { $flash[] = "SKIPPED (couldn't safely parse params — clean manually): id $id"; continue; }
+            if (!$result['changed']) { $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_UNPARSEABLE', $id); continue; }
 
             $update = $db->getQuery(true)->update($db->quoteName('#__menu'))
                 ->set($db->quoteName('params') . ' = ' . $db->quote($result['cleaned']))
                 ->where($db->quoteName('id') . ' = ' . $id);
             $db->setQuery($update);
             $db->execute();
-            $flash[] = "CLEANED injection from params, rest of settings kept: id $id";
+            $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_CLEANED_MENU', $id);
         }
         return $flash;
     }

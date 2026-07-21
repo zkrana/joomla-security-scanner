@@ -1,8 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <access component="com_muruguard">
     <section name="component">
+        <!-- Anyone without core.manage on this component never even reaches
+             the controller (see MuruguardHelper::requireManageAccess()).
+             The actions below are additional, finer-grained gates checked
+             on top of that base requirement for specific destructive or
+             configuration-changing tasks (see requireDeleteAccess(),
+             requireEditAccess(), requireAdminAccess()). A user group can
+             be granted core.manage alone to view scan results without
+             being able to delete files, clean/modify them, or change
+             scheduled-scan settings. -->
         <action name="core.admin" title="JACTION_ADMIN" description="JACTION_ADMIN_COMPONENT_DESC" />
         <action name="core.manage" title="JACTION_MANAGE" description="JACTION_MANAGE_COMPONENT_DESC" />
-        <!-- Anyone without core.manage on this component never even reaches the controller. -->
+        <action name="core.delete" title="JACTION_DELETE" description="JACTION_DELETE_COMPONENT_DESC" />
+        <action name="core.edit" title="JACTION_EDIT" description="JACTION_EDIT_COMPONENT_DESC" />
     </section>
 </access>

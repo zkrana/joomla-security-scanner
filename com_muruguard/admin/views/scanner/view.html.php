@@ -30,6 +30,16 @@ class MuruguardViewScanner extends HtmlView
     public $cronToken = '';
     public $alertEmail = '';
     public $lastScheduledRun = null;
+    public $canDelete = false;
+    public $canEdit = false;
+    public $canAdmin = false;
+    public $shieldEnabled = false;
+    public $shieldBlockPatterns = false;
+    public $shieldBlockBruteForce = false;
+    public $shieldThreshold = 5;
+    public $shieldWindow = 15;
+    public $shieldPluginActive = false;
+    public $attackLog = [];
 
     public function display($tpl = null)
     {
@@ -37,6 +47,14 @@ class MuruguardViewScanner extends HtmlView
 
         $app     = Factory::getApplication();
         $session = $app->getSession();
+
+        // What this specific user is authorised to DO, not just view -- the
+        // template uses these to hide/disable Delete, Clean, and Settings
+        // actions a user's ACL group doesn't grant, rather than showing a
+        // button that would just 403 on click.
+        $this->canDelete = MuruguardHelper::canDelete();
+        $this->canEdit   = MuruguardHelper::canEdit();
+        $this->canAdmin  = MuruguardHelper::canAdmin();
 
         /** @var MuruguardModelScanner $model */
         $model = $this->getModel('Scanner');
@@ -56,6 +74,17 @@ class MuruguardViewScanner extends HtmlView
         $this->cronToken   = (string) $cfgParams->get('cron_token', '');
         $this->alertEmail  = (string) $cfgParams->get('alert_email', '');
         $this->lastScheduledRun = $model->getLastScheduledRunTime();
+
+        // Protection Mode settings + audit log, for the in-page Settings
+        // panel and the new Protection Log tab -- same params blob the
+        // plg_system_muruguardshield plugin reads on every request.
+        $this->shieldEnabled         = (bool) $cfgParams->get('shield_enabled', 0);
+        $this->shieldBlockPatterns   = (bool) $cfgParams->get('shield_block_patterns', 0);
+        $this->shieldBlockBruteForce = (bool) $cfgParams->get('shield_block_bruteforce', 0);
+        $this->shieldThreshold       = (int) $cfgParams->get('shield_bruteforce_threshold', 5);
+        $this->shieldWindow          = (int) $cfgParams->get('shield_bruteforce_window', 15);
+        $this->shieldPluginActive    = $model->isShieldPluginActive();
+        $this->attackLog             = MuruguardHelper::getAttackLog();
 
         // Restore cached scan results
         $cachedAt = (int) $session->get('muruguard.filefindings_time', 0);

@@ -20,6 +20,11 @@ class MuruguardHelper
     /**
      * Ensures the request is from a logged-in backend user with manage rights.
      * Call from entry point, controllers, views, and destructive model methods.
+     * This is the BASE gate every task requires; see requireDeleteAccess() /
+     * requireEditAccess() / requireAdminAccess() below for the finer-grained
+     * checks layered on top of it for specific destructive or configuration-
+     * changing tasks -- a user group can have core.manage alone to view scan
+     * results without being able to act on them.
      */
     public static function requireManageAccess(): void
     {
@@ -32,6 +37,61 @@ class MuruguardHelper
         if (!$user->authorise('core.manage', 'com_muruguard')) {
             throw new \Joomla\CMS\Exception\NotAllowed(Text::_('JERROR_ALERTNOAUTHOR'), 403);
         }
+    }
+
+    /** Required for destructive actions: deleting flagged files/folders, deleting rogue asset rows. */
+    public static function requireDeleteAccess(): void
+    {
+        self::requirePermission('core.delete');
+    }
+
+    /** Required for in-place modification: Clean code, Clean menu XSS. */
+    public static function requireEditAccess(): void
+    {
+        self::requirePermission('core.edit');
+    }
+
+    /** Required for changing component configuration: the Settings panel (scheduled scanning). */
+    public static function requireAdminAccess(): void
+    {
+        self::requirePermission('core.admin');
+    }
+
+    private static function requirePermission(string $action): void
+    {
+        self::requireManageAccess();
+
+        $user = Factory::getApplication()->getIdentity();
+        if (!$user->authorise($action, 'com_muruguard')) {
+            throw new \Joomla\CMS\Exception\NotAllowed(Text::_('JERROR_ALERTNOAUTHOR'), 403);
+        }
+    }
+
+    /**
+     * Non-throwing permission checks, for the view to decide whether to
+     * show/enable an action button at all -- offering a button that will
+     * just 403 on click is bad UX, so the template hides or disables it
+     * up front based on these.
+     */
+    public static function canDelete(): bool
+    {
+        return self::can('core.delete');
+    }
+
+    public static function canEdit(): bool
+    {
+        return self::can('core.edit');
+    }
+
+    public static function canAdmin(): bool
+    {
+        return self::can('core.admin');
+    }
+
+    private static function can(string $action): bool
+    {
+        $user = Factory::getApplication()->getIdentity();
+        return !$user->guest && (int) $user->id > 0 && (bool) $user->authorise($action, 'com_muruguard');
     }
 
     /** Central place for every pattern list used across the scan. */
@@ -112,6 +172,35 @@ class MuruguardHelper
                     'severity' => 'medium', 'why' => 'Decodes a long base64 blob then rebuilds identifiers via string-index lookups — a common obfuscation shape, but also used by some legitimate obfuscated/licensed commercial extensions. Review what the rebuilt identifiers resolve to.'],
                 'opcache_reset_only' => ['re' => '/^\s*<\?php\s*opcache_reset\s*\(\s*\)\s*;\s*\?>\s*$/i',
                     'severity' => 'medium', 'why' => 'A file whose entire content is just opcache_reset() is functionally harmless by itself, but matches a known dropper self-cleanup helper used to force PHP to immediately pick up newly-written malicious files elsewhere.'],
+            ],
+
+            // Checked against a LIVE incoming request (GET/POST/URI/User-Agent)
+            // by the companion plg_system_muruguardshield plugin, not by the
+            // component's own file-content scan. 'block_eligible' marks the
+            // ones confident enough to actively reject with a 403 when the
+            // admin has opted into blocking (not just logging) -- every
+            // other severity level is log-only regardless of that setting,
+            // since a false positive here rejects a real visitor's request
+            // rather than just flagging a file for human review.
+            'REQUEST_SIGNATURES' => [
+                'webshell_param_exec' => ['re' => '/\b(?:system|exec|shell_exec|passthru|popen|proc_open|assert|create_function)\s*\(/i',
+                    'severity' => 'high', 'block_eligible' => true,
+                    'why' => 'A request parameter value itself contains a PHP code-execution function call -- the classic way an attacker interacts with an already-planted one-line eval/assert webshell, sending the actual command as the payload rather than in the file.'],
+                'webshell_param_eval_b64' => ['re' => '/eval\s*\(\s*(?:@)?base64_decode\s*\(/i',
+                    'severity' => 'high', 'block_eligible' => true,
+                    'why' => 'A request parameter contains eval(base64_decode(...)) -- the exact payload shape used to run obfuscated PHP through a planted webshell.'],
+                'sppb_upload_custom_icon' => ['re' => '/task\s*=\s*[\'"]?[^&\'"]*uploadcustomicon/i',
+                    'severity' => 'high', 'block_eligible' => true,
+                    'why' => 'Directly targets the SP Page Builder uploadCustomIcon task -- the exact unauthenticated RCE this whole tool exists to catch the aftermath of. A live probe against it is worth blocking outright, not just logging.'],
+                'known_dropped_filename' => ['re' => '/^\/?.*(?:codex-sppb-[a-f0-9]+|codex_sppb\w*|queue_\d+)\.php(?:[?\/]|$)/i',
+                    'severity' => 'high', 'block_eligible' => true,
+                    'why' => 'The request path matches a known malware-drop filename pattern from this campaign -- either an attacker probing for a shell that was never dropped, or someone actively using one that was.'],
+                'path_traversal_probe' => ['re' => '/(?:\.\.[\/\\\\]){2,}|\/etc\/passwd|wp-config\.php|configuration\.php~/i',
+                    'severity' => 'medium', 'block_eligible' => false,
+                    'why' => 'Directory-traversal sequences or a direct probe for a well-known sensitive file -- common reconnaissance, but broad enough (some legitimate frameworks use relative paths with ../ in query strings) that it is logged for review rather than blocked automatically.'],
+                'known_scanner_user_agent' => ['re' => '/sqlmap|nikto|acunetix|nessus|masscan|zgrab|nuclei|dirbuster|wpscan/i',
+                    'severity' => 'medium', 'block_eligible' => false,
+                    'why' => 'The User-Agent string identifies a known vulnerability-scanning tool. Often a hostile scan, but also how a site owner\'s own authorised security testing shows up -- logged for review, not auto-blocked.'],
             ],
 
             'MENU_XSS_PATTERNS' => [
@@ -282,37 +371,216 @@ class MuruguardHelper
      * the model can filter directly; the pseudo-keys core_entry / webroot /
      * database gate the non-SCAN_CONFIG passes.
      */
+    /**
+     * Keyed by a stable, never-translated group id (used for icon lookups
+     * and other by-key logic in the view) rather than the display label
+     * itself, so the label can be translated without breaking anything
+     * that depends on the key.
+     */
     public static function getScanAreas(): array
     {
         return [
-            'Upload & media directories' => [
-                'media'  => 'media/',
-                'images' => 'images/',
-                'tmp'    => 'tmp/',
-                'cache'  => 'cache/',
-                'files'  => 'files/',
+            'upload_media' => [
+                'label' => Text::_('COM_MURUGUARD_GROUP_UPLOAD_MEDIA'),
+                'areas' => [
+                    'media'  => 'media/',
+                    'images' => 'images/',
+                    'tmp'    => 'tmp/',
+                    'cache'  => 'cache/',
+                    'files'  => 'files/',
+                ],
             ],
-            'Extension & template code' => [
-                'components'                => 'components/',
-                'administrator/components'  => 'administrator/components/',
-                'modules'                   => 'modules/',
-                'administrator/modules'     => 'administrator/modules/',
-                'plugins'                   => 'plugins/',
-                'libraries'                 => 'libraries/',
-                'templates'                 => 'templates/',
-                'administrator/templates'   => 'administrator/templates/',
-                'administrator/includes'    => 'administrator/includes/',
-                'cli'                       => 'cli/',
-                'bin'                       => 'bin/',
+            'extension_code' => [
+                'label' => Text::_('COM_MURUGUARD_GROUP_EXTENSION_CODE'),
+                'areas' => [
+                    'components'                => 'components/',
+                    'administrator/components'  => 'administrator/components/',
+                    'modules'                   => 'modules/',
+                    'administrator/modules'     => 'administrator/modules/',
+                    'plugins'                   => 'plugins/',
+                    'libraries'                 => 'libraries/',
+                    'templates'                 => 'templates/',
+                    'administrator/templates'   => 'administrator/templates/',
+                    'administrator/includes'    => 'administrator/includes/',
+                    'cli'                       => 'cli/',
+                    'bin'                       => 'bin/',
+                ],
             ],
-            'Core &amp; webroot' => [
-                'core_entry' => 'Core entry points (index.php, administrator/index.php, api/index.php)',
-                'webroot'    => 'Webroot top-level files &amp; unknown folders',
+            'core_webroot' => [
+                'label' => Text::_('COM_MURUGUARD_GROUP_CORE_WEBROOT'),
+                'areas' => [
+                    'core_entry' => Text::_('COM_MURUGUARD_AREA_CORE_ENTRY'),
+                    'webroot'    => Text::_('COM_MURUGUARD_AREA_WEBROOT'),
+                ],
             ],
-            'Database' => [
-                'database' => 'Users, menu XSS, SP Page Builder assets, template styles',
+            'database' => [
+                'label' => Text::_('COM_MURUGUARD_GROUP_DATABASE'),
+                'areas' => [
+                    'database' => Text::_('COM_MURUGUARD_AREA_DATABASE'),
+                ],
             ],
         ];
+    }
+
+    /**
+     * Checks a LIVE incoming request against REQUEST_SIGNATURES. Called by
+     * the companion plg_system_muruguardshield plugin on every page load
+     * -- NOT by the component's own file-content scan, which never sees
+     * request data at all. Everything (URI, every GET/POST value) is
+     * flattened into one combined haystack and checked against every
+     * signature except the User-Agent one, which checks that header
+     * specifically. Returns the highest-severity match found, or null.
+     */
+    public static function scanRequestForAttack(array $get, array $post, string $uri, string $userAgent): ?array
+    {
+        $sig = self::getSignatures();
+
+        $flatten = static function (array $arr) use (&$flatten): array {
+            $out = [];
+            foreach ($arr as $v) {
+                $out = is_array($v) ? array_merge($out, $flatten($v)) : array_merge($out, [(string) $v]);
+            }
+            return $out;
+        };
+        $parts = array_filter(array_merge([$uri], $flatten($get), $flatten($post)), fn($p) => $p !== '');
+        $combined = implode(' ', $parts);
+
+        $best = null;
+        foreach ($sig['REQUEST_SIGNATURES'] as $name => $def) {
+            $haystack = $name === 'known_scanner_user_agent' ? $userAgent : $combined;
+            if ($haystack === '' || !preg_match($def['re'], $haystack, $m)) continue;
+
+            $candidate = [
+                'rule'           => $name,
+                'severity'       => $def['severity'],
+                'block_eligible' => $def['block_eligible'],
+                'why'            => $def['why'],
+                'matched_text'   => mb_substr((string) $m[0], 0, 120),
+            ];
+            if ($best === null || ($candidate['severity'] === 'high' && $best['severity'] !== 'high')) {
+                $best = $candidate;
+            }
+        }
+        return $best;
+    }
+
+    /**
+     * Deliberately the same JSON-file-under-this-component's-own-data-
+     * folder pattern as scan-history.json (see MuruguardModelScanner::
+     * scanHistoryFilePath() for the full reasoning) -- and here it also
+     * doubles as the one thing both this component AND the separate
+     * shield plugin can agree on without any cross-extension API: the
+     * plugin just writes here directly using the same JPATH_ADMINISTRATOR
+     * constant every Joomla extension has, no coupling beyond this path.
+     * flock() is used on writes (unlike scan-history.json) because this
+     * file can plausibly receive concurrent writes from simultaneous
+     * requests during an actual attack burst, exactly when losing entries
+     * matters most.
+     */
+    private static function attackLogFilePath(): string
+    {
+        return JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/attack-log.json';
+    }
+
+    /** Newest first, capped at 500 entries so the file stays small and fast to read regardless of traffic volume. */
+    public static function recordAttackLogEntry(array $entry): void
+    {
+        $path = self::attackLogFilePath();
+        $fh = @fopen($path, 'c+');
+        if ($fh === false) return;
+
+        if (@flock($fh, LOCK_EX)) {
+            $size = filesize($path) ?: 0;
+            $contents = $size > 0 ? fread($fh, $size) : '';
+            $log = json_decode((string) $contents, true);
+            if (!is_array($log)) $log = [];
+
+            array_unshift($log, $entry);
+            $log = array_slice($log, 0, 500);
+
+            ftruncate($fh, 0);
+            rewind($fh);
+            fwrite($fh, json_encode($log));
+            fflush($fh);
+            flock($fh, LOCK_UN);
+        }
+        fclose($fh);
+    }
+
+    public static function getAttackLog(): array
+    {
+        $path = self::attackLogFilePath();
+        if (!is_file($path)) return [];
+        $contents = @file_get_contents($path);
+        if ($contents === false) return [];
+        $decoded = json_decode($contents, true);
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    public static function clearAttackLog(): void
+    {
+        @file_put_contents(self::attackLogFilePath(), json_encode([]));
+    }
+
+    private static function loginAttemptsFilePath(): string
+    {
+        return JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/login-attempts.json';
+    }
+
+    /**
+     * Records one failed backend login attempt for brute-force tracking.
+     * Entries older than 24h are pruned on every write so this file can
+     * never grow unbounded even under a sustained attack -- a rolling
+     * window is all isBruteForceThresholdExceeded() ever needs anyway.
+     */
+    public static function recordLoginFailure(string $ip, string $username): void
+    {
+        $path = self::loginAttemptsFilePath();
+        $fh = @fopen($path, 'c+');
+        if ($fh === false) return;
+
+        if (@flock($fh, LOCK_EX)) {
+            $size = filesize($path) ?: 0;
+            $contents = $size > 0 ? fread($fh, $size) : '';
+            $attempts = json_decode((string) $contents, true);
+            if (!is_array($attempts)) $attempts = [];
+
+            $cutoff = time() - 86400;
+            $attempts = array_values(array_filter($attempts, fn($a) => ($a['time'] ?? 0) >= $cutoff));
+            $attempts[] = ['ip' => $ip, 'username' => $username, 'time' => time()];
+
+            ftruncate($fh, 0);
+            rewind($fh);
+            fwrite($fh, json_encode($attempts));
+            fflush($fh);
+            flock($fh, LOCK_UN);
+        }
+        fclose($fh);
+    }
+
+    public static function getLoginAttempts(): array
+    {
+        $path = self::loginAttemptsFilePath();
+        if (!is_file($path)) return [];
+        $contents = @file_get_contents($path);
+        if ($contents === false) return [];
+        $decoded = json_decode($contents, true);
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    /** True if $ip has failed $threshold or more times within the last $windowMinutes. */
+    public static function isBruteForceThresholdExceeded(string $ip, int $threshold, int $windowMinutes): bool
+    {
+        if ($threshold <= 0) return false;
+        $cutoff = time() - ($windowMinutes * 60);
+        $count = 0;
+        foreach (self::getLoginAttempts() as $a) {
+            if (($a['ip'] ?? '') === $ip && ($a['time'] ?? 0) >= $cutoff) {
+                $count++;
+                if ($count >= $threshold) return true;
+            }
+        }
+        return false;
     }
 
     /**

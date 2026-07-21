@@ -56,7 +56,7 @@ public function scan()
             // back with a clear message instead, so the user gets a
             // working page (and a fresh CSRF token) rather than a dead end.
             $app->enqueueMessage(
-                'Scan failed: ' . $e->getMessage() . '. This usually means the scan hit your host\'s PHP execution time or memory limit -- check your PHP error log, or ask your host to raise max_execution_time / memory_limit for this site.',
+                Text::sprintf('COM_MURUGUARD_SCAN_FAILED_MSG', $e->getMessage()),
                 'error'
             );
             $this->setRedirect('index.php?option=com_muruguard');
@@ -87,6 +87,7 @@ public function scan()
     public function delete()
     {
         Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
+        \MuruguardHelper::requireDeleteAccess();
 
         $app     = Factory::getApplication();
         $targets = $app->input->post->get('targets', [], 'array');
@@ -109,6 +110,7 @@ public function scan()
     public function cleancode()
     {
         Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
+        \MuruguardHelper::requireEditAccess();
 
         $app     = Factory::getApplication();
         $targets = $app->input->post->get('targets', [], 'array');
@@ -135,6 +137,7 @@ public function scan()
     public function cleanmenu()
     {
         Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
+        \MuruguardHelper::requireEditAccess();
 
         $app = Factory::getApplication();
         $ids = $app->input->post->get('menu_xss_ids', [], 'array');
@@ -153,6 +156,7 @@ public function scan()
     public function deleteassets()
     {
         Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
+        \MuruguardHelper::requireDeleteAccess();
 
         $app = Factory::getApplication();
         $ids = $app->input->post->get('rogue_asset_ids', [], 'array');
@@ -161,7 +165,7 @@ public function scan()
         $model = $this->getModel('Scanner');
         $model->deleteRogueAssets($ids);
 
-        $app->enqueueMessage('Rogue asset rows deleted.', 'message');
+        $app->enqueueMessage(Text::_('COM_MURUGUARD_ASSETS_DELETED_MSG'), 'message');
         $this->setRedirect('index.php?option=com_muruguard');
     }
 
@@ -265,7 +269,7 @@ public function scan()
     public function savesettings()
     {
         Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
-        \MuruguardHelper::requireManageAccess();
+        \MuruguardHelper::requireAdminAccess();
 
         $app = Factory::getApplication();
         $input = $app->input;
@@ -275,13 +279,13 @@ public function scan()
         $alertEmail = trim($input->getString('alert_email', ''));
 
         if ($alertEmail !== '' && !filter_var($alertEmail, FILTER_VALIDATE_EMAIL)) {
-            $app->enqueueMessage('Settings NOT saved: "' . htmlspecialchars($alertEmail) . '" is not a valid email address.', 'error');
+            $app->enqueueMessage(Text::sprintf('COM_MURUGUARD_SETTINGS_INVALID_EMAIL', htmlspecialchars($alertEmail)), 'error');
             $this->setRedirect('index.php?option=com_muruguard');
             return;
         }
 
         if ($cronEnabled && $cronToken === '') {
-            $app->enqueueMessage('Settings NOT saved: scheduled scanning can\'t be enabled without a secret token -- set one first.', 'error');
+            $app->enqueueMessage(Text::_('COM_MURUGUARD_SETTINGS_NEEDS_TOKEN'), 'error');
             $this->setRedirect('index.php?option=com_muruguard');
             return;
         }
@@ -290,7 +294,50 @@ public function scan()
         $model = $this->getModel('Scanner');
         $model->saveScheduledSettings($cronEnabled, $cronToken, $alertEmail);
 
-        $app->enqueueMessage('Settings saved.', 'message');
+        $app->enqueueMessage(Text::_('COM_MURUGUARD_SETTINGS_SAVED_MSG'), 'message');
+        $this->setRedirect('index.php?option=com_muruguard');
+    }
+
+    /**
+     * Saves the Protection Mode settings the companion
+     * plg_system_muruguardshield plugin reads on every request. Same
+     * storage/permission level as savesettings() above -- this only
+     * controls the plugin's behaviour, it does not check whether that
+     * plugin is actually installed/enabled (the Settings panel surfaces
+     * that separately so the admin isn't misled by a setting with no
+     * effect).
+     */
+    public function saveshieldsettings()
+    {
+        Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
+        \MuruguardHelper::requireAdminAccess();
+
+        $app   = Factory::getApplication();
+        $input = $app->input;
+
+        $enabled         = (bool) $input->getInt('shield_enabled', 0);
+        $blockPatterns   = (bool) $input->getInt('shield_block_patterns', 0);
+        $blockBruteForce = (bool) $input->getInt('shield_block_bruteforce', 0);
+        $threshold       = $input->getInt('shield_bruteforce_threshold', 5);
+        $window          = $input->getInt('shield_bruteforce_window', 15);
+
+        /** @var MuruguardModelScanner $model */
+        $model = $this->getModel('Scanner');
+        $model->saveShieldSettings($enabled, $blockPatterns, $blockBruteForce, $threshold, $window);
+
+        $app->enqueueMessage(Text::_('COM_MURUGUARD_SETTINGS_SAVED_MSG'), 'message');
+        $this->setRedirect('index.php?option=com_muruguard');
+    }
+
+    /** Clears the Protection Log. Requires the same admin-level permission as changing settings, since it's destroying a security audit trail, not just tidying a scan result. */
+    public function clearattacklog()
+    {
+        Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
+        \MuruguardHelper::requireAdminAccess();
+
+        \MuruguardHelper::clearAttackLog();
+
+        Factory::getApplication()->enqueueMessage(Text::_('COM_MURUGUARD_ATTACK_LOG_CLEARED_MSG'), 'message');
         $this->setRedirect('index.php?option=com_muruguard');
     }
 }

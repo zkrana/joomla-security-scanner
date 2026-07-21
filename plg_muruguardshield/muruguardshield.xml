@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<extension type="plugin" group="system" method="upgrade">
+    <name>plg_system_muruguardshield</name>
+    <author>ZKRANA</author>
+    <creationDate>2026-07-21</creationDate>
+    <copyright>MIT</copyright>
+    <license>MIT</license>
+    <authorEmail>zkranao@gmail.com</authorEmail>
+    <authorUrl>https://www.linkedin.com/in/zkranadevs/</authorUrl>
+    <version>1.0.0</version>
+    <description>PLG_SYSTEM_MURUGUARDSHIELD_XML_DESCRIPTION</description>
+
+    <files>
+        <filename plugin="muruguardshield">muruguardshield.php</filename>
+        <folder>language</folder>
+        <file>index.html</file>
+    </files>
+
+    <languages>
+        <language tag="en-GB">language/en-GB/en-GB.plg_system_muruguardshield.ini</language>
+        <language tag="en-GB">language/en-GB/en-GB.plg_system_muruguardshield.sys.ini</language>
+    </languages>
+</extension>

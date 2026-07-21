@@ -8,6 +8,30 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-07-21
+
+### Added
+
+- **Protection Mode: real-time attack detection and blocking.** A new companion plugin, **System - MuRu Guard Shield** (`plg_system_muruguardshield`), checks every incoming request against known attack patterns -- webshell interaction, a direct probe against the SP Page Builder `uploadCustomIcon` RCE, known malware-drop filenames, path traversal probes, and known scanner User-Agents -- and tracks failed backend logins per IP. It ships as a **separate extension** because a component only runs when someone visits its own admin page; real-time, every-request protection has to live in a plugin instead.
+- **Settings → Protection tab.** A master **Protection Mode** switch (log-only, zero risk of blocking real visitors when this is the only switch on), plus two independent opt-in switches to actually reject traffic: **block high-confidence attack patterns** (403 on a webshell/RCE/malware-filename match) and **block brute-force login attempts** (reject further backend logins from an IP once it crosses a configurable failed-attempt threshold and time window). All three are off by default. Already-authenticated, non-guest sessions are exempt from request-pattern blocking so a legitimate admin action can never trip a false block and lock them out of their own site -- brute-force blocking has no such exemption, since it only ever targets pre-authentication attempts.
+- **Protection Log**, sectioned by type (Attack Pattern Matches / Brute-Force Login Attempts), showing IP address, timestamp, severity, matched rule/reason, request URI, and whether each entry was actually blocked or only logged -- the last 500 entries, newest first, with a Clear Log action. Gated behind the same Change Settings (`core.admin`) permission as everything else in Settings, since it's a security audit trail, not just a scan result.
+- The plugin has no settings screen of its own -- it reads `com_muruguard`'s params directly (`ComponentHelper::getParams('com_muruguard')`), so Protection Mode is configured entirely from this component's Settings panel. It fails open, silently, if the component isn't installed or a check throws, since a bug in a security feature that runs on every single page load must never be able to take the whole site down.
+
+## [2.3.1] - 2026-07-19
+
+### Fixed
+
+- **The Permissions tab never appeared on System → Global Configuration → MuRu Guard, no matter what `access.xml` declared.** Confirmed by reading Joomla core's own `com_config` source directly: a component's Permissions tab isn't generated automatically just because `access.xml` exists -- each component's own `config.xml` has to explicitly ask for it via a `<fieldset name="permissions">` containing a `<field type="rules" component="com_muruguard" section="component">`, the same way core components like `com_cache`/`com_redirect` do it. That fieldset was simply never added when the 4 ACL actions were introduced in 2.3.0, so `access.xml` alone had nothing to render into.
+- The Global Configuration page title showed the raw, untranslated string `com_muruguard_configuration` instead of a real title -- the specific language key Joomla's `com_config` view requests (`Text::_($component . '_configuration')`) was never defined. Added `COM_MURUGUARD_CONFIGURATION`.
+
+## [2.3.0] - 2026-07-19
+
+### Added
+
+- **Joomla ACL support.** Access is no longer all-or-nothing (`core.manage` deciding everything). `access.xml` now declares four actions -- **View & Scan** (`core.manage`, the base gate every group needs), **Clean** (`core.edit`, repairs infected files/menu items), **Delete** (`core.delete`, removes flagged files/rows), and **Change Settings** (`core.admin`, edits scheduled-scanning config) -- configurable per User Group the standard Joomla way, on the **Permissions** tab of System → Global Configuration → MuRu Guard (Joomla generates that tab automatically from `access.xml`, nothing custom to open). A group with only View & Scan can see every finding but every action button is replaced with a "you have view access but not X permission" notice instead of a control that would just 403 on click.
+- **Multilingual support.** Every string in the scanner page -- headings, buttons, table columns, tab labels, confirm dialogs, placeholders, the loading-overlay progress messages, and every Delete/Clean/Settings flash message -- now routes through Joomla's language system instead of being hardcoded English. Only `en-GB` ships today, but the interface follows whichever language an admin's account is set to, and a translator can add another by copying `administrator/language/en-GB/en-GB.com_muruguard.ini` into a new language's folder and translating the values.
+- The in-page **Setup Guide** tab (Settings → Setup Guide) now documents both of the above: what each of the 4 permission actions controls and where to set them, and how to add a translation.
+
 ## [2.2.3] - 2026-07-17
 
 ### Fixed

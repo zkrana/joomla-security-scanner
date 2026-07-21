@@ -211,27 +211,27 @@ if ($w !== null && $w['safe'] !== true):
             <div class="muruguard-overlay-spinner"></div>
             <span class="muruguard-overlay-icon">🛡️</span>
         </div>
-        <h3 class="muruguard-overlay-title">Scanning your Joomla installation</h3>
-        <p id="muruguard-loading-status" class="muruguard-overlay-status">Starting scan…</p>
+        <h3 class="muruguard-overlay-title"><?= Text::_('COM_MURUGUARD_OVERLAY_TITLE') ?></h3>
+        <p id="muruguard-loading-status" class="muruguard-overlay-status"><?= Text::_('COM_MURUGUARD_OVERLAY_STARTING') ?></p>
         <div class="muruguard-overlay-track"><div class="muruguard-overlay-bar"></div></div>
-        <p class="muruguard-overlay-note">This usually takes 10–30 seconds depending on site size — please don't close this tab.</p>
+        <p class="muruguard-overlay-note"><?= Text::_('COM_MURUGUARD_OVERLAY_NOTE') ?></p>
     </div>
 </div>
 
 <!-- ── Settings + Support (re-parented to <body> at runtime, see script) ── -->
 <div id="muru-header-actions">
     <button type="button" id="muru-settings-btn" aria-pressed="false">
-        ⚙️ Settings
+        ⚙️ <?= Text::_('COM_MURUGUARD_SETTINGS_BTN') ?>
     </button>
     <details id="support-widget">
         <summary>
-            💬 Support
+            💬 <?= Text::_('COM_MURUGUARD_SUPPORT_BTN') ?>
             <span class="muru-caret">▾</span>
         </summary>
         <div id="support-widget-menu">
-            <a href="mailto:zkranao@gmail.com" target="_blank" rel="noopener">☕ Buy me a coffee</a>
-            <a href="mailto:zkranao@gmail.com" target="_blank" rel="noopener">✉️ Email support</a>
-            <a href="https://www.linkedin.com/in/zkranadevs/" target="_blank" rel="noopener">💼 LinkedIn</a>
+            <a href="mailto:zkranao@gmail.com" target="_blank" rel="noopener">☕ <?= Text::_('COM_MURUGUARD_SUPPORT_COFFEE') ?></a>
+            <a href="mailto:zkranao@gmail.com" target="_blank" rel="noopener">✉️ <?= Text::_('COM_MURUGUARD_SUPPORT_EMAIL') ?></a>
+            <a href="https://www.linkedin.com/in/zkranadevs/" target="_blank" rel="noopener">💼 <?= Text::_('COM_MURUGUARD_SUPPORT_LINKEDIN') ?></a>
         </div>
     </details>
 </div>
@@ -245,7 +245,7 @@ if ($w !== null && $w['safe'] !== true):
                 <div id="muru-modal-badge"></div>
                 <code id="muru-modal-path"></code>
             </div>
-            <button type="button" id="muru-modal-close" aria-label="Close">✕</button>
+            <button type="button" id="muru-modal-close" aria-label="<?= Text::_('COM_MURUGUARD_MODAL_CLOSE') ?>">✕</button>
         </div>
         <div id="muru-modal-body"></div>
     </div>
@@ -259,32 +259,56 @@ if ($w !== null && $w['safe'] !== true):
      ══════════════════════════════════════════════════════════════ -->
 <div id="muru-settings-panel" class="hidden">
     <div class="flex items-center justify-between mb-6">
-        <h2 class="text-lg font-bold text-gray-800 flex items-center gap-2">⚙️ Settings</h2>
+        <h2 class="text-lg font-bold text-gray-800 flex items-center gap-2">⚙️ <?= Text::_('COM_MURUGUARD_SETTINGS_HEADING') ?></h2>
         <button type="button" id="muru-settings-back" class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors shadow-sm">
-            ← Back to scanner
+            ← <?= Text::_('COM_MURUGUARD_SETTINGS_BACK') ?>
         </button>
     </div>
 
     <div class="flex flex-wrap gap-1 p-1.5 bg-gray-50 border border-gray-200 rounded-xl mb-5 w-fit">
         <button type="button" class="muru-settings-tab active flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors" data-settings-tab="scheduled">
-            ⏰ Scheduled Scanning
+            ⏰ <?= Text::_('COM_MURUGUARD_SETTINGS_TAB_SCHEDULED') ?>
+        </button>
+        <button type="button" class="muru-settings-tab flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors" data-settings-tab="protection">
+            🛡️ <?= Text::_('COM_MURUGUARD_SETTINGS_TAB_PROTECTION') ?>
+            <?php if ($this->shieldEnabled): ?>
+                <span class="inline-flex items-center justify-center w-2 h-2 rounded-full bg-emerald-500"></span>
+            <?php endif; ?>
         </button>
         <button type="button" class="muru-settings-tab flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors" data-settings-tab="guide">
-            📖 Setup Guide
+            📖 <?= Text::_('COM_MURUGUARD_SETTINGS_TAB_GUIDE') ?>
         </button>
     </div>
 
     <div class="muru-settings-tabpanel active" data-settings-panel="scheduled">
+        <?php if (!$this->canAdmin): ?>
+        <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-5">
+            <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2 mb-3">⏰ <?= Text::_('COM_MURUGUARD_SCHEDULED_TITLE') ?></h3>
+            <div class="flex items-center gap-2 text-xs text-gray-500 mb-4">
+                <span class="text-base">🔒</span>
+                <span><?= Text::_('COM_MURUGUARD_SCHEDULED_READONLY') ?></span>
+            </div>
+            <div class="text-xs text-gray-600 space-y-1.5">
+                <div><?= Text::_('COM_MURUGUARD_STATUS_LABEL') ?>: <span class="font-semibold text-gray-800"><?= $this->cronEnabled ? Text::_('COM_MURUGUARD_STATUS_ENABLED') : Text::_('COM_MURUGUARD_STATUS_DISABLED') ?></span></div>
+                <div><?= Text::_('COM_MURUGUARD_ALERT_EMAIL_STATUS_LABEL') ?>: <span class="font-semibold text-gray-800"><?= $this->alertEmail !== '' ? htmlspecialchars($this->alertEmail) : Text::_('COM_MURUGUARD_NOT_SET') ?></span></div>
+                <?php if ($this->lastScheduledRun): ?>
+                    <div><?= Text::_('COM_MURUGUARD_LAST_RUN_LABEL') ?>: <span class="font-semibold text-gray-800"><?= date('Y-m-d H:i:s', $this->lastScheduledRun) ?></span></div>
+                <?php else: ?>
+                    <div><?= Text::_('COM_MURUGUARD_LAST_RUN_LABEL') ?>: <span class="font-semibold text-gray-800"><?= Text::_('COM_MURUGUARD_NEVER') ?></span></div>
+                <?php endif; ?>
+            </div>
+        </div>
+        <?php else: ?>
         <form action="<?= Route::_('index.php?option=com_muruguard&task=scanner.savesettings') ?>" method="post">
             <?= HTMLHelper::_('form.token') ?>
 
             <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-5">
                 <div class="flex items-start justify-between gap-4 mb-1">
                     <div>
-                        <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">⏰ Scheduled Scanning (Webcron)</h3>
-                        <p class="text-xs text-gray-500 mt-1 max-w-xl">Point any cron system at the URL below and get an email only when something new shows up -- never on every run, never on the very first run (which just records a baseline).</p>
+                        <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">⏰ <?= Text::_('COM_MURUGUARD_SCHEDULED_TITLE') ?></h3>
+                        <p class="text-xs text-gray-500 mt-1 max-w-xl"><?= Text::_('COM_MURUGUARD_SCHEDULED_DESC') ?></p>
                     </div>
-                    <label class="muru-switch flex-shrink-0" title="<?= $this->cronEnabled ? 'Enabled' : 'Disabled' ?>">
+                    <label class="muru-switch flex-shrink-0" title="<?= $this->cronEnabled ? Text::_('COM_MURUGUARD_STATUS_ENABLED') : Text::_('COM_MURUGUARD_STATUS_DISABLED') ?>">
                         <input type="checkbox" id="muru-cron-enabled" name="cron_enabled" value="1" <?= $this->cronEnabled ? 'checked' : '' ?>>
                         <span class="muru-switch-track"><span class="muru-switch-thumb"></span></span>
                     </label>
@@ -292,83 +316,292 @@ if ($w !== null && $w['safe'] !== true):
 
                 <?php if ($this->lastScheduledRun): ?>
                     <div class="text-xs text-gray-500 mb-4">
-                        🕐 Last scheduled run: <span class="font-semibold text-gray-700"><?= date('Y-m-d H:i:s', $this->lastScheduledRun) ?></span>
+                        🕐 <?= Text::_('COM_MURUGUARD_LAST_RUN_LABEL') ?>: <span class="font-semibold text-gray-700"><?= date('Y-m-d H:i:s', $this->lastScheduledRun) ?></span>
                     </div>
                 <?php else: ?>
-                    <div class="text-xs text-gray-400 mb-4">This has never run yet -- its first run only records a baseline, it won't email anything.</div>
+                    <div class="text-xs text-gray-400 mb-4"><?= Text::_('COM_MURUGUARD_SCHEDULED_NEVER_RUN') ?></div>
                 <?php endif; ?>
 
                 <div class="grid sm:grid-cols-2 gap-4 mb-4">
                     <div>
-                        <label class="block text-xs font-bold text-gray-600 mb-1.5" for="muru-cron-token">Secret token</label>
+                        <label class="block text-xs font-bold text-gray-600 mb-1.5" for="muru-cron-token"><?= Text::_('COM_MURUGUARD_TOKEN_LABEL') ?></label>
                         <div class="flex gap-2">
                             <input type="text" id="muru-cron-token" name="cron_token" value="<?= htmlspecialchars($this->cronToken) ?>"
-                                   placeholder="e.g. a random 32-character string"
+                                   placeholder="<?= Text::_('COM_MURUGUARD_TOKEN_PLACEHOLDER') ?>"
                                    class="flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
-                            <button type="button" id="muru-cron-generate" class="flex-shrink-0 px-3 py-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-600 bg-gray-50 hover:bg-gray-100 transition-colors">🎲 Generate</button>
+                            <button type="button" id="muru-cron-generate" class="flex-shrink-0 px-3 py-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-600 bg-gray-50 hover:bg-gray-100 transition-colors">🎲 <?= Text::_('COM_MURUGUARD_GENERATE_BTN') ?></button>
                         </div>
                     </div>
                     <div>
-                        <label class="block text-xs font-bold text-gray-600 mb-1.5" for="muru-alert-email">Alert email address</label>
+                        <label class="block text-xs font-bold text-gray-600 mb-1.5" for="muru-alert-email"><?= Text::_('COM_MURUGUARD_ALERT_EMAIL_FIELD_LABEL') ?></label>
                         <input type="email" id="muru-alert-email" name="alert_email" value="<?= htmlspecialchars($this->alertEmail) ?>"
-                               placeholder="you@example.com (optional)"
+                               placeholder="<?= Text::_('COM_MURUGUARD_EMAIL_PLACEHOLDER') ?>"
                                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
                     </div>
                 </div>
 
                 <div class="mb-5">
-                    <label class="block text-xs font-bold text-gray-600 mb-1.5">Webcron URL <span class="font-normal text-gray-400">(paste into your cron/host control panel)</span></label>
+                    <label class="block text-xs font-bold text-gray-600 mb-1.5"><?= Text::_('COM_MURUGUARD_WEBCRON_URL_LABEL') ?> <span class="font-normal text-gray-400"><?= Text::_('COM_MURUGUARD_WEBCRON_URL_HINT') ?></span></label>
                     <div class="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
                         <code id="muru-webcron-url" class="flex-1 min-w-0 text-xs text-gray-600 break-all"><?= htmlspecialchars(Uri::root() . 'administrator/index.php?option=com_muruguard&task=scanner.scheduledcheck&token=' . $this->cronToken) ?></code>
                         <button type="button" class="muru-copy-btn flex-shrink-0 w-7 h-7 inline-flex items-center justify-center rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
-                                data-copy="<?= htmlspecialchars(Uri::root() . 'administrator/index.php?option=com_muruguard&task=scanner.scheduledcheck&token=' . $this->cronToken) ?>" title="Copy URL" aria-label="Copy URL">
+                                data-copy="<?= htmlspecialchars(Uri::root() . 'administrator/index.php?option=com_muruguard&task=scanner.scheduledcheck&token=' . $this->cronToken) ?>" title="<?= Text::_('COM_MURUGUARD_COPY_URL') ?>" aria-label="<?= Text::_('COM_MURUGUARD_COPY_URL') ?>">
                             <span class="muru-copy-icon">📋</span>
                         </button>
                     </div>
                 </div>
 
                 <button type="submit" class="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm">
-                    💾 Save Settings
+                    💾 <?= Text::_('COM_MURUGUARD_SAVE_SETTINGS_BTN') ?>
                 </button>
             </div>
         </form>
+        <?php endif; ?>
     </div>
 
     <div class="muru-settings-tabpanel hidden" data-settings-panel="guide">
         <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-5">
             <div class="flex items-start justify-between gap-4 mb-4">
                 <div>
-                    <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">📖 Setup Guide — Global Configuration</h3>
-                    <p class="text-xs text-gray-500 mt-1 max-w-xl">The 3 scheduled-scanning fields on the other tab are a shortcut for options that also live in Joomla's own Global Configuration screen. A few more advanced options only live there.</p>
+                    <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">📖 <?= Text::_('COM_MURUGUARD_SETUP_GUIDE_TITLE') ?></h3>
+                    <p class="text-xs text-gray-500 mt-1 max-w-xl"><?= Text::_('COM_MURUGUARD_SETUP_GUIDE_DESC') ?></p>
                 </div>
                 <a href="index.php?option=com_config&view=component&component=com_muruguard"
                    class="flex-shrink-0 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm whitespace-nowrap">
-                    🔧 Open Global Configuration
+                    🔧 <?= Text::_('COM_MURUGUARD_OPEN_GLOBAL_CONFIG') ?>
                 </a>
             </div>
 
             <div class="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 mb-5">
-                <strong class="text-gray-700">System → Global Configuration → MuRu Guard</strong> — or use the shortcut button above.
+                <?= Text::_('COM_MURUGUARD_GLOBAL_CONFIG_PATH_NOTE') ?>
             </div>
 
             <div class="space-y-4">
                 <div class="border-l-2 border-indigo-200 pl-3">
-                    <div class="text-sm font-semibold text-gray-800">Max file scan size</div>
-                    <p class="text-xs text-gray-500 mt-0.5">Files larger than this are skipped during content-signature scanning, so scans stay fast on sites with large media libraries. Default is 2 MB — raise it if you suspect a payload hiding inside an unusually large file, lower it if scans are timing out on a slow host.</p>
+                    <div class="text-sm font-semibold text-gray-800"><?= Text::_('COM_MURUGUARD_GUIDE_MAXSIZE_TITLE') ?></div>
+                    <p class="text-xs text-gray-500 mt-0.5"><?= Text::_('COM_MURUGUARD_GUIDE_MAXSIZE_DESC') ?></p>
                 </div>
                 <div class="border-l-2 border-indigo-200 pl-3">
-                    <div class="text-sm font-semibold text-gray-800">Extra allowed root directories</div>
-                    <p class="text-xs text-gray-500 mt-0.5">Comma-separated top-level folder names (e.g. <code class="bg-gray-100 px-1 rounded">old, backup, archive</code>) to treat as expected instead of flagging them just for existing at the webroot. Everything inside them is still scanned normally — this only silences the "unrecognized directory" finding for folders you know are legitimate.</p>
+                    <div class="text-sm font-semibold text-gray-800"><?= Text::_('COM_MURUGUARD_GUIDE_EXTRAROOT_TITLE') ?></div>
+                    <p class="text-xs text-gray-500 mt-0.5"><?= Text::_('COM_MURUGUARD_GUIDE_EXTRAROOT_DESC') ?></p>
                 </div>
                 <div class="border-l-2 border-indigo-200 pl-3">
-                    <div class="text-sm font-semibold text-gray-800">Ignored paths (false positives)</div>
-                    <p class="text-xs text-gray-500 mt-0.5">One relative path per line — e.g. <code class="bg-gray-100 px-1 rounded">administrator/components/com_example/Controller/ConfigController.php</code> — to permanently skip a confirmed false positive from a legitimate third-party extension. Supports <code class="bg-gray-100 px-1 rounded">*</code> as a wildcard, e.g. <code class="bg-gray-100 px-1 rounded">administrator/components/com_example/*</code> to ignore an entire extension. Use sparingly, and only after you've actually reviewed the flagged code.</p>
+                    <div class="text-sm font-semibold text-gray-800"><?= Text::_('COM_MURUGUARD_GUIDE_IGNOREDPATHS_TITLE') ?></div>
+                    <p class="text-xs text-gray-500 mt-0.5"><?= Text::_('COM_MURUGUARD_GUIDE_IGNOREDPATHS_DESC') ?></p>
                 </div>
                 <div class="border-l-2 border-indigo-200 pl-3">
-                    <div class="text-sm font-semibold text-gray-800">Scheduled scanning switch, secret token, alert email</div>
-                    <p class="text-xs text-gray-500 mt-0.5">The exact same 3 fields as the ⏰ Scheduled Scanning tab — editing them here or there has the same effect, both read and write the same setting.</p>
+                    <div class="text-sm font-semibold text-gray-800"><?= Text::_('COM_MURUGUARD_GUIDE_SCHEDULED_TITLE') ?></div>
+                    <p class="text-xs text-gray-500 mt-0.5"><?= Text::_('COM_MURUGUARD_GUIDE_SCHEDULED_DESC') ?></p>
                 </div>
             </div>
+        </div>
+
+        <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-5">
+            <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2 mb-4">🔐 <?= Text::_('COM_MURUGUARD_GUIDE_ACL_HEADING') ?></h3>
+            <div class="space-y-4">
+                <div class="border-l-2 border-emerald-200 pl-3">
+                    <div class="text-sm font-semibold text-gray-800"><?= Text::_('COM_MURUGUARD_GUIDE_ACL_TITLE') ?></div>
+                    <p class="text-xs text-gray-500 mt-0.5"><?= Text::_('COM_MURUGUARD_GUIDE_ACL_DESC') ?></p>
+                    <ul class="text-xs text-gray-500 mt-2 space-y-1 list-disc pl-4">
+                        <li><strong class="text-gray-700"><?= Text::_('COM_MURUGUARD_GUIDE_ACL_MANAGE_LABEL') ?></strong> (core.manage) — <?= Text::_('COM_MURUGUARD_GUIDE_ACL_MANAGE_DESC') ?></li>
+                        <li><strong class="text-gray-700"><?= Text::_('COM_MURUGUARD_GUIDE_ACL_EDIT_LABEL') ?></strong> (core.edit) — <?= Text::_('COM_MURUGUARD_GUIDE_ACL_EDIT_DESC') ?></li>
+                        <li><strong class="text-gray-700"><?= Text::_('COM_MURUGUARD_GUIDE_ACL_DELETE_LABEL') ?></strong> (core.delete) — <?= Text::_('COM_MURUGUARD_GUIDE_ACL_DELETE_DESC') ?></li>
+                        <li><strong class="text-gray-700"><?= Text::_('COM_MURUGUARD_GUIDE_ACL_ADMIN_LABEL') ?></strong> (core.admin) — <?= Text::_('COM_MURUGUARD_GUIDE_ACL_ADMIN_DESC') ?></li>
+                    </ul>
+                </div>
+                <div class="border-l-2 border-emerald-200 pl-3">
+                    <div class="text-sm font-semibold text-gray-800"><?= Text::_('COM_MURUGUARD_GUIDE_LANG_TITLE') ?></div>
+                    <p class="text-xs text-gray-500 mt-0.5"><?= Text::_('COM_MURUGUARD_GUIDE_LANG_DESC') ?></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="muru-settings-tabpanel hidden" data-settings-panel="protection">
+        <?php if (!$this->shieldPluginActive): ?>
+        <div class="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-5 text-xs text-amber-800">
+            <span class="text-base leading-none">⚠️</span>
+            <span><?= Text::_('COM_MURUGUARD_SHIELD_PLUGIN_MISSING') ?></span>
+        </div>
+        <?php endif; ?>
+
+        <?php if (!$this->canAdmin): ?>
+        <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-5">
+            <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2 mb-3">🛡️ <?= Text::_('COM_MURUGUARD_SHIELD_TITLE') ?></h3>
+            <div class="flex items-center gap-2 text-xs text-gray-500 mb-4">
+                <span class="text-base">🔒</span>
+                <span><?= Text::_('COM_MURUGUARD_SCHEDULED_READONLY') ?></span>
+            </div>
+            <div class="text-xs text-gray-600 space-y-1.5">
+                <div><?= Text::_('COM_MURUGUARD_SHIELD_ENABLED_STATUS_LABEL') ?>: <span class="font-semibold text-gray-800"><?= $this->shieldEnabled ? Text::_('COM_MURUGUARD_STATUS_ENABLED') : Text::_('COM_MURUGUARD_STATUS_DISABLED') ?></span></div>
+                <div><?= Text::_('COM_MURUGUARD_SHIELD_BLOCK_PATTERNS_STATUS_LABEL') ?>: <span class="font-semibold text-gray-800"><?= $this->shieldBlockPatterns ? Text::_('COM_MURUGUARD_STATUS_ENABLED') : Text::_('COM_MURUGUARD_STATUS_DISABLED') ?></span></div>
+                <div><?= Text::_('COM_MURUGUARD_SHIELD_BLOCK_BRUTEFORCE_STATUS_LABEL') ?>: <span class="font-semibold text-gray-800"><?= $this->shieldBlockBruteForce ? Text::_('COM_MURUGUARD_STATUS_ENABLED') : Text::_('COM_MURUGUARD_STATUS_DISABLED') ?></span></div>
+            </div>
+        </div>
+        <?php else: ?>
+        <form action="<?= Route::_('index.php?option=com_muruguard&task=scanner.saveshieldsettings') ?>" method="post">
+            <?= HTMLHelper::_('form.token') ?>
+
+            <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-5">
+                <div class="flex items-start justify-between gap-4 mb-4">
+                    <div>
+                        <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">🛡️ <?= Text::_('COM_MURUGUARD_SHIELD_TITLE') ?></h3>
+                        <p class="text-xs text-gray-500 mt-1 max-w-xl"><?= Text::_('COM_MURUGUARD_SHIELD_DESC') ?></p>
+                    </div>
+                    <label class="muru-switch flex-shrink-0" title="<?= $this->shieldEnabled ? Text::_('COM_MURUGUARD_STATUS_ENABLED') : Text::_('COM_MURUGUARD_STATUS_DISABLED') ?>">
+                        <input type="checkbox" name="shield_enabled" value="1" <?= $this->shieldEnabled ? 'checked' : '' ?>>
+                        <span class="muru-switch-track"><span class="muru-switch-thumb"></span></span>
+                    </label>
+                </div>
+
+                <div class="flex items-center justify-between gap-4 py-3 border-t border-gray-100">
+                    <div>
+                        <div class="text-sm font-semibold text-gray-800"><?= Text::_('COM_MURUGUARD_SHIELD_BLOCK_PATTERNS_LABEL') ?></div>
+                        <p class="text-xs text-gray-500 mt-0.5 max-w-xl"><?= Text::_('COM_MURUGUARD_SHIELD_BLOCK_PATTERNS_DESC') ?></p>
+                    </div>
+                    <label class="muru-switch flex-shrink-0">
+                        <input type="checkbox" name="shield_block_patterns" value="1" <?= $this->shieldBlockPatterns ? 'checked' : '' ?>>
+                        <span class="muru-switch-track"><span class="muru-switch-thumb"></span></span>
+                    </label>
+                </div>
+
+                <div class="flex items-center justify-between gap-4 py-3 border-t border-gray-100">
+                    <div>
+                        <div class="text-sm font-semibold text-gray-800"><?= Text::_('COM_MURUGUARD_SHIELD_BLOCK_BRUTEFORCE_LABEL') ?></div>
+                        <p class="text-xs text-gray-500 mt-0.5 max-w-xl"><?= Text::_('COM_MURUGUARD_SHIELD_BLOCK_BRUTEFORCE_DESC') ?></p>
+                    </div>
+                    <label class="muru-switch flex-shrink-0">
+                        <input type="checkbox" name="shield_block_bruteforce" value="1" <?= $this->shieldBlockBruteForce ? 'checked' : '' ?>>
+                        <span class="muru-switch-track"><span class="muru-switch-thumb"></span></span>
+                    </label>
+                </div>
+
+                <div class="grid sm:grid-cols-2 gap-4 mt-4 pt-4 border-t border-gray-100">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-600 mb-1.5" for="muru-shield-threshold"><?= Text::_('COM_MURUGUARD_SHIELD_THRESHOLD_LABEL') ?></label>
+                        <input type="number" id="muru-shield-threshold" name="shield_bruteforce_threshold" min="2" max="50" value="<?= (int) $this->shieldThreshold ?>"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
+                        <p class="text-xs text-gray-400 mt-1"><?= Text::_('COM_MURUGUARD_SHIELD_THRESHOLD_DESC') ?></p>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-600 mb-1.5" for="muru-shield-window"><?= Text::_('COM_MURUGUARD_SHIELD_WINDOW_LABEL') ?></label>
+                        <input type="number" id="muru-shield-window" name="shield_bruteforce_window" min="1" max="1440" value="<?= (int) $this->shieldWindow ?>"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
+                        <p class="text-xs text-gray-400 mt-1"><?= Text::_('COM_MURUGUARD_SHIELD_WINDOW_DESC') ?></p>
+                    </div>
+                </div>
+
+                <button type="submit" class="inline-flex items-center gap-1.5 px-5 py-2 mt-5 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm">
+                    💾 <?= Text::_('COM_MURUGUARD_SAVE_SETTINGS_BTN') ?>
+                </button>
+            </div>
+        </form>
+        <?php endif; ?>
+
+        <?php
+        $attackEntries = array_filter($this->attackLog, fn($e) => ($e['type'] ?? '') === 'request');
+        $bruteEntries  = array_filter($this->attackLog, fn($e) => ($e['type'] ?? '') === 'bruteforce');
+        ?>
+        <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-5">
+            <div class="flex items-start justify-between gap-4 mb-4">
+                <div>
+                    <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">📋 <?= Text::_('COM_MURUGUARD_PROTECTION_LOG_TITLE') ?></h3>
+                    <p class="text-xs text-gray-500 mt-1 max-w-xl"><?= Text::_('COM_MURUGUARD_PROTECTION_LOG_DESC') ?></p>
+                </div>
+                <?php if ($this->canAdmin && !empty($this->attackLog)): ?>
+                <form action="<?= Route::_('index.php?option=com_muruguard&task=scanner.clearattacklog') ?>" method="post" onsubmit="return confirm('<?= Text::_('COM_MURUGUARD_PROTECTION_LOG_CLEAR_CONFIRM') ?>');">
+                    <?= HTMLHelper::_('form.token') ?>
+                    <button type="submit" class="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 rounded-lg text-xs font-semibold text-gray-600 bg-white hover:bg-gray-50 transition-colors">
+                        🗑 <?= Text::_('COM_MURUGUARD_PROTECTION_LOG_CLEAR_BTN') ?>
+                    </button>
+                </form>
+                <?php endif; ?>
+            </div>
+
+            <?php if (empty($this->attackLog)): ?>
+                <div class="text-center py-10 text-gray-400 text-sm">
+                    ✅ <?= Text::_('COM_MURUGUARD_PROTECTION_LOG_EMPTY') ?>
+                </div>
+            <?php else: ?>
+
+                <h4 class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-2 mt-2"><?= Text::_('COM_MURUGUARD_PROTECTION_LOG_SECTION_REQUESTS') ?></h4>
+                <?php if (empty($attackEntries)): ?>
+                    <div class="text-xs text-gray-400 mb-5">— <?= Text::_('COM_MURUGUARD_PROTECTION_LOG_NONE') ?></div>
+                <?php else: ?>
+                <div class="overflow-x-auto mb-5 border border-gray-200 rounded-lg">
+                    <table class="w-full text-xs">
+                        <thead class="bg-gray-50 text-gray-500 uppercase tracking-wider">
+                            <tr>
+                                <th class="text-left px-3 py-2 font-bold"><?= Text::_('COM_MURUGUARD_PROTECTION_LOG_COL_TIME') ?></th>
+                                <th class="text-left px-3 py-2 font-bold"><?= Text::_('COM_MURUGUARD_PROTECTION_LOG_COL_IP') ?></th>
+                                <th class="text-left px-3 py-2 font-bold"><?= Text::_('COM_MURUGUARD_PROTECTION_LOG_COL_SEVERITY') ?></th>
+                                <th class="text-left px-3 py-2 font-bold"><?= Text::_('COM_MURUGUARD_PROTECTION_LOG_COL_REASON') ?></th>
+                                <th class="text-left px-3 py-2 font-bold"><?= Text::_('COM_MURUGUARD_PROTECTION_LOG_COL_URI') ?></th>
+                                <th class="text-left px-3 py-2 font-bold"><?= Text::_('COM_MURUGUARD_PROTECTION_LOG_COL_STATUS') ?></th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100">
+                            <?php foreach ($attackEntries as $e): ?>
+                            <tr class="hover:bg-gray-50/60">
+                                <td class="px-3 py-2 text-gray-500 whitespace-nowrap"><?= date('Y-m-d H:i:s', (int) ($e['time'] ?? 0)) ?></td>
+                                <td class="px-3 py-2 font-mono text-gray-700"><?= htmlspecialchars((string) ($e['ip'] ?? '')) ?></td>
+                                <td class="px-3 py-2">
+                                    <?php if (($e['severity'] ?? '') === 'high'): ?>
+                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700">🔴 <?= Text::_('COM_MURUGUARD_CONFIDENCE_HIGH') ?></span>
+                                    <?php else: ?>
+                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700">🟡 <?= Text::_('COM_MURUGUARD_CONFIDENCE_MEDIUM') ?></span>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="px-3 py-2 text-gray-600 max-w-xs"><?= htmlspecialchars((string) ($e['why'] ?? '')) ?></td>
+                                <td class="px-3 py-2 text-gray-500 max-w-[220px] truncate font-mono" title="<?= htmlspecialchars((string) ($e['uri'] ?? '')) ?>"><?= htmlspecialchars(mb_strimwidth((string) ($e['uri'] ?? ''), 0, 60, '…')) ?></td>
+                                <td class="px-3 py-2">
+                                    <?php if (!empty($e['blocked'])): ?>
+                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-red-600 text-white">🚫 <?= Text::_('COM_MURUGUARD_PROTECTION_LOG_BLOCKED') ?></span>
+                                    <?php else: ?>
+                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-600"><?= Text::_('COM_MURUGUARD_PROTECTION_LOG_LOGGED_ONLY') ?></span>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <?php endif; ?>
+
+                <h4 class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-2"><?= Text::_('COM_MURUGUARD_PROTECTION_LOG_SECTION_BRUTEFORCE') ?></h4>
+                <?php if (empty($bruteEntries)): ?>
+                    <div class="text-xs text-gray-400"><?= Text::_('COM_MURUGUARD_PROTECTION_LOG_NONE') ?></div>
+                <?php else: ?>
+                <div class="overflow-x-auto border border-gray-200 rounded-lg">
+                    <table class="w-full text-xs">
+                        <thead class="bg-gray-50 text-gray-500 uppercase tracking-wider">
+                            <tr>
+                                <th class="text-left px-3 py-2 font-bold"><?= Text::_('COM_MURUGUARD_PROTECTION_LOG_COL_TIME') ?></th>
+                                <th class="text-left px-3 py-2 font-bold"><?= Text::_('COM_MURUGUARD_PROTECTION_LOG_COL_IP') ?></th>
+                                <th class="text-left px-3 py-2 font-bold"><?= Text::_('COM_MURUGUARD_PROTECTION_LOG_COL_USERNAME') ?></th>
+                                <th class="text-left px-3 py-2 font-bold"><?= Text::_('COM_MURUGUARD_PROTECTION_LOG_COL_STATUS') ?></th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100">
+                            <?php foreach ($bruteEntries as $e): ?>
+                            <tr class="hover:bg-gray-50/60">
+                                <td class="px-3 py-2 text-gray-500 whitespace-nowrap"><?= date('Y-m-d H:i:s', (int) ($e['time'] ?? 0)) ?></td>
+                                <td class="px-3 py-2 font-mono text-gray-700"><?= htmlspecialchars((string) ($e['ip'] ?? '')) ?></td>
+                                <td class="px-3 py-2 text-gray-600"><?= htmlspecialchars((string) preg_replace('/^username:\s*/', '', (string) ($e['matched'] ?? '')) ?: '—') ?></td>
+                                <td class="px-3 py-2">
+                                    <?php if (!empty($e['blocked'])): ?>
+                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-red-600 text-white">🚫 <?= Text::_('COM_MURUGUARD_PROTECTION_LOG_BLOCKED') ?></span>
+                                    <?php else: ?>
+                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-600"><?= Text::_('COM_MURUGUARD_PROTECTION_LOG_LOGGED_ONLY') ?></span>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <?php endif; ?>
+            <?php endif; ?>
         </div>
     </div>
 </div>
@@ -392,12 +625,12 @@ $isAreaChecked = function (string $key) use ($selAreas): bool {
 ?>
 <?php
 $groupIcons = [
-    'Upload & media directories'  => ['icon' => '🖼', 'chip' => 'bg-sky-100 text-sky-600'],
-    'Extension & template code'   => ['icon' => '🧩', 'chip' => 'bg-violet-100 text-violet-600'],
-    'Core &amp; webroot'          => ['icon' => '🏛', 'chip' => 'bg-amber-100 text-amber-600'],
-    'Database'                    => ['icon' => '🗄', 'chip' => 'bg-emerald-100 text-emerald-600'],
+    'upload_media'   => ['icon' => '🖼', 'chip' => 'bg-sky-100 text-sky-600'],
+    'extension_code' => ['icon' => '🧩', 'chip' => 'bg-violet-100 text-violet-600'],
+    'core_webroot'   => ['icon' => '🏛', 'chip' => 'bg-amber-100 text-amber-600'],
+    'database'       => ['icon' => '🗄', 'chip' => 'bg-emerald-100 text-emerald-600'],
 ];
-$totalAreaCount = array_sum(array_map('count', $scanAreas));
+$totalAreaCount = array_sum(array_map(fn($g) => count($g['areas']), $scanAreas));
 ?>
 <div class="anim-in flex flex-col items-center gap-6 py-6">
     <!-- Hero -->
@@ -407,12 +640,9 @@ $totalAreaCount = array_sum(array_map('count', $scanAreas));
             <div class="absolute w-24 h-24 rounded-full bg-indigo-200/50 shield-pulse"></div>
             <div class="relative text-5xl">🛡️</div>
         </div>
-        <h2 class="text-2xl font-extrabold text-gray-900 mb-2">MuRu Guard Security Scanner</h2>
+        <h2 class="text-2xl font-extrabold text-gray-900 mb-2"><?= Text::_('COM_MURUGUARD_TITLE') ?></h2>
         <p class="text-gray-500 text-sm leading-relaxed max-w-lg mx-auto">
-            Choose the areas you want to scan, then click <strong class="text-gray-700">Run Scan</strong>.
-            Checks the filesystem and database for malware, rogue admin accounts, XSS injections,
-            disguised core files, and defacement markers left behind by the SPPB
-            <code class="bg-white/70 px-1.5 py-0.5 rounded text-xs">uploadCustomIcon</code> RCE (pre-6.6.2).
+            <?= Text::_('COM_MURUGUARD_HERO_DESC') ?>
         </p>
     </div>
 
@@ -423,26 +653,26 @@ $totalAreaCount = array_sum(array_map('count', $scanAreas));
         <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden mb-6">
             <!-- Picker header / master select-all -->
             <div class="flex items-center justify-between gap-3 px-5 py-3 bg-gray-50 border-b border-gray-100">
-                <span class="font-bold text-gray-800 text-sm flex items-center gap-2">🗂 Directories &amp; checks to scan</span>
+                <span class="font-bold text-gray-800 text-sm flex items-center gap-2">🗂 <?= Text::_('COM_MURUGUARD_AREAS_HEADER') ?></span>
                 <label class="flex items-center gap-2 text-sm font-medium text-gray-600 cursor-pointer select-none">
                     <input type="checkbox" id="muru-area-all"
                            class="w-4 h-4 rounded border-gray-300"
                            onclick="document.querySelectorAll('.muru-area-chk').forEach(c=>c.checked=this.checked); muruUpdateAreaCount();">
-                    Select all
+                    <?= Text::_('COM_MURUGUARD_SELECT_ALL') ?>
                 </label>
             </div>
 
             <div class="p-5 grid gap-6 sm:grid-cols-2">
-                <?php foreach ($scanAreas as $groupLabel => $areas):
-                    $meta = $groupIcons[$groupLabel] ?? ['icon' => '📦', 'chip' => 'bg-gray-100 text-gray-500'];
+                <?php foreach ($scanAreas as $groupKey => $group):
+                    $meta = $groupIcons[$groupKey] ?? ['icon' => '📦', 'chip' => 'bg-gray-100 text-gray-500'];
                 ?>
                     <div>
                         <div class="flex items-center gap-2 mb-2.5">
                             <span class="inline-flex items-center justify-center w-6 h-6 rounded-md text-xs flex-shrink-0 <?= $meta['chip'] ?>"><?= $meta['icon'] ?></span>
-                            <span class="text-[11px] font-bold uppercase tracking-wider text-gray-400"><?= $groupLabel ?></span>
+                            <span class="text-[11px] font-bold uppercase tracking-wider text-gray-400"><?= $group['label'] ?></span>
                         </div>
                         <div class="space-y-1">
-                            <?php foreach ($areas as $key => $label): ?>
+                            <?php foreach ($group['areas'] as $key => $label): ?>
                                 <label class="flex items-start gap-2 text-sm text-gray-700 cursor-pointer hover:bg-gray-50 rounded-lg px-2 py-1.5 -mx-2 transition-colors">
                                     <input type="checkbox" name="scan_areas[]"
                                            value="<?= htmlspecialchars($key) ?>"
@@ -458,7 +688,7 @@ $totalAreaCount = array_sum(array_map('count', $scanAreas));
             </div>
 
             <div class="px-5 py-2.5 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">
-                <span id="muru-area-count"><?= $totalAreaCount ?></span> of <?= $totalAreaCount ?> areas selected
+                <?= Text::sprintf('COM_MURUGUARD_AREA_COUNT_TEXT', '<span id="muru-area-count">' . $totalAreaCount . '</span>', $totalAreaCount) ?>
             </div>
         </div>
 
@@ -467,11 +697,11 @@ $totalAreaCount = array_sum(array_map('count', $scanAreas));
                     class="inline-flex items-center gap-2 px-8 py-3.5 bg-indigo-600 hover:bg-indigo-700
                            text-white font-bold rounded-xl shadow-lg hover:shadow-xl
                            transition-all duration-200 hover:-translate-y-0.5 text-base">
-                🔍 Run Scan
+                🔍 <?= Text::_('COM_MURUGUARD_RUN_SCAN_BTN') ?>
             </button>
             <div class="flex items-center gap-2 text-xs text-gray-400 bg-gray-50 border border-gray-100 rounded-lg px-4 py-2">
                 <span>⏱</span>
-                <span>Typically takes 10–30 seconds &nbsp;·&nbsp; Results cached for 5 minutes</span>
+                <span><?= Text::_('COM_MURUGUARD_SCAN_TIME_NOTE') ?></span>
             </div>
         </div>
     </form>
@@ -487,14 +717,14 @@ $totalAreaCount = array_sum(array_map('count', $scanAreas));
             bg-white border border-gray-200 rounded-xl px-5 py-3 mb-6 shadow-sm">
     <div class="flex items-center gap-2 text-sm text-gray-600">
         <span class="text-lg">🕐</span>
-        Last scanned:
+        <?= Text::_('COM_MURUGUARD_LAST_SCANNED_LABEL') ?>
         <span class="font-bold text-gray-900"><?= date('Y-m-d H:i:s', $this->scanStartedAt) ?></span>
         <span class="text-gray-300">·</span>
-        <span class="text-gray-400">Cached for 5 min</span>
+        <span class="text-gray-400"><?= Text::_('COM_MURUGUARD_CACHED_5MIN') ?></span>
         <?php if ($this->cronEnabled): ?>
             <span class="text-gray-300">·</span>
-            <button type="button" id="muru-cron-status-badge" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors" title="Click to open Settings">
-                ⏰ Scheduled scanning ON
+            <button type="button" id="muru-cron-status-badge" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors" title="<?= Text::_('COM_MURUGUARD_CRON_BADGE_TITLE') ?>">
+                ⏰ <?= Text::_('COM_MURUGUARD_CRON_ON_BADGE') ?>
             </button>
         <?php endif; ?>
     </div>
@@ -505,7 +735,7 @@ $totalAreaCount = array_sum(array_map('count', $scanAreas));
                     class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-gray-300
                            rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50
                            transition-colors shadow-sm">
-                ⚙ Change scan areas
+                ⚙ <?= Text::_('COM_MURUGUARD_CHANGE_SCAN_AREAS') ?>
             </button>
         </form>
         <form action="<?= Route::_($rescanUrl) ?>" method="post" id="muruguard-rescan-form" style="margin:0">
@@ -514,15 +744,15 @@ $totalAreaCount = array_sum(array_map('count', $scanAreas));
                     class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-gray-300
                            rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50
                            transition-colors shadow-sm">
-                🔄 Re-scan now
+                🔄 <?= Text::_('COM_MURUGUARD_RESCAN_NOW') ?>
             </button>
         </form>
         <button type="button" disabled
-                title="AI-powered code analysis — coming soon"
+                title="<?= Text::_('COM_MURUGUARD_AI_INTEGRATION_TITLE') ?>"
                 class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-dashed border-gray-200
                        rounded-lg text-sm font-medium text-gray-400 bg-gray-50 cursor-not-allowed">
-            🤖 AI Integration
-            <span class="inline-flex items-center px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-500 text-[10px] font-bold">Soon</span>
+            🤖 <?= Text::_('COM_MURUGUARD_AI_INTEGRATION') ?>
+            <span class="inline-flex items-center px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-500 text-[10px] font-bold"><?= Text::_('COM_MURUGUARD_SOON_BADGE') ?></span>
         </button>
     </div>
 </div>
@@ -535,20 +765,20 @@ $menuCount = count($dbFindings['menu_xss'] ?? []);
 $assetCount = count($dbFindings['sppb_assets'] ?? []) + count($dbFindings['rogue_iconfont'] ?? []);
 $deface = count($dbFindings['template_defacement'] ?? []);
 $stats = [
-    ['icon'=>'📁', 'num'=>$fc,         'label'=>'Suspicious Files',
-     'sub'=>$fc>0 ? "{$this->highCount} high · {$this->medCount} medium" : 'filesystem clean',
+    ['icon'=>'📁', 'num'=>$fc,         'label'=>Text::_('COM_MURUGUARD_LABEL_SUSPICIOUS_FILES'),
+     'sub'=>$fc>0 ? Text::sprintf('COM_MURUGUARD_STAT_SUB_HIGH_MEDIUM', $this->highCount, $this->medCount) : Text::_('COM_MURUGUARD_STAT_SUB_FS_CLEAN'),
      'danger'=>$fc>0],
-    ['icon'=>'👤', 'num'=>$suCount,    'label'=>'Rogue Super Users',
-     'sub'=>$suCount>0 ? 'needs immediate review' : 'all accounts normal',
+    ['icon'=>'👤', 'num'=>$suCount,    'label'=>Text::_('COM_MURUGUARD_LABEL_ROGUE_SUPER_USERS'),
+     'sub'=>$suCount>0 ? Text::_('COM_MURUGUARD_STAT_SUB_SU_REVIEW') : Text::_('COM_MURUGUARD_STAT_SUB_SU_NORMAL'),
      'danger'=>$suCount>0],
-    ['icon'=>'🔗', 'num'=>$menuCount,  'label'=>'Menu XSS Rows',
-     'sub'=>$menuCount>0 ? 'injected payloads found' : 'menu table clean',
+    ['icon'=>'🔗', 'num'=>$menuCount,  'label'=>Text::_('COM_MURUGUARD_LABEL_MENU_XSS_ROWS'),
+     'sub'=>$menuCount>0 ? Text::_('COM_MURUGUARD_STAT_SUB_MENU_FOUND') : Text::_('COM_MURUGUARD_STAT_SUB_MENU_CLEAN'),
      'danger'=>$menuCount>0],
-    ['icon'=>'🗄',  'num'=>$assetCount,'label'=>'Rogue Asset Rows',
-     'sub'=>$assetCount>0 ? 'asset table tainted' : 'asset table clean',
+    ['icon'=>'🗄',  'num'=>$assetCount,'label'=>Text::_('COM_MURUGUARD_LABEL_ROGUE_ASSET_ROWS'),
+     'sub'=>$assetCount>0 ? Text::_('COM_MURUGUARD_STAT_SUB_ASSET_TAINTED') : Text::_('COM_MURUGUARD_STAT_SUB_ASSET_CLEAN'),
      'danger'=>$assetCount>0],
-    ['icon'=>'🖼',  'num'=>$deface,    'label'=>'Template Defacement',
-     'sub'=>$deface>0 ? 'template styles modified' : 'templates intact',
+    ['icon'=>'🖼',  'num'=>$deface,    'label'=>Text::_('COM_MURUGUARD_LABEL_TEMPLATE_DEFACEMENT'),
+     'sub'=>$deface>0 ? Text::_('COM_MURUGUARD_STAT_SUB_TEMPLATE_MODIFIED') : Text::_('COM_MURUGUARD_STAT_SUB_TEMPLATE_INTACT'),
      'danger'=>$deface>0],
 ];
 ?>
@@ -559,7 +789,7 @@ $stats = [
         <div class="flex items-start justify-between mb-2">
             <span class="text-2xl"><?= $s['icon'] ?></span>
             <span class="<?= $s['danger'] ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600' ?> text-xs font-bold px-2 py-0.5 rounded-full">
-                <?= $s['danger'] ? '⚠ ALERT' : '✓ OK' ?>
+                <?= $s['danger'] ? '⚠ ' . Text::_('COM_MURUGUARD_STAT_ALERT') : '✓ ' . Text::_('COM_MURUGUARD_STAT_OK') ?>
             </span>
         </div>
         <div class="text-3xl font-extrabold <?= $s['danger'] ? 'text-red-600' : 'text-green-600' ?> leading-none mb-1">
@@ -595,12 +825,12 @@ $deletableCount = count($deletableFindings);
 $deletableHigh = count(array_filter($deletableFindings, fn($f) => $f['confidence'] === 'high'));
 $deletableMed  = $deletableCount - $deletableHigh;
 $tabs = [
-    ['id' => 'files',      'emoji' => '📁', 'title' => 'Suspicious Files', 'count' => $deletableCount],
-    ['id' => 'cleanable',  'emoji' => '🧹', 'title' => 'Cleanable Files',  'count' => $cleanableCount],
-    ['id' => 'users',      'emoji' => '👤', 'title' => 'Super Users',      'count' => $suCount],
-    ['id' => 'menu',       'emoji' => '🔗', 'title' => 'Menu XSS',         'count' => $menuCount],
-    ['id' => 'assets',     'emoji' => '🗄', 'title' => 'SPPB Assets',      'count' => $assetCount],
-    ['id' => 'template',   'emoji' => '🖼', 'title' => 'Defacement',       'count' => $deface],
+    ['id' => 'files',      'emoji' => '📁', 'title' => Text::_('COM_MURUGUARD_LABEL_SUSPICIOUS_FILES'), 'count' => $deletableCount],
+    ['id' => 'cleanable',  'emoji' => '🧹', 'title' => Text::_('COM_MURUGUARD_TAB_CLEANABLE_FILES'),     'count' => $cleanableCount],
+    ['id' => 'users',      'emoji' => '👤', 'title' => Text::_('COM_MURUGUARD_TAB_SUPER_USERS'),         'count' => $suCount],
+    ['id' => 'menu',       'emoji' => '🔗', 'title' => Text::_('COM_MURUGUARD_TAB_MENU_XSS'),            'count' => $menuCount],
+    ['id' => 'assets',     'emoji' => '🗄', 'title' => Text::_('COM_MURUGUARD_TAB_SPPB_ASSETS'),         'count' => $assetCount],
+    ['id' => 'template',   'emoji' => '🖼', 'title' => Text::_('COM_MURUGUARD_TAB_DEFACEMENT'),          'count' => $deface],
 ];
 // Open on the first tab that has findings; otherwise the first tab.
 $activeTab = $tabs[0]['id'];
@@ -645,7 +875,7 @@ function muru_section_close(): void {
  *  only actually renders a preview when the file's CURRENT on-disk
  *  content still has a pattern this scanner can auto-repair -- it never
  *  shows a preview for something Clean can't actually fix. */
-function muru_render_file_row(array $f, bool $showCleanPreview = false): void {
+function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $showCheckbox = true): void {
     $pathDir  = dirname($f['rel']);
     $pathBase = basename($f['rel']);
     $isProtectedEntry = \MuruguardHelper::isProtectedEntryPath($f['rel'], \MuruguardHelper::getSignatures());
@@ -660,8 +890,10 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false): void {
     ?>
     <tr class="hover:bg-gray-50/60 transition-colors <?= $f['confidence']==='high' ? 'bg-red-50/30' : '' ?>">
         <td class="px-4 py-3">
+            <?php if ($showCheckbox): ?>
             <input type="checkbox" class="muru-file-chk w-4 h-4 rounded border-gray-300"
                    name="targets[]" value="<?= htmlspecialchars($f['rel']) ?>">
+            <?php endif; ?>
         </td>
         <td class="px-4 py-3">
             <div class="flex items-center gap-1.5 max-w-md">
@@ -675,27 +907,27 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false): void {
                     </div>
                     <?php if ($isProtectedEntry): ?>
                         <div class="mt-1 inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600">
-                            🛡 Required file — use Clean, not Delete
+                            🛡 <?= Text::_('COM_MURUGUARD_REQUIRED_FILE_BADGE') ?>
                         </div>
                     <?php endif; ?>
                 </div>
                 <button type="button"
                         class="muru-copy-btn flex-shrink-0 w-7 h-7 inline-flex items-center justify-center rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
-                        data-copy="<?= htmlspecialchars($f['rel']) ?>" title="Copy path" aria-label="Copy path">
+                        data-copy="<?= htmlspecialchars($f['rel']) ?>" title="<?= Text::_('COM_MURUGUARD_COPY_PATH') ?>" aria-label="<?= Text::_('COM_MURUGUARD_COPY_PATH') ?>">
                     <span class="muru-copy-icon">📋</span>
                 </button>
             </div>
         </td>
         <td class="px-4 py-3">
             <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-gray-100 text-gray-600">
-                <?= $f['type']==='dir' ? '📂 DIR' : '📄 FILE' ?>
+                <?= $f['type']==='dir' ? '📂 ' . Text::_('COM_MURUGUARD_TYPE_DIR') : '📄 ' . Text::_('COM_MURUGUARD_TYPE_FILE') ?>
             </span>
         </td>
         <td class="px-4 py-3">
             <?php if ($f['confidence']==='high'): ?>
-                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700">🔴 High</span>
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700">🔴 <?= Text::_('COM_MURUGUARD_CONFIDENCE_HIGH') ?></span>
             <?php else: ?>
-                <span class="min-w-[80px] text-center inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700">🟡 Medium</span>
+                <span class="min-w-[80px] text-center inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700">🟡 <?= Text::_('COM_MURUGUARD_CONFIDENCE_MEDIUM') ?></span>
             <?php endif; ?>
         </td>
         <td class="px-4 py-3 text-xs">
@@ -704,7 +936,7 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false): void {
                     data-path="<?= htmlspecialchars($f['rel']) ?>"
                     data-confidence="<?= htmlspecialchars($f['confidence']) ?>"
                     data-reasons="<?= $reasonsJson ?>">
-                🧬 Code Issues<?= count($reasonsList) > 1 ? ' (' . count($reasonsList) . ')' : '' ?><?= $diffHtml !== null ? ' + 🔍 Preview' : '' ?>
+                🧬 <?= Text::_('COM_MURUGUARD_CODE_ISSUES_BTN') ?><?= count($reasonsList) > 1 ? ' (' . count($reasonsList) . ')' : '' ?><?= $diffHtml !== null ? ' + 🔍 ' . Text::_('COM_MURUGUARD_PREVIEW_LABEL') : '' ?>
             </button>
         </td>
         <td class="px-4 py-3 text-xs text-gray-500"><?= \MuruguardHelper::humanSize($f['size']) ?></td>
@@ -715,24 +947,29 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false): void {
 ?>
 
 <!-- ── 1. Files ──────────────────────────────────────────────── -->
-<?php muru_section_open('sec-files', '📁', 'Suspicious Files &amp; Folders', $deletableCount); ?>
+<?php muru_section_open('sec-files', '📁', Text::_('COM_MURUGUARD_SECTION_SUSPICIOUS_FILES_FOLDERS'), $deletableCount); ?>
 <?php if (empty($deletableFindings)): ?>
     <div class="flex items-center gap-3 text-green-700 bg-green-50 rounded-xl p-[10px]">
         <span class="text-2xl">✅</span>
-        <span class="font-medium">No deletable suspicious files detected.</span>
+        <span class="font-medium"><?= Text::_('COM_MURUGUARD_NO_DELETABLE_FILES') ?></span>
     </div>
 <?php else: ?>
-    <form action="index.php?option=com_muruguard&task=scanner.delete" method="post" id="muru-files-form"
-          onsubmit="return confirm('Delete selected files/folders? This cannot be undone.');">
+    <?php $tag = $this->canDelete ? 'form' : 'div'; ?>
+    <<?= $tag ?><?php if ($this->canDelete): ?> action="index.php?option=com_muruguard&task=scanner.delete" method="post" id="muru-files-form"
+          onsubmit="return confirm('<?= Text::_('COM_MURUGUARD_CONFIRM_DELETE_FILES') ?>');"<?php endif; ?>>
         <div class="flex items-center justify-between mb-3">
+            <?php if ($this->canDelete): ?>
             <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
                 <input type="checkbox" class="w-4 h-4 rounded border-gray-300"
                        onclick="document.querySelectorAll('#muru-files-form .muru-file-chk').forEach(c=>c.checked=this.checked)">
-                Select all
+                <?= Text::_('COM_MURUGUARD_SELECT_ALL') ?>
             </label>
+            <?php else: ?>
+            <span></span>
+            <?php endif; ?>
             <div class="flex items-center gap-2 text-xs text-gray-500">
-                <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-red-100 text-red-700 rounded-full font-semibold">🔴 <?= $deletableHigh ?> high</span>
-                <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full font-semibold">🟡 <?= $deletableMed ?> medium</span>
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-red-100 text-red-700 rounded-full font-semibold">🔴 <?= Text::sprintf('COM_MURUGUARD_COUNT_HIGH', $deletableHigh) ?></span>
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full font-semibold">🟡 <?= Text::sprintf('COM_MURUGUARD_COUNT_MEDIUM', $deletableMed) ?></span>
             </div>
         </div>
         <div class="tbl-wrap rounded-xl border border-gray-100 overflow-hidden mb-4">
@@ -740,96 +977,115 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false): void {
                 <thead>
                     <tr class="bg-gray-50 border-b border-gray-100">
                         <th class="w-10 px-4 py-3"></th>
-                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Path</th>
-                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Type</th>
-                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Severity</th>
-                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Reason</th>
-                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Size</th>
-                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Modified</th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_('COM_MURUGUARD_COL_PATH') ?></th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_('COM_MURUGUARD_COL_TYPE') ?></th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_('COM_MURUGUARD_COL_SEVERITY') ?></th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_('COM_MURUGUARD_COL_REASON') ?></th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_('COM_MURUGUARD_COL_SIZE') ?></th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_('COM_MURUGUARD_COL_MODIFIED') ?></th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-50">
-                <?php foreach ($deletableFindings as $f): muru_render_file_row($f); endforeach; ?>
+                <?php foreach ($deletableFindings as $f): muru_render_file_row($f, false, $this->canDelete); endforeach; ?>
                 </tbody>
             </table>
         </div>
+        <?php if ($this->canDelete): ?>
         <?= HTMLHelper::_('form.token') ?>
         <div class="flex items-center gap-3">
             <button type="submit"
                     class="inline-flex items-center gap-2 px-5 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-xl shadow transition-colors">
-                🗑 Delete selected
+                🗑 <?= Text::_('COM_MURUGUARD_BTN_DELETE_SELECTED') ?>
             </button>
-            <span class="text-xs text-gray-400">Cleanable/required core files live in the 🧹 Cleanable Files tab instead. Only items flagged in this scan run can be deleted.</span>
+            <span class="text-xs text-gray-400"><?= Text::_('COM_MURUGUARD_DELETE_HINT') ?></span>
         </div>
-    </form>
+        <?php else: ?>
+        <div class="flex items-center gap-2 text-xs text-gray-500">
+            <span class="text-base">🔒</span>
+            <span><?= Text::_('COM_MURUGUARD_LOCKED_DELETE') ?></span>
+        </div>
+        <?php endif; ?>
+    </<?= $tag ?>>
 <?php endif; ?>
 <?php muru_section_close(); ?>
 
 <!-- ── 1b. Cleanable Files ──────────────────────────────────────── -->
-<?php muru_section_open('sec-cleanable', '🧹', 'Cleanable Files', $cleanableCount); ?>
+<?php muru_section_open('sec-cleanable', '🧹', Text::_('COM_MURUGUARD_TAB_CLEANABLE_FILES'), $cleanableCount); ?>
 <?php if (empty($cleanableFindings)): ?>
     <div class="flex items-center gap-3 text-green-700 bg-green-50 rounded-xl p-[10px]">
         <span class="text-2xl">✅</span>
-        <span class="font-medium">No files with an auto-repairable infection pattern found.</span>
+        <span class="font-medium"><?= Text::_('COM_MURUGUARD_NO_CLEANABLE_FILES') ?></span>
     </div>
 <?php else: ?>
     <div class="flex items-center gap-3 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3 mb-4 text-xs text-indigo-800">
         <span class="text-lg flex-shrink-0">ℹ️</span>
-        <span>These files have a known, safely-bounded infection pattern (code prepended before Joomla's bootstrap/access guard, or a script injected right after <code class="bg-white/60 px-1 py-0.5 rounded">&lt;head&gt;</code>) that can be surgically stripped without touching the rest of the file. A timestamped backup is written before every repair.</span>
+        <span><?= Text::_('COM_MURUGUARD_CLEANABLE_INFO') ?></span>
     </div>
-    <form action="index.php?option=com_muruguard&task=scanner.cleancode" method="post"
-          onsubmit="return confirm('Surgically clean the selected files? A timestamped backup of each original is kept alongside it.');">
+    <?php $tag = $this->canEdit ? 'form' : 'div'; ?>
+    <<?= $tag ?><?php if ($this->canEdit): ?> action="index.php?option=com_muruguard&task=scanner.cleancode" method="post"
+          onsubmit="return confirm('<?= Text::_('COM_MURUGUARD_CONFIRM_CLEAN_FILES') ?>');"<?php endif; ?>>
         <div class="flex items-center justify-between mb-3">
+            <?php if ($this->canEdit): ?>
             <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
                 <input type="checkbox" class="w-4 h-4 rounded border-gray-300"
                        onclick="document.querySelectorAll('#sec-cleanable .muru-file-chk').forEach(c=>c.checked=this.checked)">
-                Select all
+                <?= Text::_('COM_MURUGUARD_SELECT_ALL') ?>
             </label>
-            <span class="text-xs text-gray-500"><?= $cleanableCount ?> file<?= $cleanableCount === 1 ? '' : 's' ?> eligible for auto-clean</span>
+            <?php else: ?>
+            <span></span>
+            <?php endif; ?>
+            <span class="text-xs text-gray-500"><?= $cleanableCount ?> <?= Text::_($cleanableCount === 1 ? 'COM_MURUGUARD_FILES_ELIGIBLE' : 'COM_MURUGUARD_FILES_ELIGIBLE_PLURAL') ?></span>
         </div>
         <div class="tbl-wrap rounded-xl border border-gray-100 overflow-hidden mb-4">
             <table class="w-full text-sm">
                 <thead>
                     <tr class="bg-gray-50 border-b border-gray-100">
                         <th class="w-10 px-4 py-3"></th>
-                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Path</th>
-                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Type</th>
-                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Severity</th>
-                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Reason</th>
-                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Size</th>
-                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Modified</th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_('COM_MURUGUARD_COL_PATH') ?></th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_('COM_MURUGUARD_COL_TYPE') ?></th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_('COM_MURUGUARD_COL_SEVERITY') ?></th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_('COM_MURUGUARD_COL_REASON') ?></th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_('COM_MURUGUARD_COL_SIZE') ?></th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_('COM_MURUGUARD_COL_MODIFIED') ?></th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-50">
-                <?php foreach ($cleanableFindings as $f): muru_render_file_row($f, true); endforeach; ?>
+                <?php foreach ($cleanableFindings as $f): muru_render_file_row($f, true, $this->canEdit); endforeach; ?>
                 </tbody>
             </table>
         </div>
+        <?php if ($this->canEdit): ?>
         <?= HTMLHelper::_('form.token') ?>
         <div class="flex items-center gap-3">
             <button type="submit"
                     class="inline-flex items-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl shadow transition-colors">
-                🧹 Clean selected
+                🧹 <?= Text::_('COM_MURUGUARD_CLEAN_SELECTED_BTN') ?>
             </button>
-            <span class="text-xs text-gray-400">Only items flagged in this scan run can be acted on.</span>
+            <span class="text-xs text-gray-400"><?= Text::_('COM_MURUGUARD_CLEAN_HINT') ?></span>
         </div>
-    </form>
+        <?php else: ?>
+        <div class="flex items-center gap-2 text-xs text-gray-500">
+            <span class="text-base">🔒</span>
+            <span><?= Text::_('COM_MURUGUARD_LOCKED_EDIT_FILES') ?></span>
+        </div>
+        <?php endif; ?>
+    </<?= $tag ?>>
 <?php endif; ?>
 <?php muru_section_close(); ?>
 
 <!-- ── 2. Super Users ─────────────────────────────────────────── -->
-<?php muru_section_open('sec-users', '👤', 'Super User Accounts', $suCount); ?>
+<?php muru_section_open('sec-users', '👤', Text::_('COM_MURUGUARD_SECTION_SUPER_USER_ACCOUNTS'), $suCount); ?>
 <?php if (empty($dbFindings['superusers'])): ?>
     <div class="flex items-center gap-3 text-green-700 bg-green-50 rounded-xl p-[10px]">
-        <span class="text-2xl">✅</span><span class="font-medium">No super user accounts found.</span>
+        <span class="text-2xl">✅</span><span class="font-medium"><?= Text::_('COM_MURUGUARD_NO_SUPERUSERS_FOUND') ?></span>
     </div>
 <?php else: ?>
     <div class="tbl-wrap rounded-xl border border-gray-100 overflow-hidden mb-3">
         <table class="w-full text-sm">
             <thead>
                 <tr class="bg-gray-50 border-b border-gray-100">
-                    <?php foreach (['ID','Name','Username','Email','Registered','Last Visit','Status'] as $h): ?>
-                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= $h ?></th>
+                    <?php foreach (['COM_MURUGUARD_COL_ID','COM_MURUGUARD_COL_NAME','COM_MURUGUARD_COL_USERNAME','COM_MURUGUARD_COL_EMAIL','COM_MURUGUARD_COL_REGISTERED','COM_MURUGUARD_COL_LAST_VISIT','COM_MURUGUARD_COL_STATUS'] as $h): ?>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_($h) ?></th>
                     <?php endforeach; ?>
                 </tr>
             </thead>
@@ -844,10 +1100,10 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false): void {
                     <td class="px-4 py-3 text-xs text-gray-400"><?= htmlspecialchars($u['lastvisit']) ?></td>
                     <td class="px-4 py-3">
                         <?php if ($u['suspicious']): ?>
-                            <div class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-bold mb-1">⚠ Suspicious</div>
+                            <div class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-bold mb-1">⚠ <?= Text::_('COM_MURUGUARD_SUSPICIOUS_BADGE') ?></div>
                             <div class="text-xs text-red-600"><?= htmlspecialchars($u['why']) ?></div>
                         <?php else: ?>
-                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-bold">✓ Normal</span>
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-bold">✓ <?= Text::_('COM_MURUGUARD_NORMAL_BADGE') ?></span>
                         <?php endif; ?>
                     </td>
                 </tr>
@@ -855,40 +1111,43 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false): void {
             </tbody>
         </table>
     </div>
-    <p class="text-xs text-gray-400">Remove rogue accounts via <strong>Users → Manage</strong> — do not delete your own account.</p>
+    <p class="text-xs text-gray-400"><?= Text::_('COM_MURUGUARD_REMOVE_ROGUE_NOTE') ?></p>
 <?php endif; ?>
 <?php muru_section_close(); ?>
 
 <!-- ── 3. Menu XSS ───────────────────────────────────────────── -->
-<?php muru_section_open('sec-menu', '🔗', 'Menu XSS Injections', $menuCount); ?>
+<?php muru_section_open('sec-menu', '🔗', Text::_('COM_MURUGUARD_SECTION_MENU_XSS_INJECTIONS'), $menuCount); ?>
 <?php if (empty($dbFindings['menu_xss'])): ?>
     <div class="flex items-center gap-3 text-green-700 bg-green-50 rounded-xl p-[10px]">
-        <span class="text-2xl">✅</span><span class="font-medium">No injected menu items found.</span>
+        <span class="text-2xl">✅</span><span class="font-medium"><?= Text::_('COM_MURUGUARD_NO_MENU_ITEMS') ?></span>
     </div>
 <?php else: ?>
-    <form action="index.php?option=com_muruguard&task=scanner.cleanmenu" method="post"
-          onsubmit="return confirm('Surgically clean XSS from the selected menu rows?');">
+    <?php $tag = $this->canEdit ? 'form' : 'div'; ?>
+    <<?= $tag ?><?php if ($this->canEdit): ?> action="index.php?option=com_muruguard&task=scanner.cleanmenu" method="post"
+          onsubmit="return confirm('<?= Text::_('COM_MURUGUARD_CONFIRM_CLEAN_MENU') ?>');"<?php endif; ?>>
+        <?php if ($this->canEdit): ?>
         <div class="flex items-center justify-between mb-3">
             <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
                 <input type="checkbox" class="w-4 h-4 rounded border-gray-300"
                        onclick="document.querySelectorAll('.muru-menu-chk').forEach(c=>c.checked=this.checked)">
-                Select all
+                <?= Text::_('COM_MURUGUARD_SELECT_ALL') ?>
             </label>
         </div>
+        <?php endif; ?>
         <div class="tbl-wrap rounded-xl border border-gray-100 overflow-hidden mb-4">
             <table class="w-full text-sm">
                 <thead>
                     <tr class="bg-gray-50 border-b border-gray-100">
                         <th class="w-10 px-4 py-3"></th>
-                        <?php foreach (['ID','Title','Link','Matched Signatures'] as $h): ?>
-                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= $h ?></th>
+                        <?php foreach (['COM_MURUGUARD_COL_ID','COM_MURUGUARD_COL_TITLE','COM_MURUGUARD_COL_LINK','COM_MURUGUARD_COL_MATCHED_SIGNATURES'] as $h): ?>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_($h) ?></th>
                         <?php endforeach; ?>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-50">
                 <?php foreach ($dbFindings['menu_xss'] as $m): ?>
                     <tr class="hover:bg-red-50/40 bg-red-50/20 transition-colors">
-                        <td class="px-4 py-3"><input type="checkbox" class="muru-menu-chk w-4 h-4 rounded border-gray-300" name="menu_xss_ids[]" value="<?= (int)$m['id'] ?>"></td>
+                        <td class="px-4 py-3"><?php if ($this->canEdit): ?><input type="checkbox" class="muru-menu-chk w-4 h-4 rounded border-gray-300" name="menu_xss_ids[]" value="<?= (int)$m['id'] ?>"><?php endif; ?></td>
                         <td class="px-4 py-3 text-xs font-mono text-gray-500"><?= (int)$m['id'] ?></td>
                         <td class="px-4 py-3 font-medium"><?= htmlspecialchars($m['title']) ?></td>
                         <td class="px-4 py-3"><code class="text-xs break-all text-gray-600"><?= htmlspecialchars($m['link']) ?></code></td>
@@ -898,28 +1157,35 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false): void {
                 </tbody>
             </table>
         </div>
+        <?php if ($this->canEdit): ?>
         <?= HTMLHelper::_('form.token') ?>
         <div class="flex items-center gap-3">
             <button type="submit"
                     class="inline-flex items-center gap-2 px-5 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-xl shadow transition-colors">
-                🧹 Clean selected rows
+                🧹 <?= Text::_('COM_MURUGUARD_CLEAN_SELECTED_ROWS_BTN') ?>
             </button>
-            <span class="text-xs text-gray-400">Surgically removes XSS payload — legitimate menu settings are preserved.</span>
+            <span class="text-xs text-gray-400"><?= Text::_('COM_MURUGUARD_CLEAN_MENU_HINT') ?></span>
         </div>
-    </form>
+        <?php else: ?>
+        <div class="flex items-center gap-2 text-xs text-gray-500">
+            <span class="text-base">🔒</span>
+            <span><?= Text::_('COM_MURUGUARD_LOCKED_EDIT_MENU') ?></span>
+        </div>
+        <?php endif; ?>
+    </<?= $tag ?>>
 <?php endif; ?>
 <?php muru_section_close(); ?>
 
 <!-- ── 4. SPPB Assets ────────────────────────────────────────── -->
-<?php muru_section_open('sec-assets', '🗄', 'SP Page Builder Asset Table', $assetCount); ?>
+<?php muru_section_open('sec-assets', '🗄', Text::_('COM_MURUGUARD_SECTION_SPPB_ASSET_TABLE'), $assetCount); ?>
 <?php if (empty($dbFindings['sppb_assets']) && empty($dbFindings['rogue_iconfont'])): ?>
     <div class="flex items-center gap-3 text-green-700 bg-green-50 rounded-xl p-[10px]">
-        <span class="text-2xl">✅</span><span class="font-medium">No suspicious rows found in sppagebuilder_assets.</span>
+        <span class="text-2xl">✅</span><span class="font-medium"><?= Text::_('COM_MURUGUARD_NO_SPPB_ROWS') ?></span>
     </div>
 <?php else: ?>
     <?php if (!empty($dbFindings['sppb_assets'])): ?>
         <h4 class="font-bold text-gray-700 mb-3">
-            Injected payload rows
+            <?= Text::_('COM_MURUGUARD_INJECTED_PAYLOAD_ROWS') ?>
             <span class="ml-1 inline-flex items-center justify-center w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full">
                 <?= count($dbFindings['sppb_assets']) ?>
             </span>
@@ -961,34 +1227,37 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false): void {
         </div>
     <?php endif; ?>
     <?php if (!empty($dbFindings['rogue_iconfont'])): ?>
-        <form action="index.php?option=com_muruguard&task=scanner.deleteassets" method="post"
-              onsubmit="return confirm('Delete selected rogue iconfont rows?');">
+        <?php $tag = $this->canDelete ? 'form' : 'div'; ?>
+        <<?= $tag ?><?php if ($this->canDelete): ?> action="index.php?option=com_muruguard&task=scanner.deleteassets" method="post"
+              onsubmit="return confirm('<?= Text::_('COM_MURUGUARD_CONFIRM_DELETE_ASSETS') ?>');"<?php endif; ?>>
             <div class="flex items-center justify-between mb-3">
-                <h4 class="font-bold text-gray-700">Rogue iconfont registrations
+                <h4 class="font-bold text-gray-700"><?= Text::_('COM_MURUGUARD_ROGUE_ICONFONT_HEADING') ?>
                     <span class="ml-1 inline-flex items-center justify-center w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full">
                         <?= count($dbFindings['rogue_iconfont']) ?>
                     </span>
                 </h4>
+                <?php if ($this->canDelete): ?>
                 <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
                     <input type="checkbox" class="w-4 h-4 rounded border-gray-300"
                            onclick="document.querySelectorAll('.muru-asset-chk').forEach(c=>c.checked=this.checked)">
-                    Select all
+                    <?= Text::_('COM_MURUGUARD_SELECT_ALL') ?>
                 </label>
+                <?php endif; ?>
             </div>
             <div class="tbl-wrap rounded-xl border border-gray-100 overflow-hidden mb-4">
                 <table class="w-full text-sm">
                     <thead>
                         <tr class="bg-gray-50 border-b border-gray-100">
                             <th class="w-10 px-4 py-3"></th>
-                            <?php foreach (['ID','Name','Title','Created','By','Assets'] as $h): ?>
-                                <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= $h ?></th>
+                            <?php foreach (['COM_MURUGUARD_COL_ID','COM_MURUGUARD_COL_NAME','COM_MURUGUARD_COL_TITLE','COM_MURUGUARD_COL_CREATED','COM_MURUGUARD_COL_BY','COM_MURUGUARD_COL_ASSETS'] as $h): ?>
+                                <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_($h) ?></th>
                             <?php endforeach; ?>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-50">
                     <?php foreach ($dbFindings['rogue_iconfont'] as $row): ?>
                         <tr class="hover:bg-red-50/40 bg-red-50/20 transition-colors">
-                            <td class="px-4 py-3"><input type="checkbox" class="muru-asset-chk w-4 h-4 rounded border-gray-300" name="rogue_asset_ids[]" value="<?= (int)$row['id'] ?>"></td>
+                            <td class="px-4 py-3"><?php if ($this->canDelete): ?><input type="checkbox" class="muru-asset-chk w-4 h-4 rounded border-gray-300" name="rogue_asset_ids[]" value="<?= (int)$row['id'] ?>"><?php endif; ?></td>
                             <td class="px-4 py-3 text-xs font-mono text-gray-500"><?= (int)$row['id'] ?></td>
                             <td class="px-4 py-3"><code class="text-xs bg-gray-100 px-1.5 py-0.5 rounded"><?= htmlspecialchars($row['name']) ?></code></td>
                             <td class="px-4 py-3 text-sm"><?= htmlspecialchars($row['title']) ?></td>
@@ -1000,29 +1269,36 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false): void {
                     </tbody>
                 </table>
             </div>
+            <?php if ($this->canDelete): ?>
             <?= HTMLHelper::_('form.token') ?>
             <button type="submit"
                     class="inline-flex items-center gap-2 px-5 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-xl shadow transition-colors">
-                🗑 Delete selected
+                🗑 <?= Text::_('COM_MURUGUARD_BTN_DELETE_SELECTED') ?>
             </button>
-        </form>
+            <?php else: ?>
+            <div class="flex items-center gap-2 text-xs text-gray-500">
+                <span class="text-base">🔒</span>
+                <span><?= Text::_('COM_MURUGUARD_LOCKED_DELETE_ASSETS') ?></span>
+            </div>
+            <?php endif; ?>
+        </<?= $tag ?>>
     <?php endif; ?>
 <?php endif; ?>
 <?php muru_section_close(); ?>
 
 <!-- ── 5. Template defacement ────────────────────────────────── -->
-<?php muru_section_open('sec-template', '🖼', 'Template Styles Defacement', $deface); ?>
+<?php muru_section_open('sec-template', '🖼', Text::_('COM_MURUGUARD_SECTION_TEMPLATE_DEFACEMENT'), $deface); ?>
 <?php if (empty($dbFindings['template_defacement'])): ?>
     <div class="flex items-center gap-3 text-green-700 bg-green-50 rounded-xl p-[10px]">
-        <span class="text-2xl">✅</span><span class="font-medium">No defacement markers found in template_styles.</span>
+        <span class="text-2xl">✅</span><span class="font-medium"><?= Text::_('COM_MURUGUARD_NO_DEFACEMENT_FOUND') ?></span>
     </div>
 <?php else: ?>
     <div class="tbl-wrap rounded-xl border border-gray-100 overflow-hidden mb-3">
         <table class="w-full text-sm">
             <thead>
                 <tr class="bg-gray-50 border-b border-gray-100">
-                    <?php foreach (['ID','Template','Title','Matches'] as $h): ?>
-                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= $h ?></th>
+                    <?php foreach (['COM_MURUGUARD_COL_ID','COM_MURUGUARD_COL_TEMPLATE','COM_MURUGUARD_COL_TITLE','COM_MURUGUARD_COL_MATCHES'] as $h): ?>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_($h) ?></th>
                     <?php endforeach; ?>
                 </tr>
             </thead>
@@ -1038,7 +1314,7 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false): void {
             </tbody>
         </table>
     </div>
-    <p class="text-xs text-gray-400">Review and restore these template styles from a clean backup.</p>
+    <p class="text-xs text-gray-400"><?= Text::_('COM_MURUGUARD_DEFACEMENT_NOTE') ?></p>
 <?php endif; ?>
 <?php muru_section_close(); ?>
 
@@ -1265,14 +1541,14 @@ function muruguardShowOverlay() {
 
     overlay.classList.add('muruguard-show');
 
-    var messages = [
-        'Starting scan…',
-        'Walking media/ and images/…',
-        'Checking core entry points…',
-        'Scanning extension code…',
-        'Checking the database…',
-        'Almost done…'
-    ];
+    var messages = <?= json_encode([
+        Text::_('COM_MURUGUARD_OVERLAY_STARTING'),
+        Text::_('COM_MURUGUARD_SCAN_MSG_2'),
+        Text::_('COM_MURUGUARD_SCAN_MSG_3'),
+        Text::_('COM_MURUGUARD_SCAN_MSG_4'),
+        Text::_('COM_MURUGUARD_SCAN_MSG_5'),
+        Text::_('COM_MURUGUARD_SCAN_MSG_6'),
+    ]) ?>;
     var i = 0;
     statusEl.textContent = messages[0];
     // Cycles purely for perceived progress -- the real work is a single
