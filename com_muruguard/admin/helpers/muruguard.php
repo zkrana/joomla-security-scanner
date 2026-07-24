@@ -262,6 +262,18 @@ class MuruguardHelper
 
             'SAFE_COMPONENT_PATHS' => [
                 '/administrator/components/com_muruguard/',
+                // com_sppbscan is this same extension's own pre-2.2.0 name
+                // (see CHANGELOG.md "Rebrand SPPB Scan to MuRu Guard") -- a
+                // leftover copy from before that rebrand is legitimate old
+                // code, not a compromise. Without this, it self-flags: this
+                // scanner's own CONTENT_SIGNATURES table necessarily
+                // contains the literal marker text/regex source it's
+                // matching against (e.g. "xss.report", "secure.local",
+                // "FilesMan"), so a raw content scan of its own source
+                // finds "matches" against itself. The current-named copy
+                // only escapes this by coincidence, via the entry right
+                // above skipping content scanning for its own live path.
+                '/administrator/components/com_sppbscan/',
                 '/administrator/components/com_rsfirewall/',
                 '/administrator/components/com_htprotect/',
                 '/administrator/components/com_akeeba/',
@@ -691,24 +703,61 @@ class MuruguardHelper
      * folder itself and everything inside it, at any depth, regardless of
      * scan mode.
      */
-    public static function checkJunkTemplateFolder(string $relPath, array $sig): ?string
+    /** Per-request cache for the templateDetails.xml check below, keyed by template folder absolute path -- avoids re-stat()ing the same folder once per file inside it. */
+    private static array $templateManifestCache = [];
+
+    public static function checkJunkTemplateFolder(string $relPath, array $sig, ?string $absPath = null): ?string
     {
         $relPath = ltrim(str_replace('\\', '/', $relPath), '/');
         $parts = explode('/', $relPath);
 
         if (($parts[0] ?? '') === 'templates') {
             $topFolder = $parts[1] ?? '';
+            $depthAfterTop = count($parts) - 2;
         } elseif (($parts[0] ?? '') === 'administrator' && ($parts[1] ?? '') === 'templates') {
             $topFolder = $parts[2] ?? '';
+            $depthAfterTop = count($parts) - 3;
         } else {
             return null;
         }
 
-        if ($topFolder === '' || !preg_match($sig['TEMPLATE_STYLE_JUNK_NAME_RE'], $topFolder)) {
+        if ($topFolder === '') {
             return null;
         }
 
-        return "Sits inside \"{$topFolder}\" — an auto-generated junk template folder name (tmpl_xxxxxx) seen paired with a matching fake #__template_styles database row in a real, confirmed mass-injection attack, not a legitimately installed template.";
+        $junkName = (bool) preg_match($sig['TEMPLATE_STYLE_JUNK_NAME_RE'], $topFolder);
+
+        // Second, independent signal: does this folder have a
+        // templateDetails.xml manifest at all? Joomla has no code path
+        // that installs a template without one, so a folder that lacks
+        // one was never actually installed as a real template -- a much
+        // broader net than the tmpl_xxxxxx name check above, which only
+        // catches one specific naming convention. Real-world mass
+        // webshell-drop attacks have also been seen using an EXISTING
+        // template's own name plus a random suffix (e.g. "beez3_degj",
+        // "cassiopeia_hhnm") specifically to look more legitimate than an
+        // obviously-fake tmpl_xxxxxx name at a glance.
+        $noManifest = false;
+        if ($absPath !== null && $depthAfterTop >= 0) {
+            $templateRootAbs = $absPath;
+            for ($i = 0; $i < $depthAfterTop; $i++) {
+                $templateRootAbs = dirname($templateRootAbs);
+            }
+            if (!array_key_exists($templateRootAbs, self::$templateManifestCache)) {
+                self::$templateManifestCache[$templateRootAbs] = is_file($templateRootAbs . '/templateDetails.xml');
+            }
+            $noManifest = !self::$templateManifestCache[$templateRootAbs];
+        }
+
+        if (!$junkName && !$noManifest) {
+            return null;
+        }
+
+        if ($junkName) {
+            return "Sits inside \"{$topFolder}\" — an auto-generated junk template folder name (tmpl_xxxxxx) seen paired with a matching fake #__template_styles database row in a real, confirmed mass-injection attack, not a legitimately installed template.";
+        }
+
+        return "Sits inside \"{$topFolder}\" — this folder has no templateDetails.xml manifest, so Joomla could never have installed it as a real template. A common mass webshell-drop pattern: an existing template's name plus a random suffix used purely to host a backdoor file behind a legitimate-looking path, not a real template.";
     }
 
     /**
@@ -774,13 +823,33 @@ class MuruguardHelper
         return false;
     }
 
-    /** True if $relPath is a genuinely required core/template entry file that deleteTargets() refuses to delete. */
-    public static function isProtectedEntryPath(string $relPath, array $sig): bool
+    /**
+     * True if $relPath is a genuinely required core/template entry file
+     * that deleteTargets() refuses to delete (offering Clean instead).
+     *
+     * For a template's own root index.php (the only pattern in
+     * PROTECTED_ENTRY_FILE_PATTERNS), "required" only holds if the
+     * template is real -- i.e. Joomla could have actually installed it,
+     * evidenced by a templateDetails.xml manifest sitting next to it. A
+     * folder with a legitimate-looking name but no manifest was never a
+     * real template (see checkJunkTemplateFolder()'s docblock); a
+     * webshell dropped there should be deletable like any other
+     * suspicious file, not steered toward "clean, never delete". Pass
+     * $absPath when available (callers that only have a bare relative
+     * path fall back to the old, safer-by-default "always required"
+     * behaviour).
+     */
+    public static function isProtectedEntryPath(string $relPath, array $sig, ?string $absPath = null): bool
     {
         $relNorm = str_replace('\\', '/', $relPath);
         if (in_array($relNorm, $sig['PROTECTED_ENTRY_FILES'], true)) return true;
         foreach ($sig['PROTECTED_ENTRY_FILE_PATTERNS'] as $re) {
-            if (preg_match($re, $relNorm)) return true;
+            if (preg_match($re, $relNorm)) {
+                if ($absPath !== null) {
+                    return is_file(dirname($absPath) . '/templateDetails.xml');
+                }
+                return true;
+            }
         }
         return false;
     }

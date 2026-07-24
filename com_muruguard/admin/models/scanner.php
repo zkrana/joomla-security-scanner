@@ -396,7 +396,7 @@ class MuruguardModelScanner extends BaseDatabaseModel
                 if ($masq !== null) { $flagged = true; $reasons[] = $masq; }
 
                 // junk auto-generated template folder check (location-based, runs both modes)
-                $junkTpl = MuruguardHelper::checkJunkTemplateFolder($relCheck, $sig);
+                $junkTpl = MuruguardHelper::checkJunkTemplateFolder($relCheck, $sig, $path);
                 if ($junkTpl !== null) { $flagged = true; $reasons[] = $junkTpl; }
 
                 // stray index.php structural check (location-based, runs both modes)
@@ -765,7 +765,7 @@ class MuruguardModelScanner extends BaseDatabaseModel
             if (basename($abs) === 'configuration.php') { $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_PROTECTED', $relPath); continue; }
             if (in_array($abs, $protectedAbs, true) || $abs === $rootReal) { $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_PROTECTED_DIR', $relPath); continue; }
 
-            if (MuruguardHelper::isProtectedEntryPath($relPath, $sig)) {
+            if (MuruguardHelper::isProtectedEntryPath($relPath, $sig, $abs)) {
                 $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_REQUIRED_ENTRY', $relPath);
                 continue;
             }

@@ -8,6 +8,13 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Unreleased]
 
+## [2.4.5] - 2026-07-24
+
+### Fixed
+
+- **This scanner flagged its own former self as suspicious.** A leftover `administrator/components/com_sppbscan/` directory (this extension's name before the 2.2.0 rebrand to MuRu Guard) got no exemption from content scanning, so its `helpers/sppbscan.php` and `models/scanner.php` self-matched multiple high-confidence signatures -- unavoidable, since this scanner's own `CONTENT_SIGNATURES` table necessarily contains the literal marker text (`xss.report`, `secure.local`, `FilesMan`, ...) it's matching against, and a raw content scan of its own source finds "matches" against itself. The current-named copy only ever escaped this by coincidence, via an existing safe-path exemption for its live install path. Added the same exemption for the old `com_sppbscan` path.
+- **A real, in-the-wild mass webshell-drop pattern was completely missed, and worse, actively protected from deletion.** Attackers created folders like `templates/beez3_degj/`, `templates/cassiopeia_hhnm/`, `templates/responsive_jsox/` -- an existing template's own name plus a random 4-character suffix -- each containing nothing but a tiny backdoor `index.php`. These aren't real templates (no `templateDetails.xml`, nothing Joomla ever installed), but every `templates/<name>/index.php` was unconditionally treated as "Required — use Clean, not Delete" purely by path pattern, with no check that the folder was ever a real template at all. The existing junk-folder check also only recognized the `tmpl_xxxxxx` auto-generated naming style, not this "real name + random suffix" variant. Both checks now verify the folder actually has a `templateDetails.xml` manifest; a `templates/<name>/index.php` without one is flagged as a junk template folder and is now deletable like any other suspicious file, instead of being steered toward a "clean" action that never made sense for a folder with no legitimate content to preserve in the first place.
+
 ## [2.4.4] - 2026-07-24
 
 ### Fixed

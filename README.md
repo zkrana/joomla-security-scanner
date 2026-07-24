@@ -1,6 +1,8 @@
 # 🛡️ MuRu Guard Security Scanner (Joomla Extension)
 
-![Downloads](https://img.shields.io/github/downloads/zkrana/joomla-security-scanner/total)
+![Downloads](https://img.shields.io/github/downloads/zkrana/joomla-security-scanner/total) . Please, download latest version from [`dist/`](dist) folder.
+
+---
 
 A Joomla extension that detects and helps remove malware left behind by the **SP Page Builder `uploadCustomIcon` unauthenticated RCE vulnerability** (versions prior to 6.6.2). It also checks the **JCE editor component (`com_jce`)**, which has been reported as a secondary infection vector on sites compromised through SPPB.
 

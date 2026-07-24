@@ -928,7 +928,7 @@ $sig = \MuruguardHelper::getSignatures();
 // "Suspicious Files" only ever lists things the Delete button can
 // actually safely act on.
 $notDeletable = fn($f) => \MuruguardHelper::isCleanablePattern($f['reasons'] ?? [$f['reason']])
-    || \MuruguardHelper::isProtectedEntryPath($f['rel'], $sig)
+    || \MuruguardHelper::isProtectedEntryPath($f['rel'], $sig, $f['abs'] ?? null)
     || \MuruguardHelper::isContentOnlyCodeAreaFinding($f['rel'], $f['reasons'] ?? [$f['reason']], $sig);
 $cleanableFindings = array_filter($fileFindings, $notDeletable);
 $cleanableCount = count($cleanableFindings);
@@ -990,7 +990,7 @@ function muru_section_close(): void {
 function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $showCheckbox = true): void {
     $pathDir  = dirname($f['rel']);
     $pathBase = basename($f['rel']);
-    $isProtectedEntry = \MuruguardHelper::isProtectedEntryPath($f['rel'], \MuruguardHelper::getSignatures());
+    $isProtectedEntry = \MuruguardHelper::isProtectedEntryPath($f['rel'], \MuruguardHelper::getSignatures(), $f['abs'] ?? null);
     $reasonsList = $f['reasons'] ?? [$f['reason']];
     $blocksHtml  = array_map(fn($r) => \MuruguardHelper::formatReasonForDisplay($r), $reasonsList);
     $diffHtml = null;
