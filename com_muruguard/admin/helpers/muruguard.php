@@ -224,6 +224,18 @@ class MuruguardHelper
                 '/greetz\s+to/i', '/shell\s+by/i', '/r00ted/i',
             ],
 
+            // Matches the "template" column of a mass-injected batch of junk
+            // #__template_styles rows seen in real SPPB-compromise cleanups:
+            // dozens of rows named tmpl_<6 random lowercase letters>, title
+            // "<name> - 默认" ("- Default" in Chinese, regardless of the
+            // site's actual language), params usually just "{}". This alone
+            // is a secondary signal (a real template happening to be named
+            // this way is vanishingly unlikely but not impossible) --
+            // scanDatabase() treats it as confirmatory alongside the
+            // stronger, independent signal of the row's "template" column
+            // not matching any template folder that actually exists on disk.
+            'TEMPLATE_STYLE_JUNK_NAME_RE' => '/^tmpl_[a-z0-9]{4,12}$/i',
+
             'NON_PHP_EXTS_THAT_MUST_STAY_CLEAN' => ['png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'svg', 'bmp'],
             // <?php is 5 literal bytes -- vanishingly unlikely to occur by
             // chance in binary image data. The <?= short tag is only 3
@@ -660,6 +672,43 @@ class MuruguardHelper
         }
 
         return null;
+    }
+
+    /**
+     * Flags anything sitting inside a top-level templates/<name> or
+     * administrator/templates/<name> folder whose <name> matches the same
+     * auto-generated "tmpl_xxxxxx" junk-naming pattern checked against
+     * #__template_styles rows in scanDatabase() (see
+     * TEMPLATE_STYLE_JUNK_NAME_RE) -- a confirmed, real mass-injection
+     * pattern: dozens of these folders dropped at once, each holding a
+     * handful of PHP files given plausible-sounding-but-fake framework
+     * names (handler.php, loader.php, registry.php, session.php, ...) to
+     * blend in, paired with a matching junk row in the database. Unlike
+     * scanFileContent()'s signature checks, this doesn't depend on
+     * recognizing the payload's code at all -- it flags purely on the
+     * folder naming, so it still catches the drop even if the file
+     * contents don't match any known webshell signature. Applies to the
+     * folder itself and everything inside it, at any depth, regardless of
+     * scan mode.
+     */
+    public static function checkJunkTemplateFolder(string $relPath, array $sig): ?string
+    {
+        $relPath = ltrim(str_replace('\\', '/', $relPath), '/');
+        $parts = explode('/', $relPath);
+
+        if (($parts[0] ?? '') === 'templates') {
+            $topFolder = $parts[1] ?? '';
+        } elseif (($parts[0] ?? '') === 'administrator' && ($parts[1] ?? '') === 'templates') {
+            $topFolder = $parts[2] ?? '';
+        } else {
+            return null;
+        }
+
+        if ($topFolder === '' || !preg_match($sig['TEMPLATE_STYLE_JUNK_NAME_RE'], $topFolder)) {
+            return null;
+        }
+
+        return "Sits inside \"{$topFolder}\" — an auto-generated junk template folder name (tmpl_xxxxxx) seen paired with a matching fake #__template_styles database row in a real, confirmed mass-injection attack, not a legitimately installed template.";
     }
 
     /**

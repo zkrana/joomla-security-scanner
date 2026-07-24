@@ -395,6 +395,10 @@ class MuruguardModelScanner extends BaseDatabaseModel
                 $masq = MuruguardHelper::checkCoreMasquerade($relCheck, $isDir, $sig, $path);
                 if ($masq !== null) { $flagged = true; $reasons[] = $masq; }
 
+                // junk auto-generated template folder check (location-based, runs both modes)
+                $junkTpl = MuruguardHelper::checkJunkTemplateFolder($relCheck, $sig);
+                if ($junkTpl !== null) { $flagged = true; $reasons[] = $junkTpl; }
+
                 // stray index.php structural check (location-based, runs both modes)
                 if (!$isDir && !$isKnownSafeEntry) {
                     $strayIdx = MuruguardHelper::checkStrayIndexPhp($relCheck, $path, $sig);
@@ -593,38 +597,73 @@ class MuruguardModelScanner extends BaseDatabaseModel
 
         $reasons = [];
 
-        $assetValue = (string) ($row['asset_value'] ?? '');
+        // The real #__sppagebuilder_assets column is "assets" (a JSON/text
+        // blob of the actual icon-font/asset definition) -- NOT
+        // "asset_value", which doesn't exist in this table at all and was
+        // silently always empty, meaning every payload check below matched
+        // against '' on every real install regardless of what this row
+        // actually contained. css_path is checked too: it's the other
+        // attacker-controllable text field here, and should only ever
+        // reference a real .css file -- never inline code, never a PHP path.
+        $assetValue = (string) ($row['assets'] ?? '');
+        $cssPath    = (string) ($row['css_path'] ?? '');
         $type       = strtolower((string) ($row['type'] ?? ''));
         $name       = strtolower((string) ($row['name'] ?? ''));
         $createdBy  = (int) ($row['created_by'] ?? 0);
 
 
         /*
-         * Payload detection
+         * Payload detection -- runs against every row regardless of type or
+         * name. A "known good" iconfont name (icofont, icomoon, ...) is
+         * only ever a name -- it is never a substitute for actually
+         * checking what this row's content contains, since nothing stops
+         * an attacker from naming a malicious row "icofont" too.
          */
-        if (stripos($assetValue, 'xss.report') !== false) {
-            $reasons[] = 'Contains xss.report';
+        foreach ([$assetValue, $cssPath] as $content) {
+            if (stripos($content, 'xss.report') !== false) {
+                $reasons[] = 'Contains xss.report';
+            }
+
+            if (stripos($content, 'base64_decode') !== false) {
+                $reasons[] = 'Contains base64_decode()';
+            }
+
+            if (stripos($content, 'eval(') !== false) {
+                $reasons[] = 'Contains eval()';
+            }
+
+            if (stripos($content, '<script') !== false) {
+                $reasons[] = 'Contains script tag';
+            }
+
+            if (preg_match('/on(load|error|click|mouseover)\s*=/i', $content)) {
+                $reasons[] = 'Contains JavaScript event handler';
+            }
+
+            if (preg_match('/<\?php|<\?=\s*[\$A-Za-z_(]/i', $content)) {
+                $reasons[] = 'Contains a PHP open tag';
+            }
         }
 
-        if (stripos($assetValue, 'base64_decode') !== false) {
-            $reasons[] = 'Contains base64_decode()';
-        }
-
-        if (stripos($assetValue, 'eval(') !== false) {
-            $reasons[] = 'Contains eval()';
-        }
-
-        if (stripos($assetValue, '<script') !== false) {
-            $reasons[] = 'Contains script tag';
-        }
-
-        if (preg_match('/on(load|error|click|mouseover)\s*=/i', $assetValue)) {
-            $reasons[] = 'Contains JavaScript event handler';
+        // css_path should only ever point at a real stylesheet -- a path
+        // ending in .php/.phtml/etc. (or any other executable extension)
+        // is a direct way to smuggle a runnable file reference through a
+        // field nobody expects to hold one.
+        if ($cssPath !== '') {
+            $cssExt = strtolower(pathinfo(parse_url($cssPath, PHP_URL_PATH) ?: $cssPath, PATHINFO_EXTENSION));
+            if (in_array($cssExt, $sig['EXEC_EXTS'], true)) {
+                $reasons[] = "css_path references an executable file (.{$cssExt}), not a stylesheet";
+            }
         }
 
 
         /*
-         * Iconfont detection
+         * Iconfont detection -- a secondary, name-based signal ON TOP OF
+         * the content checks above, not a replacement for them. A row
+         * named exactly "icofont" (SP Page Builder's own bundled default)
+         * still goes through every content check above; this block only
+         * adds an extra reason when the name itself doesn't match that
+         * one known-legitimate default.
          */
         if ($type === 'iconfont') {
 
@@ -664,14 +703,38 @@ class MuruguardModelScanner extends BaseDatabaseModel
 }
 
         try {
-            $query = $db->getQuery(true)->select('id, template, title, params')->from($db->quoteName('#__template_styles'));
+            $query = $db->getQuery(true)->select('id, template, title, params, client_id')->from($db->quoteName('#__template_styles'));
             $db->setQuery($query);
             $rows = $db->loadAssocList() ?: [];
             foreach ($rows as $row) {
                 $matches = [];
                 foreach ($sig['DEFACEMENT_PATTERNS'] as $pattern) {
-                    if (preg_match($pattern, $row['params'], $m)) $matches[] = $m[0];
+                    if (preg_match($pattern, (string) $row['params'], $m)) $matches[] = $m[0];
                 }
+
+                // Second, independent check: junk/injected rows rather than
+                // classic defacement text. A legitimate #__template_styles
+                // row's "template" column always names a template that's
+                // actually installed -- Joomla itself has no code path that
+                // creates a style row pointing at a non-existent template
+                // folder. A row that does is either leftover cruft from an
+                // uninstalled template (rare, and rare enough to accept as
+                // an occasional false positive) or, combined with the
+                // auto-generated tmpl_xxxxxx naming pattern seen in real
+                // compromises, injected junk data.
+                $templateDir = ((int) $row['client_id']) === 1
+                    ? JPATH_ADMINISTRATOR . '/templates/' . $row['template']
+                    : $this->root . '/templates/' . $row['template'];
+                $folderMissing = $row['template'] !== '' && !is_dir($templateDir);
+                $junkName      = (bool) preg_match($sig['TEMPLATE_STYLE_JUNK_NAME_RE'], (string) $row['template']);
+
+                if ($folderMissing) {
+                    $matches[] = "Template folder not found on disk ({$row['template']}) -- orphaned or injected row";
+                }
+                if ($junkName) {
+                    $matches[] = 'Auto-generated junk name pattern (tmpl_xxxxxx)';
+                }
+
                 if (!empty($matches)) {
                     $this->dbFindings['template_defacement'][] = [
                         'id' => $row['id'], 'template' => $row['template'], 'title' => $row['title'], 'matches' => $matches,

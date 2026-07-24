@@ -8,6 +8,25 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Unreleased]
 
+## [2.4.3] - 2026-07-24
+
+### Fixed
+
+- **The `#__sppagebuilder_assets` payload scan (`eval(`, `base64_decode`, `xss.report`, script tags, event handlers) was checking a column that doesn't exist.** It read `$row['asset_value']`, but the real table column is `assets` -- `asset_value` was always `null`/empty on every real install, so this entire check has never actually inspected real row content, for any row, regardless of name. A row named exactly `icofont` (SP Page Builder's own legitimate default) skipped the separate name-based "non-default iconfont" check too, so in combination it had zero chance of ever being flagged no matter what it actually contained. Fixed the column name, and the payload checks now run against every row's real content unconditionally -- a "known good" name is no longer a bypass for content inspection.
+- Also now checks `css_path` (the other attacker-controllable text field on this table) the same way, plus a new check that it only ever references an actual `.css` file -- a path ending in `.php`/`.phtml`/other executable extension is flagged directly, since nothing else on this table would have caught a malicious file smuggled in through that field.
+
+## [2.4.2] - 2026-07-24
+
+### Fixed
+
+- **The `#__template_styles` scan missed a real, active compromise pattern.** It only matched classic defacement text ("Hacked by", "Owned by", ...) inside the `params` column. A batch of dozens of injected junk rows -- randomly named `tmpl_xxxxxx`, titled `"<name> - 默认"` ("- Default" in Chinese regardless of the site's actual language), params usually just `{}` -- went completely undetected, since there's no defacement text in them at all. Added a second, independent check: a row's `template` column is compared against the actual template folders present on disk (`templates/` for the frontend, `administrator/templates/` for the admin) -- a legitimate Joomla install never has a style row pointing at a template that isn't installed, so a row that does is flagged as an orphaned/injected reference. Combined with a check for the `tmpl_xxxxxx` auto-generated naming pattern itself for a second, corroborating signal.
+- **The filesystem scan had the matching blind spot on the other side of the same attack.** `templates/` is scanned in signature-only "code" mode (`.php` is expected there), so a whole `templates/tmpl_xxxxxx/` folder full of dropped files went undetected as long as their *content* didn't happen to match a known webshell pattern -- even though the folder name itself (matching the exact junk pattern above, one-to-one with the fake database row of the same name) is a dead giveaway on its own. Added a location-based check, alongside the existing core-masquerade check, that flags anything inside a top-level `templates/<name>` or `administrator/templates/<name>` folder whose `<name>` matches the `tmpl_xxxxxx` pattern -- independent of file content, so it still catches the drop even when the payload itself doesn't match any known signature.
+
+### Changed
+
+- **Modernized the scan-area picker modal.** Gradient header matching the hero, icon in a rounded badge, a pill-styled "Select all", card-style grouped sections with hover elevation, and a proper vertically-*and*-horizontally centered dialog (it previously only centered horizontally and sat pinned near the top of the viewport).
+- Clicking **Run** inside that modal now closes the modal immediately before showing the scanning overlay, instead of leaving it open underneath.
+
 ## [2.4.1] - 2026-07-21
 
 ### Changed

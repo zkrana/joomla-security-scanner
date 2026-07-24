@@ -165,15 +165,25 @@ $rescanUrl  = 'index.php?option=com_muruguard&task=scanner.scan&rescan=1';
      as the code-analysis modal above, for the same reason (Joomla's
      admin template transforms the content wrapper, which breaks
      `position: fixed`). */
-  #muru-scan-modal { display:none; position:fixed; inset:0; z-index:999997; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
-  #muru-scan-modal.muru-show { display:block; }
-  #muru-scan-modal-backdrop { position:absolute; inset:0; background:rgba(15,23,42,.6); backdrop-filter:blur(2px); -webkit-backdrop-filter:blur(2px); }
-  #muru-scan-modal-dialog { position:relative; max-width:760px; width:calc(100% - 32px); max-height:calc(100% - 64px); margin:32px auto; background:#fff; border-radius:16px; box-shadow:0 20px 50px rgba(0,0,0,.3); display:flex; flex-direction:column; overflow:hidden; }
-  #muru-scan-modal-header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:18px 20px; border-bottom:1px solid #f1f5f9; }
-  #muru-scan-modal-close { flex-shrink:0; width:28px; height:28px; border-radius:9999px; background:#f3f4f6; color:#6b7280; font-size:14px; line-height:1; cursor:pointer; border:0; }
-  #muru-scan-modal-close:hover { background:#e5e7eb; color:#111827; }
-  #muru-scan-modal-body { padding:18px 20px; overflow-y:auto; }
-  #muru-scan-modal-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 20px; border-top:1px solid #f1f5f9; background:#fafafa; }
+  #muru-scan-modal { display:none; position:fixed; inset:0; z-index:999997; align-items:center; justify-content:center; padding:24px; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  #muru-scan-modal.muru-show { display:flex; }
+  #muru-scan-modal-backdrop { position:absolute; inset:0; background:rgba(15,23,42,.65); backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px); animation:muruguard-fade-up .25s ease both; }
+  #muru-scan-modal-dialog { position:relative; max-width:840px; width:100%; max-height:calc(100vh - 48px); background:#fff; border-radius:20px; box-shadow:0 25px 60px rgba(15,23,42,.35); display:flex; flex-direction:column; overflow:hidden; animation:muruguard-fade-up .3s ease both; }
+  #muru-scan-modal-header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:20px 24px; background:linear-gradient(135deg,#eef2ff 0%,#f5f3ff 55%,#fdf2f8 100%); border-bottom:1px solid #eef0f4; flex-shrink:0; }
+  #muru-scan-modal-header-title { display:flex; align-items:center; gap:12px; }
+  #muru-scan-modal-header-icon { flex-shrink:0; display:flex; align-items:center; justify-content:center; width:40px; height:40px; border-radius:12px; background:rgba(255,255,255,.7); font-size:19px; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+  #muru-scan-modal-header h3 { font-size:15px; font-weight:800; color:#1f2937; margin:0; }
+  #muru-scan-modal-header p { font-size:12px; color:#6b7280; margin:2px 0 0; }
+  #muru-scan-modal-close { flex-shrink:0; width:30px; height:30px; border-radius:9999px; background:rgba(255,255,255,.8); color:#6b7280; font-size:14px; line-height:1; cursor:pointer; border:0; transition:background .15s, color .15s; }
+  #muru-scan-modal-close:hover { background:#fff; color:#111827; }
+  #muru-scan-modal-body { padding:20px 24px; overflow-y:auto; background:#fafbfc; }
+  #muru-scan-modal-selectall { display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-bottom:16px; }
+  #muru-scan-modal-selectall label { display:inline-flex; align-items:center; gap:7px; font-size:12.5px; font-weight:700; color:#4338ca; background:#eef2ff; border:1px solid #e0e7ff; border-radius:9999px; padding:6px 14px; cursor:pointer; user-select:none; transition:background .15s, box-shadow .15s; }
+  #muru-scan-modal-selectall label:hover { background:#e0e7ff; }
+  .muru-scan-group { background:#fff; border:1px solid #eef0f4; border-radius:14px; padding:16px; transition:box-shadow .15s, border-color .15s; }
+  .muru-scan-group:hover { box-shadow:0 2px 10px rgba(15,23,42,.05); border-color:#e5e7eb; }
+  .muru-area-chk { accent-color:#4338ca; }
+  #muru-scan-modal-footer { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:16px 24px; border-top:1px solid #eef0f4; background:#fff; flex-shrink:0; }
 </style>
 
 <div id="muruguard-root" class="font-sans text-gray-800 relative">
@@ -689,27 +699,35 @@ $totalAreaCount = array_sum(array_map(fn($g) => count($g['areas']), $scanAreas))
     <div id="muru-scan-modal-backdrop"></div>
     <div id="muru-scan-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="muru-scan-modal-title">
         <div id="muru-scan-modal-header">
-            <span id="muru-scan-modal-title" class="font-bold text-gray-800 text-sm flex items-center gap-2">🗂 <?= Text::_('COM_MURUGUARD_AREAS_HEADER') ?></span>
+            <div id="muru-scan-modal-header-title">
+                <span id="muru-scan-modal-header-icon">🗂</span>
+                <div>
+                    <h3 id="muru-scan-modal-title"><?= Text::_('COM_MURUGUARD_AREAS_HEADER') ?></h3>
+                    <p><?= Text::_('COM_MURUGUARD_AREAS_SUBHEADER') ?></p>
+                </div>
+            </div>
             <button type="button" id="muru-scan-modal-close" aria-label="<?= Text::_('COM_MURUGUARD_MODAL_CLOSE') ?>">✕</button>
         </div>
         <div id="muru-scan-modal-body">
-            <label class="flex items-center justify-end gap-2 text-sm font-medium text-gray-600 cursor-pointer select-none mb-4">
-                <input type="checkbox" id="muru-area-all"
-                       class="w-4 h-4 rounded border-gray-300"
-                       onclick="document.querySelectorAll('.muru-area-chk').forEach(c=>c.checked=this.checked); muruUpdateAreaCount();">
-                <?= Text::_('COM_MURUGUARD_SELECT_ALL') ?>
-            </label>
+            <div id="muru-scan-modal-selectall">
+                <label>
+                    <input type="checkbox" id="muru-area-all"
+                           class="w-3.5 h-3.5 rounded border-indigo-300 muru-area-chk-all"
+                           onclick="document.querySelectorAll('.muru-area-chk').forEach(c=>c.checked=this.checked); muruUpdateAreaCount();">
+                    <?= Text::_('COM_MURUGUARD_SELECT_ALL') ?>
+                </label>
+            </div>
 
-            <div class="grid gap-6 sm:grid-cols-2">
+            <div class="grid gap-4 sm:grid-cols-2">
                 <?php foreach ($scanAreas as $groupKey => $group):
                     $meta = $groupIcons[$groupKey] ?? ['icon' => '📦', 'chip' => 'bg-gray-100 text-gray-500'];
                 ?>
-                    <div>
+                    <div class="muru-scan-group">
                         <div class="flex items-center gap-2 mb-2.5">
-                            <span class="inline-flex items-center justify-center w-6 h-6 rounded-md text-xs flex-shrink-0 <?= $meta['chip'] ?>"><?= $meta['icon'] ?></span>
+                            <span class="inline-flex items-center justify-center w-7 h-7 rounded-lg text-sm flex-shrink-0 <?= $meta['chip'] ?>"><?= $meta['icon'] ?></span>
                             <span class="text-[11px] font-bold uppercase tracking-wider text-gray-400"><?= $group['label'] ?></span>
                         </div>
-                        <div class="space-y-1">
+                        <div class="space-y-0.5">
                             <?php foreach ($group['areas'] as $key => $label): ?>
                                 <label class="flex items-start gap-2 text-sm text-gray-700 cursor-pointer hover:bg-gray-50 rounded-lg px-2 py-1.5 -mx-2 transition-colors">
                                     <input type="checkbox" name="scan_areas[]" form="muruguard-form"
@@ -730,8 +748,8 @@ $totalAreaCount = array_sum(array_map(fn($g) => count($g['areas']), $scanAreas))
             <span class="text-xs text-gray-400">
                 <?= Text::sprintf('COM_MURUGUARD_AREA_COUNT_TEXT', '<span id="muru-area-count">' . $totalAreaCount . '</span>', $totalAreaCount) ?>
             </span>
-            <button type="submit" form="muruguard-form"
-                    class="inline-flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm">
+            <button type="submit" form="muruguard-form" id="muru-scan-modal-run"
+                    class="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-lg hover:shadow-xl transition-all duration-200 hover:-translate-y-0.5">
                 🔍 <?= Text::_('COM_MURUGUARD_RUN_SCAN_BTN') ?>
             </button>
         </div>
@@ -1375,6 +1393,7 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
     forms.forEach(function (form) {
         if (!form) return;
         form.addEventListener('submit', function () {
+            closeScanModal();
             muruguardShowOverlay();
         });
     });
