@@ -8,6 +8,12 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Unreleased]
 
+## [2.4.6] - 2026-07-24
+
+### Fixed
+
+- **2.4.5's new "no templateDetails.xml means fake template" check false-positived on Joomla's own bundled `system` fallback template** (`templates/system/` and `administrator/templates/system/` — `offline.php`, `error.php`, `fatal.php`, and friends, used for maintenance/error pages). This folder is core Joomla, never installed via the extension installer, so it legitimately has no manifest — unlike every other template folder. It's now explicitly exempted from the no-manifest junk check; a file inside it is still flagged normally if the actual content-signature scan finds something genuinely injected.
+
 ## [2.4.5] - 2026-07-24
 
 ### Fixed

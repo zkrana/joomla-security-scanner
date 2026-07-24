@@ -236,6 +236,14 @@ class MuruguardHelper
             // not matching any template folder that actually exists on disk.
             'TEMPLATE_STYLE_JUNK_NAME_RE' => '/^tmpl_[a-z0-9]{4,12}$/i',
 
+            // Joomla's own bundled fallback template -- present on both the
+            // site and admin side in every stock install (offline.php,
+            // error.php, fatal.php, ...), used for maintenance/error pages.
+            // It's core Joomla, never installed via the extension
+            // installer, so it legitimately has no templateDetails.xml --
+            // exempt from the no-manifest junk-folder check below.
+            'TEMPLATE_SYSTEM_FOLDER_NAMES' => ['system'],
+
             'NON_PHP_EXTS_THAT_MUST_STAY_CLEAN' => ['png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'svg', 'bmp'],
             // <?php is 5 literal bytes -- vanishingly unlikely to occur by
             // chance in binary image data. The <?= short tag is only 3
@@ -725,6 +733,19 @@ class MuruguardHelper
             return null;
         }
 
+        // "system" is Joomla's own bundled fallback template (offline.php,
+        // error.php, fatal.php, ...), present in a stock install on both the
+        // site and admin side. It's core Joomla, not an installed extension
+        // -- it never goes through the extension installer and so
+        // legitimately has no templateDetails.xml, unlike every other
+        // folder under templates/. Exempt it from the no-manifest check
+        // below so it isn't misclassified as a fake/junk template folder;
+        // it can still be flagged separately by the actual content-
+        // signature scan if a file inside it is genuinely infected.
+        if (in_array(strtolower($topFolder), $sig['TEMPLATE_SYSTEM_FOLDER_NAMES'], true)) {
+            return null;
+        }
+
         $junkName = (bool) preg_match($sig['TEMPLATE_STYLE_JUNK_NAME_RE'], $topFolder);
 
         // Second, independent signal: does this folder have a
@@ -845,6 +866,13 @@ class MuruguardHelper
         if (in_array($relNorm, $sig['PROTECTED_ENTRY_FILES'], true)) return true;
         foreach ($sig['PROTECTED_ENTRY_FILE_PATTERNS'] as $re) {
             if (preg_match($re, $relNorm)) {
+                // Joomla's own bundled "system" fallback template (see
+                // checkJunkTemplateFolder()) has no templateDetails.xml but
+                // is still a genuinely required core file -- always
+                // protected, regardless of the manifest check below.
+                if (preg_match('#(?:^|/)templates/system/index\.php$#i', $relNorm)) {
+                    return true;
+                }
                 if ($absPath !== null) {
                     return is_file(dirname($absPath) . '/templateDetails.xml');
                 }
