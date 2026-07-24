@@ -1,6 +1,6 @@
 # 🛡️ MuRu Guard Security Scanner (Joomla Extension)
 
-![Downloads](https://img.shields.io/github/downloads/zkrana/joomla-security-scanner/total) . Please, download latest version from [`dist/`](dist) folder.
+![Downloads](https://img.shields.io/github/downloads/zkrana/joomla-security-scanner/total) . *Please, download latest version from [`dist/`](dist) folder.*
 
 ---
 

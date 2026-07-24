@@ -1,3 +1,6 @@
 .DS_Store
 com_muruguard.zip
 com_muruguard/admin/helpers/data/scan-history.json
+scripts/
+.github/
+.gitignore
