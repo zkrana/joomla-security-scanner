@@ -714,22 +714,32 @@ class MuruguardModelScanner extends BaseDatabaseModel
 
                 // Second, independent check: junk/injected rows rather than
                 // classic defacement text. A legitimate #__template_styles
-                // row's "template" column always names a template that's
-                // actually installed -- Joomla itself has no code path that
-                // creates a style row pointing at a non-existent template
-                // folder. A row that does is either leftover cruft from an
-                // uninstalled template (rare, and rare enough to accept as
-                // an occasional false positive) or, combined with the
-                // auto-generated tmpl_xxxxxx naming pattern seen in real
-                // compromises, injected junk data.
+                // row's "template" column always names a template that was
+                // actually installed via Joomla's extension installer --
+                // which means a templateDetails.xml manifest sitting in
+                // that folder. Checking for the manifest (rather than just
+                // is_dir()) also catches the case a real, in-the-wild
+                // attack uses: an EXISTING template's own name plus a
+                // random suffix (e.g. "beez3_nfbj", "system_jizu",
+                // "bootstrap_base_ychp") with a matching real folder full
+                // of webshell files but no manifest -- is_dir() alone would
+                // have missed all of these, since the folder genuinely
+                // exists. "system" is Joomla's own bundled fallback
+                // template (see MuruguardHelper::checkJunkTemplateFolder())
+                // and is exempt for the same reason it is there, though a
+                // legitimate #__template_styles row referencing it
+                // literally shouldn't occur in practice.
                 $templateDir = ((int) $row['client_id']) === 1
                     ? JPATH_ADMINISTRATOR . '/templates/' . $row['template']
                     : $this->root . '/templates/' . $row['template'];
-                $folderMissing = $row['template'] !== '' && !is_dir($templateDir);
-                $junkName      = (bool) preg_match($sig['TEMPLATE_STYLE_JUNK_NAME_RE'], (string) $row['template']);
+                $isSystemTemplate = in_array(strtolower((string) $row['template']), $sig['TEMPLATE_SYSTEM_FOLDER_NAMES'], true);
+                $noManifest = !$isSystemTemplate && $row['template'] !== '' && !is_file($templateDir . '/templateDetails.xml');
+                $junkName   = (bool) preg_match($sig['TEMPLATE_STYLE_JUNK_NAME_RE'], (string) $row['template']);
 
-                if ($folderMissing) {
-                    $matches[] = "Template folder not found on disk ({$row['template']}) -- orphaned or injected row";
+                if ($noManifest) {
+                    $matches[] = is_dir($templateDir)
+                        ? "Template folder \"{$row['template']}\" exists but has no templateDetails.xml manifest -- was never actually installed as a real template, orphaned or injected row"
+                        : "Template folder not found on disk ({$row['template']}) -- orphaned or injected row";
                 }
                 if ($junkName) {
                     $matches[] = 'Auto-generated junk name pattern (tmpl_xxxxxx)';
@@ -938,10 +948,11 @@ class MuruguardModelScanner extends BaseDatabaseModel
             $templateDir = ((int) $row['client_id']) === 1
                 ? JPATH_ADMINISTRATOR . '/templates/' . $row['template']
                 : $this->root . '/templates/' . $row['template'];
-            $folderMissing = $row['template'] !== '' && !is_dir($templateDir);
-            $junkName      = (bool) preg_match($sig['TEMPLATE_STYLE_JUNK_NAME_RE'], (string) $row['template']);
+            $isSystemTemplate = in_array(strtolower((string) $row['template']), $sig['TEMPLATE_SYSTEM_FOLDER_NAMES'], true);
+            $noManifest = !$isSystemTemplate && $row['template'] !== '' && !is_file($templateDir . '/templateDetails.xml');
+            $junkName   = (bool) preg_match($sig['TEMPLATE_STYLE_JUNK_NAME_RE'], (string) $row['template']);
 
-            if (!$folderMissing && !$junkName) {
+            if (!$noManifest && !$junkName) {
                 $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_REVIEW_DEFACEMENT', $id);
                 continue;
             }

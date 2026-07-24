@@ -8,6 +8,12 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Unreleased]
 
+## [2.4.7] - 2026-07-24
+
+### Fixed
+
+- **The `#__template_styles` DB scan missed the exact same "existing template name + random suffix" attack pattern that 2.4.5 fixed on the filesystem side** (rows like `system_jizu`, `core_cokx`, `bootstrap_base_ychp`, `beez3_nfbj`, each titled `"<name> - 默认"` with empty `params`). The DB-side check only verified the referenced template folder existed on disk (`is_dir()`) — but a real mass-injection attack creates both the fake DB row *and* a matching folder together, so `is_dir()` alone never caught these. It now checks for a `templateDetails.xml` manifest instead, the same fix already applied to the filesystem scan: no manifest means Joomla never actually installed it as a real template, whether or not a folder happens to exist. The "Clean" action for this tab (added in 2.4.4) now recognizes these rows as deletable too, instead of skipping them for manual review.
+
 ## [2.4.6] - 2026-07-24
 
 ### Fixed
