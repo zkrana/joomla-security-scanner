@@ -906,6 +906,57 @@ class MuruguardModelScanner extends BaseDatabaseModel
     }
 
     /**
+     * Deletes selected #__template_styles rows, but only the ones
+     * independently confirmed as junk/injected -- an orphaned template
+     * reference (folder not found on disk) or an auto-generated
+     * tmpl_xxxxxx name. Rows flagged only for classic defacement TEXT are
+     * left alone and reported as skipped: a text match alone isn't a
+     * reliable enough signal to safely auto-delete a row that might
+     * otherwise be a legitimate style (false positives are more likely
+     * there than for the junk-name/orphaned-folder checks). Re-derives
+     * each row's flags fresh from the DB rather than trusting the cached
+     * scan result, same as cleanMenuXss() above.
+     */
+    public function cleanTemplateDefacement(array $ids): array
+    {
+        $db  = $this->getDatabase();
+        $sig = MuruguardHelper::getSignatures();
+        $flash = [];
+
+        foreach ($ids as $id) {
+            $id = (int) $id;
+            $query = $db->getQuery(true)->select('id, template, client_id')
+                ->from($db->quoteName('#__template_styles'))
+                ->where($db->quoteName('id') . ' = ' . $id);
+            $db->setQuery($query);
+            $row = $db->loadAssoc();
+            if ($row === null) {
+                $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_ROW_NOT_FOUND', $id);
+                continue;
+            }
+
+            $templateDir = ((int) $row['client_id']) === 1
+                ? JPATH_ADMINISTRATOR . '/templates/' . $row['template']
+                : $this->root . '/templates/' . $row['template'];
+            $folderMissing = $row['template'] !== '' && !is_dir($templateDir);
+            $junkName      = (bool) preg_match($sig['TEMPLATE_STYLE_JUNK_NAME_RE'], (string) $row['template']);
+
+            if (!$folderMissing && !$junkName) {
+                $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_REVIEW_DEFACEMENT', $id);
+                continue;
+            }
+
+            $delete = $db->getQuery(true)->delete($db->quoteName('#__template_styles'))
+                ->where($db->quoteName('id') . ' = ' . $id);
+            $db->setQuery($delete);
+            $db->execute();
+            $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_DELETED_DEFACEMENT', $id);
+        }
+
+        return $flash;
+    }
+
+    /**
      * Checks the installed SP Page Builder version from #__extensions and
      * returns a warning array if it is a vulnerable build.
      */

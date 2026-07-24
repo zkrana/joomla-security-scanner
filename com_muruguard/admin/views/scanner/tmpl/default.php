@@ -184,6 +184,69 @@ $rescanUrl  = 'index.php?option=com_muruguard&task=scanner.scan&rescan=1';
   .muru-scan-group:hover { box-shadow:0 2px 10px rgba(15,23,42,.05); border-color:#e5e7eb; }
   .muru-area-chk { accent-color:#4338ca; }
   #muru-scan-modal-footer { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:16px 24px; border-top:1px solid #eef0f4; background:#fff; flex-shrink:0; }
+
+  /* The chrome above (dialog/header/footer/backdrop) already gets plain CSS
+     because this whole modal is re-parented to <body> at runtime, outside
+     #muruguard-root's Tailwind scope (see comment further up). The modal's
+     INNER content (area grid, checkboxes, labels, Run Scan button) was added
+     later and relies on Tailwind utility classes too, so it needs the same
+     treatment -- scoped under #muru-scan-modal specifically (its own id,
+     rather than #muruguard-root) so this can't leak into the rest of the
+     Joomla admin page regardless of where in the document this modal lives. */
+  #muru-scan-modal .flex { display:flex; }
+  #muru-scan-modal .inline-flex { display:inline-flex; }
+  #muru-scan-modal .grid { display:grid; }
+  #muru-scan-modal .items-center { align-items:center; }
+  #muru-scan-modal .items-start { align-items:flex-start; }
+  #muru-scan-modal .justify-center { justify-content:center; }
+  #muru-scan-modal .gap-2 { gap:8px; }
+  #muru-scan-modal .gap-4 { gap:16px; }
+  #muru-scan-modal .mb-2\.5 { margin-bottom:10px; }
+  #muru-scan-modal .mt-0\.5 { margin-top:2px; }
+  #muru-scan-modal .-mx-2 { margin-left:-8px; margin-right:-8px; }
+  #muru-scan-modal .space-y-0\.5 > * + * { margin-top:2px; }
+  #muru-scan-modal .w-3\.5 { width:14px; }
+  #muru-scan-modal .h-3\.5 { height:14px; }
+  #muru-scan-modal .w-4 { width:16px; }
+  #muru-scan-modal .h-4 { height:16px; }
+  #muru-scan-modal .w-7 { width:28px; }
+  #muru-scan-modal .h-7 { height:28px; }
+  #muru-scan-modal .flex-shrink-0 { flex-shrink:0; }
+  #muru-scan-modal .rounded { border-radius:4px; }
+  #muru-scan-modal .rounded-lg { border-radius:8px; }
+  #muru-scan-modal .rounded-xl { border-radius:12px; }
+  #muru-scan-modal .border-gray-300 { border:1px solid #d1d5db; }
+  #muru-scan-modal .border-indigo-300 { border:1px solid #a5b4fc; }
+  #muru-scan-modal .bg-gray-100 { background:#f3f4f6; }
+  #muru-scan-modal .text-gray-400 { color:#9ca3af; }
+  #muru-scan-modal .text-gray-500 { color:#6b7280; }
+  #muru-scan-modal .text-gray-700 { color:#374151; }
+  #muru-scan-modal .text-sm { font-size:14px; line-height:1.43; }
+  #muru-scan-modal .text-xs { font-size:12px; line-height:1.5; }
+  #muru-scan-modal .text-\[11px\] { font-size:11px; line-height:1.4; }
+  #muru-scan-modal .font-bold { font-weight:700; }
+  #muru-scan-modal .uppercase { text-transform:uppercase; }
+  #muru-scan-modal .tracking-wider { letter-spacing:.05em; }
+  #muru-scan-modal .leading-snug { line-height:1.375; }
+  #muru-scan-modal .cursor-pointer { cursor:pointer; }
+  #muru-scan-modal .px-2 { padding-left:8px; padding-right:8px; }
+  #muru-scan-modal .px-6 { padding-left:24px; padding-right:24px; }
+  #muru-scan-modal .py-1\.5 { padding-top:6px; padding-bottom:6px; }
+  #muru-scan-modal .py-2\.5 { padding-top:10px; padding-bottom:10px; }
+  #muru-scan-modal .transition-colors { transition:background-color .15s ease, color .15s ease, border-color .15s ease; }
+  #muru-scan-modal .transition-all { transition:all .2s ease; }
+  #muru-scan-modal .duration-200 { transition-duration:.2s; }
+  #muru-scan-modal .hover\:bg-gray-50:hover { background:#f9fafb; }
+  #muru-scan-modal .hover\:-translate-y-0\.5:hover { transform:translateY(-2px); }
+  #muru-scan-modal #muru-scan-modal-run {
+    color:#fff; background:#4f46e5; box-shadow:0 10px 15px -3px rgba(79,70,229,.25), 0 4px 6px -4px rgba(79,70,229,.25);
+  }
+  #muru-scan-modal #muru-scan-modal-run:hover {
+    background:#4338ca; box-shadow:0 20px 25px -5px rgba(67,56,202,.3), 0 8px 10px -6px rgba(67,56,202,.3);
+  }
+  @media (min-width: 640px) {
+    #muru-scan-modal .sm\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
 </style>
 
 <div id="muruguard-root" class="font-sans text-gray-800 relative">
@@ -1342,27 +1405,57 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
         <span class="text-2xl">✅</span><span class="font-medium"><?= Text::_('COM_MURUGUARD_NO_DEFACEMENT_FOUND') ?></span>
     </div>
 <?php else: ?>
-    <div class="tbl-wrap rounded-xl border border-gray-100 overflow-hidden mb-3">
-        <table class="w-full text-sm">
-            <thead>
-                <tr class="bg-gray-50 border-b border-gray-100">
-                    <?php foreach (['COM_MURUGUARD_COL_ID','COM_MURUGUARD_COL_TEMPLATE','COM_MURUGUARD_COL_TITLE','COM_MURUGUARD_COL_MATCHES'] as $h): ?>
-                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_($h) ?></th>
-                    <?php endforeach; ?>
-                </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-50">
-            <?php foreach ($dbFindings['template_defacement'] as $row): ?>
-                <tr class="hover:bg-amber-50/40 bg-amber-50/20 transition-colors">
-                    <td class="px-4 py-3 text-xs font-mono text-gray-500"><?= (int)$row['id'] ?></td>
-                    <td class="px-4 py-3"><code class="text-xs text-gray-600"><?= htmlspecialchars($row['template']) ?></code></td>
-                    <td class="px-4 py-3 font-medium"><?= htmlspecialchars($row['title']) ?></td>
-                    <td class="px-4 py-3 text-xs text-amber-700 font-medium"><?= htmlspecialchars(implode(', ', $row['matches'])) ?></td>
-                </tr>
-            <?php endforeach; ?>
-            </tbody>
-        </table>
-    </div>
+    <?php $tag = $this->canDelete ? 'form' : 'div'; ?>
+    <<?= $tag ?><?php if ($this->canDelete): ?> action="index.php?option=com_muruguard&task=scanner.cleantemplatedefacement" method="post"
+          onsubmit="return confirm('<?= Text::_('COM_MURUGUARD_CONFIRM_CLEAN_DEFACEMENT') ?>');"<?php endif; ?>>
+        <?php if ($this->canDelete): ?>
+        <div class="flex items-center justify-between mb-3">
+            <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                <input type="checkbox" class="w-4 h-4 rounded border-gray-300"
+                       onclick="document.querySelectorAll('.muru-template-chk').forEach(c=>c.checked=this.checked)">
+                <?= Text::_('COM_MURUGUARD_SELECT_ALL') ?>
+            </label>
+        </div>
+        <?php endif; ?>
+        <div class="tbl-wrap rounded-xl border border-gray-100 overflow-hidden mb-3">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="bg-gray-50 border-b border-gray-100">
+                        <?php if ($this->canDelete): ?><th class="w-10 px-4 py-3"></th><?php endif; ?>
+                        <?php foreach (['COM_MURUGUARD_COL_ID','COM_MURUGUARD_COL_TEMPLATE','COM_MURUGUARD_COL_TITLE','COM_MURUGUARD_COL_MATCHES'] as $h): ?>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_($h) ?></th>
+                        <?php endforeach; ?>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-50">
+                <?php foreach ($dbFindings['template_defacement'] as $row): ?>
+                    <tr class="hover:bg-amber-50/40 bg-amber-50/20 transition-colors">
+                        <?php if ($this->canDelete): ?><td class="px-4 py-3"><input type="checkbox" class="muru-template-chk w-4 h-4 rounded border-gray-300" name="template_defacement_ids[]" value="<?= (int)$row['id'] ?>"></td><?php endif; ?>
+                        <td class="px-4 py-3 text-xs font-mono text-gray-500"><?= (int)$row['id'] ?></td>
+                        <td class="px-4 py-3"><code class="text-xs text-gray-600"><?= htmlspecialchars($row['template']) ?></code></td>
+                        <td class="px-4 py-3 font-medium"><?= htmlspecialchars($row['title']) ?></td>
+                        <td class="px-4 py-3 text-xs text-amber-700 font-medium"><?= htmlspecialchars(implode(', ', $row['matches'])) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php if ($this->canDelete): ?>
+        <?= HTMLHelper::_('form.token') ?>
+        <div class="flex items-center gap-3 mb-3">
+            <button type="submit"
+                    class="inline-flex items-center gap-2 px-5 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-xl shadow transition-colors">
+                🗑 <?= Text::_('COM_MURUGUARD_BTN_DELETE_SELECTED') ?>
+            </button>
+            <span class="text-xs text-gray-400"><?= Text::_('COM_MURUGUARD_CLEAN_DEFACEMENT_HINT') ?></span>
+        </div>
+        <?php else: ?>
+        <div class="flex items-center gap-2 text-xs text-gray-500 mb-3">
+            <span class="text-base">🔒</span>
+            <span><?= Text::_('COM_MURUGUARD_LOCKED_DELETE_DEFACEMENT') ?></span>
+        </div>
+        <?php endif; ?>
+    </<?= $tag ?>>
     <p class="text-xs text-gray-400"><?= Text::_('COM_MURUGUARD_DEFACEMENT_NOTE') ?></p>
 <?php endif; ?>
 <?php muru_section_close(); ?>

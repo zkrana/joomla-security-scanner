@@ -74,3 +74,15 @@ jobs:
         with:
           files: dist/com_muruguard-${{ steps.version.outputs.version }}.zip
           body_path: dist/release-notes.md
+
+      - name: Upload release to the Lyzerslab dashboard
+        env:
+          DASHBOARD_URL: https://www.lyzerslab.com
+          DASHBOARD_PRODUCT_ID: cmruqkeub00008s5frl2g9feh
+          DASHBOARD_RELEASE_TOKEN: ${{ secrets.DASHBOARD_RELEASE_TOKEN }}
+        run: |
+          chmod +x scripts/upload-to-dashboard.sh
+          scripts/upload-to-dashboard.sh \
+            "${{ steps.version.outputs.version }}" \
+            "dist/com_muruguard-${{ steps.version.outputs.version }}.zip" \
+            "dist/release-notes.md"

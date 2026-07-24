@@ -8,6 +8,13 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Unreleased]
 
+## [2.4.4] - 2026-07-24
+
+### Fixed
+
+- **The scan-area picker modal's inner content (checkboxes, area labels, the Run Scan button) had no visible styling.** The whole modal is moved to be a direct child of `<body>` at runtime so its `position: fixed` isn't broken by a `transform`-ed ancestor in Joomla's admin template — but that also takes it outside `#muruguard-root`, which is what Tailwind's utility classes are scoped to. The dialog chrome (backdrop, header, footer) already had a plain-CSS fallback for exactly this reason; the modal's inner content, added later, didn't. Added the missing plain CSS, scoped under `#muru-scan-modal` specifically so it can't leak into the rest of the Joomla admin page.
+- **The Template Defacement tab had no way to act on findings** — every other findings tab (Files, Cleanable Files, Menu XSS, SPPB Assets) has row selection and a clean/delete action; this one was read-only, telling you to go delete rows manually via phpMyAdmin/SQL. It now has the same select-all/per-row checkboxes and a delete button as the other tabs — but only rows independently re-confirmed as junk (an orphaned template reference or an auto-generated `tmpl_xxxxxx` name) are actually deleted; rows flagged only for defacement *text* are skipped even if selected, since a text match alone isn't a reliable enough signal to safely auto-delete a row that could otherwise be legitimate.
+
 ## [2.4.3] - 2026-07-24
 
 ### Fixed

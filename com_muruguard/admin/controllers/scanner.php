@@ -170,6 +170,28 @@ public function scan()
     }
 
     /**
+     * Deletes selected #__template_styles rows that MuruguardModelScanner::
+     * cleanTemplateDefacement() independently confirms as junk/injected.
+     * Rows flagged only for defacement text are left for manual review --
+     * see that method's docblock for why.
+     */
+    public function cleantemplatedefacement()
+    {
+        Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
+        \MuruguardHelper::requireDeleteAccess();
+
+        $app = Factory::getApplication();
+        $ids = $app->input->post->get('template_defacement_ids', [], 'array');
+
+        /** @var MuruguardModelScanner $model */
+        $model = $this->getModel('Scanner');
+        $flash = $model->cleanTemplateDefacement($ids);
+
+        $app->enqueueMessage('<pre>' . implode("\n", array_map('htmlspecialchars', $flash)) . '</pre>', 'info');
+        $this->setRedirect('index.php?option=com_muruguard');
+    }
+
+    /**
      * Webcron entry point for scheduled scanning -- reached as
      * administrator/index.php?option=com_muruguard&task=scanner.scheduledcheck&token=...
      * so any cron system (server crontab via curl/wget, a host's Cron
