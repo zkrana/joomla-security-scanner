@@ -714,7 +714,7 @@ class MuruguardHelper
     /** Per-request cache for the templateDetails.xml check below, keyed by template folder absolute path -- avoids re-stat()ing the same folder once per file inside it. */
     private static array $templateManifestCache = [];
 
-    public static function checkJunkTemplateFolder(string $relPath, array $sig, ?string $absPath = null): ?string
+    public static function checkJunkTemplateFolder(string $relPath, array $sig, ?string $absPath = null, ?array $registeredTemplates = null): ?string
     {
         $relPath = ltrim(str_replace('\\', '/', $relPath), '/');
         $parts = explode('/', $relPath);
@@ -722,9 +722,11 @@ class MuruguardHelper
         if (($parts[0] ?? '') === 'templates') {
             $topFolder = $parts[1] ?? '';
             $depthAfterTop = count($parts) - 2;
+            $clientId = 0;
         } elseif (($parts[0] ?? '') === 'administrator' && ($parts[1] ?? '') === 'templates') {
             $topFolder = $parts[2] ?? '';
             $depthAfterTop = count($parts) - 3;
+            $clientId = 1;
         } else {
             return null;
         }
@@ -770,8 +772,31 @@ class MuruguardHelper
             $noManifest = !self::$templateManifestCache[$templateRootAbs];
         }
 
-        if (!$junkName && !$noManifest) {
+        // Strongest, hardest-to-fake signal: cross-reference Joomla's own
+        // #__extensions registry -- the actual source of truth for "is
+        // this installed at all". A real attack seen on a live site faked
+        // BOTH the folder's templateDetails.xml AND a matching
+        // #__template_styles row, but could not make its injected
+        // #__extensions rows enabled -- every one was left at enabled=0,
+        // unlike every genuinely-installed template. Checked ahead of, and
+        // independent of, the two on-disk signals above, since those alone
+        // are exactly what a sufficiently determined attacker can spoof.
+        $registryProblem = null;
+        if ($registeredTemplates !== null) {
+            $key = $clientId . '|' . strtolower($topFolder);
+            if (!array_key_exists($key, $registeredTemplates)) {
+                $registryProblem = 'no matching #__extensions row of type "template" exists for it';
+            } elseif (!$registeredTemplates[$key]) {
+                $registryProblem = 'its #__extensions template record exists but is disabled (enabled = 0)';
+            }
+        }
+
+        if ($registryProblem === null && !$junkName && !$noManifest) {
             return null;
+        }
+
+        if ($registryProblem !== null) {
+            return "Sits inside \"{$topFolder}\" — {$registryProblem}, meaning Joomla's own extension registry never actually installed this as a real, active template. This is checked independently of the folder's own files, so a faked manifest or folder structure alone cannot hide it.";
         }
 
         if ($junkName) {
@@ -850,17 +875,20 @@ class MuruguardHelper
      *
      * For a template's own root index.php (the only pattern in
      * PROTECTED_ENTRY_FILE_PATTERNS), "required" only holds if the
-     * template is real -- i.e. Joomla could have actually installed it,
-     * evidenced by a templateDetails.xml manifest sitting next to it. A
-     * folder with a legitimate-looking name but no manifest was never a
-     * real template (see checkJunkTemplateFolder()'s docblock); a
-     * webshell dropped there should be deletable like any other
-     * suspicious file, not steered toward "clean, never delete". Pass
-     * $absPath when available (callers that only have a bare relative
-     * path fall back to the old, safer-by-default "always required"
-     * behaviour).
+     * template is real. The strongest available evidence of that is a
+     * matching, ENABLED row in Joomla's own #__extensions registry (see
+     * $registeredTemplates / checkJunkTemplateFolder()'s docblock for why
+     * this is checked ahead of, not instead of, the on-disk manifest
+     * check) -- a real attack was able to fake a folder and its
+     * templateDetails.xml both, but not an enabled #__extensions row. A
+     * template that's neither registered nor manifested was never a real
+     * template; a webshell dropped there should be deletable like any
+     * other suspicious file, not steered toward "clean, never delete".
+     * Pass $absPath/$registeredTemplates when available (callers that
+     * only have a bare relative path fall back to the old, safer-by-
+     * default "always required" behaviour).
      */
-    public static function isProtectedEntryPath(string $relPath, array $sig, ?string $absPath = null): bool
+    public static function isProtectedEntryPath(string $relPath, array $sig, ?string $absPath = null, ?array $registeredTemplates = null): bool
     {
         $relNorm = str_replace('\\', '/', $relPath);
         if (in_array($relNorm, $sig['PROTECTED_ENTRY_FILES'], true)) return true;
@@ -869,10 +897,17 @@ class MuruguardHelper
                 // Joomla's own bundled "system" fallback template (see
                 // checkJunkTemplateFolder()) has no templateDetails.xml but
                 // is still a genuinely required core file -- always
-                // protected, regardless of the manifest check below.
+                // protected, regardless of the checks below.
                 if (preg_match('#(?:^|/)templates/system/index\.php$#i', $relNorm)) {
                     return true;
                 }
+
+                if ($registeredTemplates !== null
+                    && preg_match('#^(administrator/)?templates/([^/]+)/index\.php$#i', $relNorm, $m)) {
+                    $key = ($m[1] !== '' ? 1 : 0) . '|' . strtolower($m[2]);
+                    return array_key_exists($key, $registeredTemplates) && $registeredTemplates[$key];
+                }
+
                 if ($absPath !== null) {
                     return is_file(dirname($absPath) . '/templateDetails.xml');
                 }

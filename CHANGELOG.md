@@ -8,6 +8,14 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Unreleased]
 
+## [2.4.8] - 2026-07-24
+
+### Fixed
+
+- **The fake-template detection added in 2.4.2 could itself be defeated.** On a live, escalating attack, every on-disk signal it relied on -- the template folder, a `templateDetails.xml` manifest inside it, even the folder name itself (real template names plus a random suffix, e.g. `beez3_rkgf`, `cassiopeia_tmzd`, instead of the more obviously-fake `tmpl_xxxxxx`) -- had all been faked at once, so nothing was flagged (`template_defacement` correctly showed 0 when it should not have). Added a check against Joomla's own `#__extensions` table -- the actual source of truth for "is this template really installed" -- comparing each `#__template_styles` row and each `templates/<name>` folder against a matching, *enabled* extension record. The attacker was able to fake matching `#__extensions` rows too, but left every one of them `enabled = 0`, unlike the site's real templates -- so this is checked as the primary signal, ahead of (not instead of) the on-disk checks, since it's the one layer that couldn't also be silently spoofed. Verified against the real data this was found on: 264 of 269 fake template folders and 264 of 267 fake `#__template_styles` rows now correctly flagged, with the 5 genuinely legitimate templates (including one disabled-by-necessity core fallback) correctly left alone.
+- **Files inside a fake template folder were showing up in "Cleanable Files" instead of "Delete".** Root cause: the folder-naming check that decides Clean-vs-Delete routing used the same narrow `tmpl_xxxxxx` pattern above, so a `beez3_rkgf`-style fake folder produced no location-based reason at all -- only a content-signature match, which routes to "review/clean" by design (that's correct for a real file with injected code, wrong for an entirely fake file with nothing legitimate to preserve). Now that the extension-registry check fires for these folders regardless of naming, affected files correctly land in Delete. Also fixed the same underlying assumption in the delete safeguard that protects a template's own root `index.php` from deletion -- it now checks the same registry instead of trusting that file's own folder's (fakeable) manifest, so a fake template's `index.php` is deletable like any other dropped file, while a real template's stays protected.
+
+
 ## [2.4.7] - 2026-07-24
 
 ### Fixed

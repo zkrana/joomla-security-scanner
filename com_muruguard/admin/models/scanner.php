@@ -23,11 +23,55 @@ class MuruguardModelScanner extends BaseDatabaseModel
         'rogue_iconfont' => [], 'template_defacement' => [],
     ];
     protected array $seenAbs = [];
+    protected ?array $registeredTemplatesCache = null;
 
     public function __construct($config = [])
     {
         parent::__construct($config);
         $this->root = JPATH_ROOT;
+    }
+
+    /**
+     * Joomla's own #__extensions table is the actual source of truth for
+     * "is this template really installed" -- a real, in-the-wild attack
+     * seen on a live site faked EVERY filesystem-level signal at once
+     * (the template folder, a templateDetails.xml manifest inside it, and
+     * a matching #__template_styles row), so a check based purely on
+     * what's sitting on disk can be, and was, fully spoofed. It could not,
+     * however, make its faked #__extensions rows enabled -- every one of
+     * them was left at enabled=0, unlike every genuinely-installed
+     * template. Returns ['<client_id>|<element lowercase>' => enabled
+     * (bool)] for every row of type "template", built once per request
+     * and shared by both scanFilesystem() and scanDatabase() so a single
+     * DB scan (in runScheduledCheck()) only queries this once.
+     */
+    protected function getRegisteredTemplates(): ?array
+    {
+        if ($this->registeredTemplatesCache !== null) {
+            return $this->registeredTemplatesCache;
+        }
+
+        try {
+            $registry = [];
+            $db = $this->getDatabase();
+            $query = $db->getQuery(true)
+                ->select($db->quoteName(['element', 'client_id', 'enabled']))
+                ->from($db->quoteName('#__extensions'))
+                ->where($db->quoteName('type') . ' = ' . $db->quote('template'));
+            $db->setQuery($query);
+            foreach ($db->loadAssocList() ?: [] as $row) {
+                $key = ((int) $row['client_id']) . '|' . strtolower((string) $row['element']);
+                $registry[$key] = (bool) $row['enabled'];
+            }
+        } catch (\Throwable $e) {
+            // Query failed for some reason -- return null (not an empty
+            // array) so callers fall back to weaker filesystem-only
+            // signals instead of treating a failed query as "definitely no
+            // templates are registered", which would flood false positives.
+            return null;
+        }
+
+        return $this->registeredTemplatesCache = $registry;
     }
 
     /**
@@ -283,13 +327,14 @@ class MuruguardModelScanner extends BaseDatabaseModel
         // as a "new" finding on the next scan (they still contain the
         // original malicious content by design, that's the whole point).
         $selfBackupPattern = '/\.muruguard-\d{8}-\d{6}\.bak$/i';
+        $registeredTemplates = $this->getRegisteredTemplates();
 
         foreach ($sig['SCAN_CONFIG'] as $relDir => $mode) {
             if (!$this->isAreaSelected($relDir)) continue;
             $dir = $this->root . '/' . $relDir;
             if (!is_dir($dir)) continue;
 
-            MuruguardHelper::walkDir($dir, function (string $path, bool $isDir) use ($sig, $mode, $maxSize, $isIgnored, $selfBackupPattern) {
+            MuruguardHelper::walkDir($dir, function (string $path, bool $isDir) use ($sig, $mode, $maxSize, $isIgnored, $selfBackupPattern, $registeredTemplates) {
                 foreach ($sig['SAFE_COMPONENT_PATHS'] as $safeFrag) {
                     if (stripos($path, $safeFrag) !== false) return;
                 }
@@ -396,7 +441,7 @@ class MuruguardModelScanner extends BaseDatabaseModel
                 if ($masq !== null) { $flagged = true; $reasons[] = $masq; }
 
                 // junk auto-generated template folder check (location-based, runs both modes)
-                $junkTpl = MuruguardHelper::checkJunkTemplateFolder($relCheck, $sig, $path);
+                $junkTpl = MuruguardHelper::checkJunkTemplateFolder($relCheck, $sig, $path, $registeredTemplates);
                 if ($junkTpl !== null) { $flagged = true; $reasons[] = $junkTpl; }
 
                 // stray index.php structural check (location-based, runs both modes)
@@ -706,43 +751,53 @@ class MuruguardModelScanner extends BaseDatabaseModel
             $query = $db->getQuery(true)->select('id, template, title, params, client_id')->from($db->quoteName('#__template_styles'));
             $db->setQuery($query);
             $rows = $db->loadAssocList() ?: [];
+            $registeredTemplates = $this->getRegisteredTemplates();
             foreach ($rows as $row) {
                 $matches = [];
                 foreach ($sig['DEFACEMENT_PATTERNS'] as $pattern) {
                     if (preg_match($pattern, (string) $row['params'], $m)) $matches[] = $m[0];
                 }
 
-                // Second, independent check: junk/injected rows rather than
-                // classic defacement text. A legitimate #__template_styles
-                // row's "template" column always names a template that was
-                // actually installed via Joomla's extension installer --
-                // which means a templateDetails.xml manifest sitting in
-                // that folder. Checking for the manifest (rather than just
-                // is_dir()) also catches the case a real, in-the-wild
-                // attack uses: an EXISTING template's own name plus a
-                // random suffix (e.g. "beez3_nfbj", "system_jizu",
-                // "bootstrap_base_ychp") with a matching real folder full
-                // of webshell files but no manifest -- is_dir() alone would
-                // have missed all of these, since the folder genuinely
-                // exists. "system" is Joomla's own bundled fallback
-                // template (see MuruguardHelper::checkJunkTemplateFolder())
-                // and is exempt for the same reason it is there, though a
-                // legitimate #__template_styles row referencing it
-                // literally shouldn't occur in practice.
-                $templateDir = ((int) $row['client_id']) === 1
-                    ? JPATH_ADMINISTRATOR . '/templates/' . $row['template']
-                    : $this->root . '/templates/' . $row['template'];
-                $isSystemTemplate = in_array(strtolower((string) $row['template']), $sig['TEMPLATE_SYSTEM_FOLDER_NAMES'], true);
-                $noManifest = !$isSystemTemplate && $row['template'] !== '' && !is_file($templateDir . '/templateDetails.xml');
-                $junkName   = (bool) preg_match($sig['TEMPLATE_STYLE_JUNK_NAME_RE'], (string) $row['template']);
+                $templateName = (string) $row['template'];
+                $clientId     = (int) $row['client_id'];
+                $isSystemTemplate = in_array(strtolower($templateName), $sig['TEMPLATE_SYSTEM_FOLDER_NAMES'], true);
 
-                if ($noManifest) {
-                    $matches[] = is_dir($templateDir)
-                        ? "Template folder \"{$row['template']}\" exists but has no templateDetails.xml manifest -- was never actually installed as a real template, orphaned or injected row"
-                        : "Template folder not found on disk ({$row['template']}) -- orphaned or injected row";
-                }
-                if ($junkName) {
-                    $matches[] = 'Auto-generated junk name pattern (tmpl_xxxxxx)';
+                if ($templateName !== '' && !$isSystemTemplate) {
+                    // Strongest, hardest-to-fake signal first: cross-reference
+                    // Joomla's own #__extensions registry -- see
+                    // getRegisteredTemplates()/checkJunkTemplateFolder() for
+                    // why this is checked ahead of the on-disk manifest
+                    // check below. A real attack faked the folder AND its
+                    // templateDetails.xml AND even a matching #__extensions
+                    // row, but every faked #__extensions row was left
+                    // disabled -- unlike every genuinely-installed template.
+                    if ($registeredTemplates !== null) {
+                        $key = $clientId . '|' . strtolower($templateName);
+                        if (!array_key_exists($key, $registeredTemplates)) {
+                            $matches[] = "No matching #__extensions row of type \"template\" exists for \"{$templateName}\" -- Joomla never actually installed this as a real template";
+                        } elseif (!$registeredTemplates[$key]) {
+                            $matches[] = "Matching #__extensions row for \"{$templateName}\" exists but is disabled (enabled = 0) -- a strong sign of an injected row rather than a real, active template";
+                        }
+                    }
+
+                    // Independent, on-disk corroborating signals -- still
+                    // checked even when the registry already flagged the
+                    // row above, and still useful on their own when the
+                    // registry itself is unavailable (see getRegisteredTemplates()).
+                    $templateDir = $clientId === 1
+                        ? JPATH_ADMINISTRATOR . '/templates/' . $templateName
+                        : $this->root . '/templates/' . $templateName;
+                    $noManifest = !is_file($templateDir . '/templateDetails.xml');
+                    $junkName   = (bool) preg_match($sig['TEMPLATE_STYLE_JUNK_NAME_RE'], $templateName);
+
+                    if ($noManifest) {
+                        $matches[] = is_dir($templateDir)
+                            ? "Template folder \"{$templateName}\" exists but has no templateDetails.xml manifest -- was never actually installed as a real template, orphaned or injected row"
+                            : "Template folder not found on disk ({$templateName}) -- orphaned or injected row";
+                    }
+                    if ($junkName) {
+                        $matches[] = 'Auto-generated junk name pattern (tmpl_xxxxxx)';
+                    }
                 }
 
                 if (!empty($matches)) {
@@ -764,6 +819,7 @@ class MuruguardModelScanner extends BaseDatabaseModel
         $sig = MuruguardHelper::getSignatures();
         $rootReal = realpath($this->root);
         $protectedAbs = array_map(fn($d) => $rootReal . DIRECTORY_SEPARATOR . $d, $sig['PROTECTED_TOP_DIRS']);
+        $registeredTemplates = $this->getRegisteredTemplates();
         $flash = [];
 
         foreach ($targets as $relPath) {
@@ -775,7 +831,7 @@ class MuruguardModelScanner extends BaseDatabaseModel
             if (basename($abs) === 'configuration.php') { $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_PROTECTED', $relPath); continue; }
             if (in_array($abs, $protectedAbs, true) || $abs === $rootReal) { $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_PROTECTED_DIR', $relPath); continue; }
 
-            if (MuruguardHelper::isProtectedEntryPath($relPath, $sig, $abs)) {
+            if (MuruguardHelper::isProtectedEntryPath($relPath, $sig, $abs, $registeredTemplates)) {
                 $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_REQUIRED_ENTRY', $relPath);
                 continue;
             }
