@@ -44,9 +44,12 @@ class MuruguardModelScanner extends BaseDatabaseModel
      * template. Returns ['<client_id>|<element lowercase>' => enabled
      * (bool)] for every row of type "template", built once per request
      * and shared by both scanFilesystem() and scanDatabase() so a single
-     * DB scan (in runScheduledCheck()) only queries this once.
+     * DB scan (in runScheduledCheck()) only queries this once. Public so
+     * the view layer can also cross-reference it when deciding which tab
+     * (Suspicious vs Cleanable) a template-root index.php finding
+     * belongs in -- see default.php's $notDeletable closure.
      */
-    protected function getRegisteredTemplates(): ?array
+    public function getRegisteredTemplates(): ?array
     {
         if ($this->registeredTemplatesCache !== null) {
             return $this->registeredTemplatesCache;
@@ -1034,6 +1037,15 @@ class MuruguardModelScanner extends BaseDatabaseModel
         $sig = MuruguardHelper::getSignatures();
         $flash = [];
 
+        // Same registry cross-reference scanDatabase() already reports
+        // against (see getRegisteredTemplates()) -- without this, a row
+        // flagged ONLY because its #__extensions record is missing/
+        // disabled (manifest present, name not junk-patterned) would show
+        // up as a template_defacement finding but then get skipped here
+        // every time, since neither $noManifest nor $junkName alone would
+        // be true for it.
+        $registeredTemplates = $this->getRegisteredTemplates();
+
         foreach ($ids as $id) {
             $id = (int) $id;
             $query = $db->getQuery(true)->select('id, template, client_id')
@@ -1053,7 +1065,13 @@ class MuruguardModelScanner extends BaseDatabaseModel
             $noManifest = !$isSystemTemplate && $row['template'] !== '' && !is_file($templateDir . '/templateDetails.xml');
             $junkName   = (bool) preg_match($sig['TEMPLATE_STYLE_JUNK_NAME_RE'], (string) $row['template']);
 
-            if (!$noManifest && !$junkName) {
+            $registryProblem = false;
+            if (!$isSystemTemplate && $row['template'] !== '' && $registeredTemplates !== null) {
+                $key = ((int) $row['client_id']) . '|' . strtolower((string) $row['template']);
+                $registryProblem = !array_key_exists($key, $registeredTemplates) || !$registeredTemplates[$key];
+            }
+
+            if (!$noManifest && !$junkName && !$registryProblem) {
                 $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_REVIEW_DEFACEMENT', $id);
                 continue;
             }

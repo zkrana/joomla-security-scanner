@@ -40,6 +40,7 @@ class MuruguardViewScanner extends HtmlView
     public $shieldWindow = 15;
     public $shieldPluginActive = false;
     public $attackLog = [];
+    public ?array $registeredTemplates = null;
 
     public function display($tpl = null)
     {
@@ -93,6 +94,14 @@ class MuruguardViewScanner extends HtmlView
         if ($hasCache) {
             $this->fileFindings = $model->getFileFindings();
             $this->dbFindings   = $model->getDbFindings();
+
+            // Same #__extensions registry cross-check scanFilesystem()/
+            // deleteTargets() already use server-side (see
+            // getRegisteredTemplates()) -- the template needs it too so
+            // the Suspicious-vs-Cleanable tab routing for a template-root
+            // index.php finding uses the strongest available signal, not
+            // just the weaker on-disk manifest check.
+            $this->registeredTemplates = $model->getRegisteredTemplates();
 
             $this->highCount = count(array_filter(
                 $this->fileFindings,

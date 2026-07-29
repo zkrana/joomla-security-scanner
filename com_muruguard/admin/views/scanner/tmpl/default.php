@@ -927,9 +927,30 @@ $sig = \MuruguardHelper::getSignatures();
 // exactly one of the two tabs below -- nothing silently disappears, and
 // "Suspicious Files" only ever lists things the Delete button can
 // actually safely act on.
-$notDeletable = fn($f) => \MuruguardHelper::isCleanablePattern($f['reasons'] ?? [$f['reason']])
-    || \MuruguardHelper::isProtectedEntryPath($f['rel'], $sig, $f['abs'] ?? null)
-    || \MuruguardHelper::isContentOnlyCodeAreaFinding($f['rel'], $f['reasons'] ?? [$f['reason']], $sig);
+$registeredTemplates = $this->registeredTemplates;
+$notDeletable = function ($f) use ($sig, $registeredTemplates) {
+    if (\MuruguardHelper::isCleanablePattern($f['reasons'] ?? [$f['reason']])) return true;
+
+    $protected = \MuruguardHelper::isProtectedEntryPath($f['rel'], $sig, $f['abs'] ?? null, $registeredTemplates);
+    if ($protected) return true;
+
+    // A template's own root index.php is a special case isProtectedEntryPath()
+    // already makes a precise, positive determination for (via the
+    // #__extensions registry and templateDetails.xml manifest checks) --
+    // that determination is authoritative and must not be second-guessed
+    // by the more general "content-signature-only match in a code area"
+    // caution below, which exists for a DIFFERENT scenario (a real,
+    // legitimately-installed component/module/plugin/template file with
+    // something injected into it). A confirmed-fake template folder's
+    // index.php is never that.
+    $isTemplateEntryFile = (bool) preg_match(
+        '#^(administrator/)?templates/[^/]+/index\.php$#i',
+        str_replace('\\', '/', $f['rel'])
+    );
+    if ($isTemplateEntryFile) return false;
+
+    return \MuruguardHelper::isContentOnlyCodeAreaFinding($f['rel'], $f['reasons'] ?? [$f['reason']], $sig);
+};
 $cleanableFindings = array_filter($fileFindings, $notDeletable);
 $cleanableCount = count($cleanableFindings);
 $deletableFindings = array_filter($fileFindings, fn($f) => !$notDeletable($f));
@@ -987,10 +1008,10 @@ function muru_section_close(): void {
  *  only actually renders a preview when the file's CURRENT on-disk
  *  content still has a pattern this scanner can auto-repair -- it never
  *  shows a preview for something Clean can't actually fix. */
-function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $showCheckbox = true): void {
+function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $showCheckbox = true, ?array $registeredTemplates = null): void {
     $pathDir  = dirname($f['rel']);
     $pathBase = basename($f['rel']);
-    $isProtectedEntry = \MuruguardHelper::isProtectedEntryPath($f['rel'], \MuruguardHelper::getSignatures(), $f['abs'] ?? null);
+    $isProtectedEntry = \MuruguardHelper::isProtectedEntryPath($f['rel'], \MuruguardHelper::getSignatures(), $f['abs'] ?? null, $registeredTemplates);
     $reasonsList = $f['reasons'] ?? [$f['reason']];
     $blocksHtml  = array_map(fn($r) => \MuruguardHelper::formatReasonForDisplay($r), $reasonsList);
     $diffHtml = null;
@@ -1098,7 +1119,7 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-50">
-                <?php foreach ($deletableFindings as $f): muru_render_file_row($f, false, $this->canDelete); endforeach; ?>
+                <?php foreach ($deletableFindings as $f): muru_render_file_row($f, false, $this->canDelete, $registeredTemplates); endforeach; ?>
                 </tbody>
             </table>
         </div>
@@ -1162,7 +1183,7 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-50">
-                <?php foreach ($cleanableFindings as $f): muru_render_file_row($f, true, $this->canEdit); endforeach; ?>
+                <?php foreach ($cleanableFindings as $f): muru_render_file_row($f, true, $this->canEdit, $registeredTemplates); endforeach; ?>
                 </tbody>
             </table>
         </div>
