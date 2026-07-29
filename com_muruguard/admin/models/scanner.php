@@ -503,7 +503,10 @@ class MuruguardModelScanner extends BaseDatabaseModel
                                 $isBlankStub = true;
                             }
                         }
-                        if (!$isKnownSafeEntry && !$isBlankStub && in_array($ext, $sig['EXEC_EXTS'], true)) {
+                        $isJoomlaCacheFile = $ext === 'php'
+                            && strpos($relCheck, 'cache/') === 0
+                            && (bool) preg_match($sig['JOOMLA_CACHE_FILE_RE'], $basename);
+                        if (!$isKnownSafeEntry && !$isBlankStub && !$isJoomlaCacheFile && in_array($ext, $sig['EXEC_EXTS'], true)) {
                             $flagged = true;
                             $reasons[] = "Executable file (.$ext) inside an upload directory — these should never contain runnable code.";
                         }
@@ -541,7 +544,7 @@ class MuruguardModelScanner extends BaseDatabaseModel
                 if ($junkTpl !== null) { $flagged = true; $reasons[] = $junkTpl; }
 
                 // junk module/plugin/component folder check (location-based, runs both modes)
-                $junkExt = MuruguardHelper::checkJunkExtensionFolder($relCheck, $sig, $registeredPlugins, $registeredComponents);
+                $junkExt = MuruguardHelper::checkJunkExtensionFolder($relCheck, $sig, $registeredPlugins, $registeredComponents, $path);
                 if ($junkExt !== null) { $flagged = true; $reasons[] = $junkExt; }
 
                 // stray index.php structural check (location-based, runs both modes)

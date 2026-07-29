@@ -287,6 +287,10 @@ class MuruguardHelper
                 '/administrator/components/com_rsfirewall/',
                 '/administrator/components/com_htprotect/',
                 '/administrator/components/com_akeeba/',
+                // com_akeebabackup is Akeeba Backup's newer Joomla 4/5
+                // component id (com_akeeba is the legacy/Joomla 3 id
+                // above) -- same vendor, same trust level.
+                '/administrator/components/com_akeebabackup/',
                 '/administrator/components/com_admintools/',
             ],
 
@@ -296,6 +300,21 @@ class MuruguardHelper
 
             'JCE_UPLOAD_PATH_FRAGMENTS'      => ['/media/com_jce/editor/tiny_mce/plugins/filemanager/'],
             'JCE_UPLOAD_ALLOWED_EXTENSIONS'  => ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'zip', 'css', 'js', 'json', 'html', 'htm'],
+
+            // Joomla's own core disk-cache storage driver (and template
+            // frameworks that use it, e.g. Helix Ultimate's page cache)
+            // writes cached data wrapped in an executable .php file named
+            // "<md5>-cache-<group>-<md5>.php" -- <group> is whatever cache
+            // group the caller registered (e.g. "page", "helixultimate",
+            // a component name). This is standard, unmodified Joomla
+            // caching behaviour, not a compromise, so cache/ (an 'upload'-
+            // mode directory where .php would otherwise always be flagged)
+            // exempts files matching this exact shape from the "executable
+            // file in upload directory" structural check -- content
+            // scanning still runs on them regardless, so an attacker
+            // naming an actual backdoor to mimic this pattern is still
+            // caught by what the file actually contains.
+            'JOOMLA_CACHE_FILE_RE' => '/^[a-f0-9]{32}-cache-[a-z0-9_.-]+-[a-f0-9]{32}\.php$/i',
 
             'KNOWN_ROOT_DIRS' => [
                 'administrator', 'api', 'bin', 'cache', 'cli', 'components', 'includes',
@@ -827,12 +846,22 @@ class MuruguardHelper
      * disabled by default, so treating "disabled" as suspicious flags a
      * stock, unmodified Joomla install.
      *
+     * A folder whose name doesn't match any #__extensions element isn't
+     * automatically fake, either: renaming a plugin's folder (prefixing
+     * "x", "_", "OFF-", ...) to disable it without touching the database
+     * is a common, legitimate admin technique -- the #__extensions row
+     * survives under the plugin's ORIGINAL element. Before concluding a
+     * folder is fake, its own manifest XML (if present -- Joomla's
+     * installer convention names it <element>.xml, matching the plugin's
+     * real element regardless of what the folder is currently called) is
+     * also checked against the registry (see findPluginManifestElement()).
+     *
      * Components: the attack above faked its #__extensions rows with
      * enabled=1, so neither the module nor plugin signal applies --
      * cross-referenced instead against manifest_cache (see
      * $registeredComponents / getRegisteredComponents()).
      */
-    public static function checkJunkExtensionFolder(string $relPath, array $sig, ?array $registeredPlugins = null, ?array $registeredComponents = null): ?string
+    public static function checkJunkExtensionFolder(string $relPath, array $sig, ?array $registeredPlugins = null, ?array $registeredComponents = null, ?string $absPath = null): ?string
     {
         $relPath = ltrim(str_replace('\\', '/', $relPath), '/');
         $parts = explode('/', $relPath);
@@ -854,11 +883,37 @@ class MuruguardHelper
         if (($parts[0] ?? '') === 'plugins' && isset($parts[2]) && $parts[2] !== '') {
             $group = $parts[1];
             $name  = $parts[2];
+
+            // Joomla's own "prevent directory listing" blank stub sits
+            // directly in every plugins/<group>/ folder -- never a real
+            // plugin name, so a bare file at the group level (not a
+            // plugin subfolder) is never treated as one.
+            if (count($parts) === 3 && in_array(strtolower($name), ['index.html', 'index.php'], true)) {
+                return null;
+            }
+
             if ($registeredPlugins !== null) {
                 $key = strtolower($group) . '|' . strtolower($name);
-                if (!array_key_exists($key, $registeredPlugins)) {
-                    return "Sits inside plugins/{$group}/{$name} — no matching #__extensions row of type \"plugin\" exists for it, meaning Joomla never actually installed this as a real plugin.";
+                if (array_key_exists($key, $registeredPlugins)) {
+                    return null;
                 }
+
+                if ($absPath !== null) {
+                    $depth = count($parts) - 3;
+                    $folderAbs = $absPath;
+                    for ($i = 0; $i < $depth; $i++) {
+                        $folderAbs = dirname($folderAbs);
+                    }
+                    $manifestElement = self::findPluginManifestElement($folderAbs);
+                    if ($manifestElement !== null) {
+                        $altKey = strtolower($group) . '|' . strtolower($manifestElement);
+                        if (array_key_exists($altKey, $registeredPlugins)) {
+                            return null;
+                        }
+                    }
+                }
+
+                return "Sits inside plugins/{$group}/{$name} — no matching #__extensions row of type \"plugin\" exists for it, meaning Joomla never actually installed this as a real plugin.";
             }
             return null;
         }
@@ -887,6 +942,38 @@ class MuruguardHelper
         }
 
         return null;
+    }
+
+    /** Per-request cache for findPluginManifestElement() below, keyed by plugin folder absolute path. */
+    private static array $pluginManifestElementCache = [];
+
+    /**
+     * Looks for a plugin manifest XML directly inside $folderAbs (Joomla's
+     * installer convention names it <element>.xml, e.g. formea.xml for a
+     * plugin whose real element is "formea" -- matching its other internal
+     * files like formea.php and en-GB.plg_system_formea.ini even when the
+     * containing folder itself has been renamed to something else, e.g.
+     * "xformea", to disable it). Returns the manifest's filename (without
+     * extension) if a real Joomla plugin manifest is found, null otherwise.
+     */
+    private static function findPluginManifestElement(string $folderAbs): ?string
+    {
+        if (array_key_exists($folderAbs, self::$pluginManifestElementCache)) {
+            return self::$pluginManifestElementCache[$folderAbs];
+        }
+
+        $result = null;
+        if (is_dir($folderAbs)) {
+            foreach (glob($folderAbs . '/*.xml') ?: [] as $xmlFile) {
+                $contents = @file_get_contents($xmlFile, false, null, 0, 2048);
+                if ($contents !== false && preg_match('/<extension\b[^>]*\btype\s*=\s*"plugin"/i', $contents)) {
+                    $result = strtolower(pathinfo($xmlFile, PATHINFO_FILENAME));
+                    break;
+                }
+            }
+        }
+
+        return self::$pluginManifestElementCache[$folderAbs] = $result;
     }
 
     /**
