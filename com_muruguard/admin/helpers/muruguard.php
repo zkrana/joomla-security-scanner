@@ -809,26 +809,30 @@ class MuruguardHelper
     }
 
     /**
-     * Same idea as checkJunkTemplateFolder(), for modules/ and plugins/ --
-     * a real, live compromise dropped fake folders in both (e.g.
-     * modules/helper/helper.php, plugins/system/loader/loader.php), each
-     * holding a self-decoding backdoor (see CONTENT_SIGNATURES'
-     * eval_encoded_blob). Deliberately does NOT cover components/: the
-     * same attack also faked components/com_feed, com_stat, com_base,
-     * com_track, com_util with matching, ENABLED #__extensions rows --
-     * unlike templates and plugins, "enabled" isn't a reliable signal for
-     * components, and there's no equally cheap, reliable structural
-     * signal to fall back on, so a fake component folder isn't caught
-     * here (the content-signature scan is what catches those instead).
+     * Same idea as checkJunkTemplateFolder(), for modules/, plugins/, and
+     * components/ -- a real, live compromise dropped fake folders in all
+     * three (e.g. modules/helper/helper.php, plugins/system/loader/loader.php,
+     * components/com_feed/feed.php), each holding a self-decoding backdoor
+     * (see CONTENT_SIGNATURES' eval_encoded_blob).
      *
      * Modules: Joomla requires every real module's #__extensions element
      * to start with "mod_" -- a folder that doesn't is disqualified on
      * naming alone, no DB query needed.
      *
      * Plugins: cross-referenced against #__extensions the same way
-     * templates are (see $registeredPlugins / getRegisteredPlugins()).
+     * templates are (see $registeredPlugins / getRegisteredPlugins()) --
+     * but ONLY a completely missing row is flagged. Unlike templates,
+     * "enabled=0" is NOT used here: several genuinely core Joomla plugins
+     * (LDAP authentication, Basic Auth for the Web Services API, ...) ship
+     * disabled by default, so treating "disabled" as suspicious flags a
+     * stock, unmodified Joomla install.
+     *
+     * Components: the attack above faked its #__extensions rows with
+     * enabled=1, so neither the module nor plugin signal applies --
+     * cross-referenced instead against manifest_cache (see
+     * $registeredComponents / getRegisteredComponents()).
      */
-    public static function checkJunkExtensionFolder(string $relPath, array $sig, ?array $registeredPlugins = null): ?string
+    public static function checkJunkExtensionFolder(string $relPath, array $sig, ?array $registeredPlugins = null, ?array $registeredComponents = null): ?string
     {
         $relPath = ltrim(str_replace('\\', '/', $relPath), '/');
         $parts = explode('/', $relPath);
@@ -855,8 +859,28 @@ class MuruguardHelper
                 if (!array_key_exists($key, $registeredPlugins)) {
                     return "Sits inside plugins/{$group}/{$name} — no matching #__extensions row of type \"plugin\" exists for it, meaning Joomla never actually installed this as a real plugin.";
                 }
-                if (!$registeredPlugins[$key]) {
-                    return "Sits inside plugins/{$group}/{$name} — its #__extensions plugin record exists but is disabled (enabled = 0), a strong sign of an injected row rather than a real, active plugin.";
+            }
+            return null;
+        }
+
+        $compIdx = null;
+        if (($parts[0] ?? '') === 'components') {
+            $compIdx = 1;
+        } elseif (($parts[0] ?? '') === 'administrator' && ($parts[1] ?? '') === 'components') {
+            $compIdx = 2;
+        }
+        if ($compIdx !== null) {
+            $compName = $parts[$compIdx] ?? '';
+            if ($compName === '' || stripos($compName, 'com_') !== 0) {
+                return null;
+            }
+            if ($registeredComponents !== null) {
+                $key = strtolower($compName);
+                if (!array_key_exists($key, $registeredComponents)) {
+                    return "Sits inside \"{$compName}\" — no matching #__extensions row of type \"component\" exists for it, meaning Joomla never actually installed this as a real component.";
+                }
+                if (!$registeredComponents[$key]) {
+                    return "Sits inside \"{$compName}\" — its #__extensions component record has no populated install manifest (manifest_cache), which every genuinely Joomla-installed extension has; a strong sign of a directly-inserted database row rather than a real installation.";
                 }
             }
             return null;

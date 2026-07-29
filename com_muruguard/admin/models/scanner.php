@@ -25,6 +25,7 @@ class MuruguardModelScanner extends BaseDatabaseModel
     protected array $seenAbs = [];
     protected ?array $registeredTemplatesCache = null;
     protected ?array $registeredPluginsCache = null;
+    protected ?array $registeredComponentsCache = null;
 
     public function __construct($config = [])
     {
@@ -82,15 +83,24 @@ class MuruguardModelScanner extends BaseDatabaseModel
      * Same idea as getRegisteredTemplates(), for plugins -- a real, live
      * compromise dropped fake plugin folders (plugins/system/data,
      * plugins/system/loader, plugins/system/core, ...) each holding a
-     * self-decoding backdoor, WITH matching #__extensions rows, but every
-     * one of those rows was left disabled (enabled=0), unlike every
-     * genuinely-installed plugin. Unlike templates, components were also
-     * faked in that same attack but with enabled=1 -- so this check is
-     * plugin-specific, not extended to components, since "enabled" isn't a
-     * reliable signal there. Returns ['<folder>|<element lowercase>' =>
-     * enabled (bool)] for every row of type "plugin" (folder = the plugin
-     * group, e.g. "system"; element = the plugin name, e.g. "log" --
-     * together they match a plugins/<folder>/<element> path).
+     * self-decoding backdoor, WITH matching #__extensions rows.
+     *
+     * IMPORTANT: unlike templates, "enabled=0" is NOT a reliable fake
+     * signal for plugins on its own -- a stock Joomla install ships
+     * several genuinely core plugins disabled by default (e.g.
+     * plg_authentication_ldap, plg_api-authentication_basic), so a naive
+     * "disabled = suspicious" check flags every real site running with
+     * Joomla's own defaults. Only a completely MISSING #__extensions row
+     * (checkJunkExtensionFolder() checks array_key_exists against this
+     * map) is used as the structural signal; "enabled" is still returned
+     * here for callers that want it, but is deliberately not treated as
+     * suspicious by itself. Components were also faked in that attack but
+     * with enabled=1 -- see getRegisteredComponents() for why that needs
+     * yet another signal (manifest_cache, not enabled). Returns
+     * ['<folder>|<element lowercase>' => enabled (bool)] for every row of
+     * type "plugin" (folder = the plugin group, e.g. "system"; element =
+     * the plugin name, e.g. "log" -- together they match a
+     * plugins/<folder>/<element> path).
      */
     protected function getRegisteredPlugins(): ?array
     {
@@ -115,6 +125,47 @@ class MuruguardModelScanner extends BaseDatabaseModel
         }
 
         return $this->registeredPluginsCache = $registry;
+    }
+
+    /**
+     * Components equivalent of getRegisteredTemplates()/getRegisteredPlugins()
+     * -- but keyed on a DIFFERENT signal. A real, live compromise faked
+     * components/com_feed, com_stat, com_base, com_track, com_util with
+     * matching #__extensions rows left ENABLED (unlike the disabled fake
+     * template/plugin rows), so "enabled" doesn't discriminate here at
+     * all. What a raw SQL-inserted fake row realistically won't have is a
+     * populated manifest_cache -- Joomla's installer generates this JSON
+     * blob (name, version, description, ...) from the extension's XML
+     * manifest at install time for every genuinely-installed extension,
+     * including every core component; an attacker forging a single
+     * #__extensions row directly has no reason to also hand-craft a
+     * matching manifest_cache blob. Returns ['<element lowercase>' =>
+     * hasManifestCache (bool)] for every row of type "component".
+     */
+    protected function getRegisteredComponents(): ?array
+    {
+        if ($this->registeredComponentsCache !== null) {
+            return $this->registeredComponentsCache;
+        }
+
+        try {
+            $registry = [];
+            $db = $this->getDatabase();
+            $query = $db->getQuery(true)
+                ->select($db->quoteName(['element', 'manifest_cache']))
+                ->from($db->quoteName('#__extensions'))
+                ->where($db->quoteName('type') . ' = ' . $db->quote('component'));
+            $db->setQuery($query);
+            foreach ($db->loadAssocList() ?: [] as $row) {
+                $key = strtolower((string) $row['element']);
+                $cache = trim((string) $row['manifest_cache']);
+                $registry[$key] = $cache !== '' && $cache !== '{}' && strtolower($cache) !== 'null';
+            }
+        } catch (\Throwable $e) {
+            return null;
+        }
+
+        return $this->registeredComponentsCache = $registry;
     }
 
     /**
@@ -372,13 +423,14 @@ class MuruguardModelScanner extends BaseDatabaseModel
         $selfBackupPattern = '/\.muruguard-\d{8}-\d{6}\.bak$/i';
         $registeredTemplates = $this->getRegisteredTemplates();
         $registeredPlugins = $this->getRegisteredPlugins();
+        $registeredComponents = $this->getRegisteredComponents();
 
         foreach ($sig['SCAN_CONFIG'] as $relDir => $mode) {
             if (!$this->isAreaSelected($relDir)) continue;
             $dir = $this->root . '/' . $relDir;
             if (!is_dir($dir)) continue;
 
-            MuruguardHelper::walkDir($dir, function (string $path, bool $isDir) use ($sig, $mode, $maxSize, $isIgnored, $selfBackupPattern, $registeredTemplates, $registeredPlugins) {
+            MuruguardHelper::walkDir($dir, function (string $path, bool $isDir) use ($sig, $mode, $maxSize, $isIgnored, $selfBackupPattern, $registeredTemplates, $registeredPlugins, $registeredComponents) {
                 foreach ($sig['SAFE_COMPONENT_PATHS'] as $safeFrag) {
                     if (stripos($path, $safeFrag) !== false) return;
                 }
@@ -488,8 +540,8 @@ class MuruguardModelScanner extends BaseDatabaseModel
                 $junkTpl = MuruguardHelper::checkJunkTemplateFolder($relCheck, $sig, $path, $registeredTemplates);
                 if ($junkTpl !== null) { $flagged = true; $reasons[] = $junkTpl; }
 
-                // junk module/plugin folder check (location-based, runs both modes)
-                $junkExt = MuruguardHelper::checkJunkExtensionFolder($relCheck, $sig, $registeredPlugins);
+                // junk module/plugin/component folder check (location-based, runs both modes)
+                $junkExt = MuruguardHelper::checkJunkExtensionFolder($relCheck, $sig, $registeredPlugins, $registeredComponents);
                 if ($junkExt !== null) { $flagged = true; $reasons[] = $junkExt; }
 
                 // stray index.php structural check (location-based, runs both modes)
