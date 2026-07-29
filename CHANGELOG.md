@@ -8,6 +8,14 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Unreleased]
 
+## [2.4.10] - 2026-07-29
+
+### Fixed
+
+- **The 2.4.8 changelog claimed a fix ("index.php delete-safeguard") that was never actually committed.** Confirmed fake template-root `index.php` files (real template name + random suffix, or `tmpl_xxxxxx`) were still landing in the Cleanable Files tab instead of Suspicious Files, where Clean correctly reported "SKIPPED (no auto-cleanable pattern recognized)" for every one of them, since there genuinely is no auto-repair pattern for a dropped file — only deletion applies. `default.php`'s tab-routing logic now treats `isProtectedEntryPath()`'s determination for a template-root `index.php` as authoritative, routing confirmed-fake ones to Suspicious Files (where Delete works) instead of Cleanable.
+- **The view layer's Suspicious/Cleanable tab routing wasn't using the `#__extensions` registry check at all** — only `scanFilesystem()`, `scanDatabase()`, and `deleteTargets()` were (since 2.4.8/2.4.9). `getRegisteredTemplates()` is now exposed to the view (`view.html.php`), and both `isProtectedEntryPath()` call sites in `default.php` now pass it through, so the strongest available signal is used consistently everywhere a file gets classified, not just at delete-time.
+- **`cleanTemplateDefacement()` (the Template Defacement tab's Clean action) didn't check the `#__extensions` registry**, while `scanDatabase()`'s *reporting* of the same rows already did (since 2.4.8) — a `#__template_styles` row flagged *only* because its registry record is missing/disabled (manifest present, non-junk name) would show up as a finding but then always get skipped as "review manually" when the user tried to clean it. Both now use the same registry-aware logic.
+
 ## [2.4.9] - 2026-07-27
 
 ### Fixed
