@@ -8,6 +8,15 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Unreleased]
 
+## [2.4.12] - 2026-07-29
+
+### Fixed
+
+- **False positive: Joomla/Helix Ultimate's own disk-cache files (`cache/helixultimate/<hash>-cache-helixultimate-<hash>.php`) flagged as "Executable file inside an upload directory".** This is Joomla core's standard cache-storage file naming convention (`<md5>-cache-<group>-<md5>.php`), used by core page caching and template frameworks like Helix Ultimate alike — not a compromise. `cache/` now recognizes this exact shape and exempts it from the structural upload-directory check; content scanning still runs on it regardless, so a real backdoor merely named to mimic the pattern is still caught.
+- **False positive: `administrator/components/com_akeebabackup/backup/index.php` (Akeeba Backup's own non-blank protection stub) flagged "Non-standard index.php".** `com_akeeba` (Akeeba's legacy Joomla 3 component id) was already a trusted `SAFE_COMPONENT_PATHS` entry; `com_akeebabackup` (the current Joomla 4/5 id, same vendor) was simply missing from the list. Added.
+- **False positive: `plugins/captcha/index.html`** (Joomla's standard "prevent directory listing" stub sitting directly in a plugin *group* folder, not inside any specific plugin) **was matched as if "index.html" were a plugin name**, and flagged since no plugin is ever registered under that name. Bare files sitting directly at the group level are no longer treated as a plugin-name lookup.
+- **False positive: an entire, genuinely-installed, legitimate plugin folder (`plugins/system/xformea`, an admin-renamed copy of a real "Formea" plugin) flagged as fake.** Renaming a plugin's folder (prefixing "x", "_", etc.) to disable it without touching the database is a common, legitimate Joomla admin technique — the `#__extensions` row survives under the plugin's *original* element, which no longer matches the renamed folder. Before concluding a plugin folder is fake, its own manifest XML (if present — Joomla's installer convention names it `<element>.xml`, unaffected by a later folder rename) is now also checked against the registry, so a renamed-but-real plugin resolves correctly while a genuinely fake, unregistered folder (no matching manifest either) is still flagged exactly as before.
+
 ## [2.4.11] - 2026-07-29
 
 ### Fixed
