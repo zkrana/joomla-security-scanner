@@ -24,6 +24,7 @@ class MuruguardModelScanner extends BaseDatabaseModel
     ];
     protected array $seenAbs = [];
     protected ?array $registeredTemplatesCache = null;
+    protected ?array $registeredPluginsCache = null;
 
     public function __construct($config = [])
     {
@@ -72,6 +73,45 @@ class MuruguardModelScanner extends BaseDatabaseModel
         }
 
         return $this->registeredTemplatesCache = $registry;
+    }
+
+    /**
+     * Same idea as getRegisteredTemplates(), for plugins -- a real, live
+     * compromise dropped fake plugin folders (plugins/system/data,
+     * plugins/system/loader, plugins/system/core, ...) each holding a
+     * self-decoding backdoor, WITH matching #__extensions rows, but every
+     * one of those rows was left disabled (enabled=0), unlike every
+     * genuinely-installed plugin. Unlike templates, components were also
+     * faked in that same attack but with enabled=1 -- so this check is
+     * plugin-specific, not extended to components, since "enabled" isn't a
+     * reliable signal there. Returns ['<folder>|<element lowercase>' =>
+     * enabled (bool)] for every row of type "plugin" (folder = the plugin
+     * group, e.g. "system"; element = the plugin name, e.g. "log" --
+     * together they match a plugins/<folder>/<element> path).
+     */
+    protected function getRegisteredPlugins(): ?array
+    {
+        if ($this->registeredPluginsCache !== null) {
+            return $this->registeredPluginsCache;
+        }
+
+        try {
+            $registry = [];
+            $db = $this->getDatabase();
+            $query = $db->getQuery(true)
+                ->select($db->quoteName(['element', 'folder', 'enabled']))
+                ->from($db->quoteName('#__extensions'))
+                ->where($db->quoteName('type') . ' = ' . $db->quote('plugin'));
+            $db->setQuery($query);
+            foreach ($db->loadAssocList() ?: [] as $row) {
+                $key = strtolower((string) $row['folder']) . '|' . strtolower((string) $row['element']);
+                $registry[$key] = (bool) $row['enabled'];
+            }
+        } catch (\Throwable $e) {
+            return null;
+        }
+
+        return $this->registeredPluginsCache = $registry;
     }
 
     /**
@@ -328,13 +368,14 @@ class MuruguardModelScanner extends BaseDatabaseModel
         // original malicious content by design, that's the whole point).
         $selfBackupPattern = '/\.muruguard-\d{8}-\d{6}\.bak$/i';
         $registeredTemplates = $this->getRegisteredTemplates();
+        $registeredPlugins = $this->getRegisteredPlugins();
 
         foreach ($sig['SCAN_CONFIG'] as $relDir => $mode) {
             if (!$this->isAreaSelected($relDir)) continue;
             $dir = $this->root . '/' . $relDir;
             if (!is_dir($dir)) continue;
 
-            MuruguardHelper::walkDir($dir, function (string $path, bool $isDir) use ($sig, $mode, $maxSize, $isIgnored, $selfBackupPattern, $registeredTemplates) {
+            MuruguardHelper::walkDir($dir, function (string $path, bool $isDir) use ($sig, $mode, $maxSize, $isIgnored, $selfBackupPattern, $registeredTemplates, $registeredPlugins) {
                 foreach ($sig['SAFE_COMPONENT_PATHS'] as $safeFrag) {
                     if (stripos($path, $safeFrag) !== false) return;
                 }
@@ -443,6 +484,10 @@ class MuruguardModelScanner extends BaseDatabaseModel
                 // junk auto-generated template folder check (location-based, runs both modes)
                 $junkTpl = MuruguardHelper::checkJunkTemplateFolder($relCheck, $sig, $path, $registeredTemplates);
                 if ($junkTpl !== null) { $flagged = true; $reasons[] = $junkTpl; }
+
+                // junk module/plugin folder check (location-based, runs both modes)
+                $junkExt = MuruguardHelper::checkJunkExtensionFolder($relCheck, $sig, $registeredPlugins);
+                if ($junkExt !== null) { $flagged = true; $reasons[] = $junkExt; }
 
                 // stray index.php structural check (location-based, runs both modes)
                 if (!$isDir && !$isKnownSafeEntry) {

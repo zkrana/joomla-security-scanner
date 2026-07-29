@@ -8,6 +8,13 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Unreleased]
 
+## [2.4.9] - 2026-07-27
+
+### Fixed
+
+- **A confirmed real compromise (32 files, found by a competing scanner after this one reported nothing) went completely undetected.** Every file used the exact same shape: a commercial PHP obfuscation tool wrapping a fully-encoded backdoor in `eval(base64_decode('...'))`, decoding its own embedded string rather than reading `$_POST`/`$_GET` directly. The only existing signature for `eval()` + `base64_decode()` required a superglobal read in the same call (`eval_base64_post`), so this exact "encrypted, self-decoding" pattern -- arguably the most common real-world PHP malware shape there is -- had no matching signature at all. Added a new, broader content signature (`eval_encoded_blob`, medium severity, since a handful of legitimate commercial extensions self-obfuscate the same way purely for license protection) that catches `eval()` wrapping `base64_decode`/`str_rot13`/`gzuncompress`/`gzdecode`/`convert_uudecode` in any combination, regardless of what's being decoded. Verified against all 32 real files from this compromise (100% match) and against Joomla core/vendor/stock-extension code (zero false positives).
+- **Dropped fake `modules/<name>` and `plugins/<group>/<name>` folders (holding the same backdoor) would have been routed to "Cleanable Files" instead of "Delete"**, the same class of bug fixed for templates in 2.4.4-2.4.8 -- a finding whose only reason is a content-signature match inside a code-area path is treated as "real file with injected code, don't delete outright". Added the same location-based structural check used for templates, adapted per extension type: a `modules/` folder not named with Joomla's required `mod_` prefix is disqualified on naming alone (no legitimate module is ever named otherwise); a `plugins/<group>/<name>` folder is cross-referenced against `#__extensions` the same way templates are. `components/` is deliberately NOT covered by an equivalent check yet -- the same attack also faked `components/com_feed`, `com_stat`, `com_base`, `com_track`, `com_util` with matching `#__extensions` rows, but left those `enabled = 1` (unlike the disabled fake template/plugin rows), so the "registered but disabled" signal that works elsewhere doesn't discriminate for components. Those files are still caught by the content-signature fix above; only the Delete-tab routing for them remains an open gap.
+
 ## [2.4.8] - 2026-07-24
 
 ### Fixed

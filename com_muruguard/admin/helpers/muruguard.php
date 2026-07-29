@@ -146,6 +146,8 @@ class MuruguardHelper
             'CONTENT_SIGNATURES' => [
                 'eval_base64_post'   => ['re' => '/eval\s*\(\s*(?:@)?base64_decode\s*\(\s*(?:@)?\$_(POST|REQUEST|GET)/i',
                     'severity' => 'high', 'why' => 'Executes attacker-supplied POST/REQUEST/GET data via base64-decoded eval() — the canonical one-line PHP webshell pattern, no legitimate use.'],
+                'eval_encoded_blob'  => ['re' => '/eval\s*\(\s*(?:@)?(?:gzinflate\s*\(\s*)?(?:@)?(?:base64_decode|str_rot13|gzuncompress|gzdecode|convert_uudecode)\s*\(/i',
+                    'severity' => 'medium', 'why' => 'eval() directly wrapping a decode/decompress call -- the classic shape of self-decoding, obfuscated PHP (a real, confirmed compromise on a live site used exactly this: a commercial obfuscation tool wrapping a fully-encoded backdoor across dozens of files with plausible extension-sounding names). Deliberately does not require the decoded value to come from a superglobal (that narrower, always-malicious case is eval_base64_post above, at high severity) -- some legitimate commercial extensions also self-obfuscate this way purely for license/anti-piracy protection, so this is flagged for review rather than treated as automatically confirmed, but it is now visible either way instead of being invisible.'],
                 'cookie_gated_eval'  => ['re' => '/md5\s*\(\s*(?:@)?\$_COOKIE\[[\'"][^\'"]+[\'"]\]\s*\)\s*==\s*[\'"][a-f0-9]{32}[\'"]/i',
                     'severity' => 'high', 'why' => 'Gates hidden behavior behind a secret cookie value matched by MD5 hash — a common backdoor-access-control pattern.'],
                 'assert_backdoor'    => ['re' => '/assert\s*\(\s*(?:@)?\$_(POST|REQUEST|GET)/i',
@@ -804,6 +806,63 @@ class MuruguardHelper
         }
 
         return "Sits inside \"{$topFolder}\" — this folder has no templateDetails.xml manifest, so Joomla could never have installed it as a real template. A common mass webshell-drop pattern: an existing template's name plus a random suffix used purely to host a backdoor file behind a legitimate-looking path, not a real template.";
+    }
+
+    /**
+     * Same idea as checkJunkTemplateFolder(), for modules/ and plugins/ --
+     * a real, live compromise dropped fake folders in both (e.g.
+     * modules/helper/helper.php, plugins/system/loader/loader.php), each
+     * holding a self-decoding backdoor (see CONTENT_SIGNATURES'
+     * eval_encoded_blob). Deliberately does NOT cover components/: the
+     * same attack also faked components/com_feed, com_stat, com_base,
+     * com_track, com_util with matching, ENABLED #__extensions rows --
+     * unlike templates and plugins, "enabled" isn't a reliable signal for
+     * components, and there's no equally cheap, reliable structural
+     * signal to fall back on, so a fake component folder isn't caught
+     * here (the content-signature scan is what catches those instead).
+     *
+     * Modules: Joomla requires every real module's #__extensions element
+     * to start with "mod_" -- a folder that doesn't is disqualified on
+     * naming alone, no DB query needed.
+     *
+     * Plugins: cross-referenced against #__extensions the same way
+     * templates are (see $registeredPlugins / getRegisteredPlugins()).
+     */
+    public static function checkJunkExtensionFolder(string $relPath, array $sig, ?array $registeredPlugins = null): ?string
+    {
+        $relPath = ltrim(str_replace('\\', '/', $relPath), '/');
+        $parts = explode('/', $relPath);
+
+        $modIdx = null;
+        if (($parts[0] ?? '') === 'modules') {
+            $modIdx = 1;
+        } elseif (($parts[0] ?? '') === 'administrator' && ($parts[1] ?? '') === 'modules') {
+            $modIdx = 2;
+        }
+        if ($modIdx !== null) {
+            $modName = $parts[$modIdx] ?? '';
+            if ($modName !== '' && stripos($modName, 'mod_') !== 0) {
+                return "Sits inside \"{$modName}\" — a modules/ folder not named with Joomla's required \"mod_\" prefix, meaning this could never be a real installed module.";
+            }
+            return null;
+        }
+
+        if (($parts[0] ?? '') === 'plugins' && isset($parts[2]) && $parts[2] !== '') {
+            $group = $parts[1];
+            $name  = $parts[2];
+            if ($registeredPlugins !== null) {
+                $key = strtolower($group) . '|' . strtolower($name);
+                if (!array_key_exists($key, $registeredPlugins)) {
+                    return "Sits inside plugins/{$group}/{$name} — no matching #__extensions row of type \"plugin\" exists for it, meaning Joomla never actually installed this as a real plugin.";
+                }
+                if (!$registeredPlugins[$key]) {
+                    return "Sits inside plugins/{$group}/{$name} — its #__extensions plugin record exists but is disabled (enabled = 0), a strong sign of an injected row rather than a real, active plugin.";
+                }
+            }
+            return null;
+        }
+
+        return null;
     }
 
     /**
