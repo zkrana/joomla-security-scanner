@@ -8,6 +8,13 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Unreleased]
 
+## [2.4.11] - 2026-07-29
+
+### Fixed
+
+- **False positive: real, stock Joomla plugins that ship disabled by default (`plugins/api-authentication/basic`, `plugins/authentication/ldap`, and others) were flagged as suspicious.** The 2.4.9 `#__extensions` cross-check treated "disabled" as a fake-plugin signal, copying the logic that works for templates — but unlike templates, several genuinely core Joomla plugins are shipped disabled out of the box, so this flagged completely unmodified installs. The disabled-row check is removed for plugins; only a completely *missing* `#__extensions` row (never installed at all) is still flagged, which has no legitimate-install false-positive case.
+- **Fake `components/com_xxx` folders (confirmed malicious, matching the exact 2.4.9 `eval_encoded_blob` compromise) were landing in the Cleanable Files tab labeled "needs manual review" instead of Suspicious Files, where Delete actually works.** Root cause: components were the one extension type with no structural (location-based) check at all — the 2.4.9 changelog flagged this as a known open gap, since that attack's fake component `#__extensions` rows were left `enabled = 1`, unlike its disabled fake template/plugin rows. Added `getRegisteredComponents()`, cross-referencing `manifest_cache` instead of `enabled` — Joomla's installer always populates this JSON blob from the extension's manifest at install time; a directly-inserted fake row has no reason to also forge it. A `components/com_xxx` folder with a missing `#__extensions` row, or a row with no populated `manifest_cache`, now gets the same structural finding templates/modules/plugins already get, which correctly routes it to Suspicious Files instead of Cleanable.
+
 ## [2.4.10] - 2026-07-29
 
 ### Fixed
