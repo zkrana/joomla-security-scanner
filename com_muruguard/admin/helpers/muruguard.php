@@ -174,6 +174,8 @@ class MuruguardHelper
                     'severity' => 'medium', 'why' => 'Decodes a long base64 blob then rebuilds identifiers via string-index lookups — a common obfuscation shape, but also used by some legitimate obfuscated/licensed commercial extensions. Review what the rebuilt identifiers resolve to.'],
                 'opcache_reset_only' => ['re' => '/^\s*<\?php\s*opcache_reset\s*\(\s*\)\s*;\s*\?>\s*$/i',
                     'severity' => 'medium', 'why' => 'A file whose entire content is just opcache_reset() is functionally harmless by itself, but matches a known dropper self-cleanup helper used to force PHP to immediately pick up newly-written malicious files elsewhere.'],
+                'phpkoru_encoder' => ['re' => '/\[PHPkoru_Code\]|phpkoru\.com|Aponkral\s+PHPkoru/i',
+                    'severity' => 'high', 'why' => 'Matches the signature markers of "PHPkoru", a third-party PHP obfuscation/encoding service used to hide webshells and backdoors behind chained eval(base64_decode()) calls and a __halt_compiler()-appended encoded payload block that the file reads back out of its own source at runtime. No legitimate Joomla core or extension code is ever processed through this tool.'],
             ],
 
             // Checked against a LIVE incoming request (GET/POST/URI/User-Agent)
@@ -1113,12 +1115,35 @@ class MuruguardHelper
      * candidate even when no auto-clean pattern recognizes this specific
      * infection -- landing in the Cleanable Files tab for manual review
      * is the safe outcome, not the destructive one.
+     *
+     * That reasoning only holds for a genuinely AMBIGUOUS content match,
+     * though (see CONTENT_SIGNATURES' severity tagging in getSignatures()
+     * -- 'medium' names things with a plausible benign explanation, e.g.
+     * a commercial extension self-obfuscating for license protection).
+     * A 'high' severity match (tagged "high-confidence exploit pattern"
+     * in the reason text scanFileContent() builds) is by this codebase's
+     * own definition unambiguous enough to mark the whole file High
+     * confidence on its own -- code/library/plugin/module/template areas
+     * with zero structural corroboration and nothing but a webshell
+     * signature this unambiguous aren't legitimate files with something
+     * merely injected into them; a real, confirmed live compromise
+     * (a PHPkoru-obfuscated backdoor dropped at libraries/init/init.php,
+     * no matching structural signal available since libraries/ has no
+     * #__extensions-style registry to check against) landed here purely
+     * because eval_encoded_blob is deliberately medium -- but the file
+     * also carries other high-confidence markers, so a high match present
+     * anywhere in the reasons list takes it out of this softening
+     * entirely, letting it fall through to Suspicious Files/Delete
+     * instead of sitting stuck in Cleanable with no working auto-clean
+     * pattern.
      */
     public static function isContentOnlyCodeAreaFinding(string $relPath, array $reasonsList, array $sig): bool
     {
         if (empty($reasonsList) || !self::isCodeAreaPath($relPath, $sig)) return false;
         foreach ($reasonsList as $r) {
-            if (stripos((string) $r, 'Content signature:') !== 0) return false;
+            $r = (string) $r;
+            if (stripos($r, 'Content signature:') !== 0) return false;
+            if (stripos($r, 'high-confidence exploit pattern') !== false) return false;
         }
         return true;
     }
