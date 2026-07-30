@@ -8,6 +8,13 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Unreleased]
 
+## [2.4.13] - 2026-07-29
+
+### Fixed
+
+- **A confirmed, live webshell (`libraries/init/init.php`, dropped via the "PHPkoru" obfuscation service and confirmed malicious) sat in the Cleanable Files tab reporting "SKIPPED (no auto-cleanable pattern recognized)" on Clean, instead of Suspicious Files where Delete works.** Root cause, more general than this one file: `libraries/` has no `#__extensions`-style registry to structurally cross-reference the way templates/modules/plugins/components now do, so a file there with no OTHER structural red flag fell entirely on content-signature matching -- and `isContentOnlyCodeAreaFinding()` downgraded ANY content-signature-only finding in a code area to "Cleanable, review manually", regardless of whether the matched signature was `medium` (genuinely ambiguous, e.g. a commercial extension self-obfuscating for license protection) or `high` (this codebase's own existing severity tagging already calls that "unambiguous enough... to mark the whole file High confidence"). A `high`-severity content match now always routes to Suspicious Files/Delete, even with zero location-based corroboration — only genuinely ambiguous `medium` matches still get the cautious Cleanable/manual-review treatment. This is a general fix, not specific to one file or folder: it applies wherever a code-area file (components, modules, plugins, libraries, templates) is flagged purely by content.
+- Added a dedicated, zero-false-positive-risk content signature for the "PHPkoru" obfuscation/encoding service specifically (`[PHPkoru_Code]` marker, `phpkoru.com` branding) — no legitimate Joomla file is ever processed through this tool, so this alone is now a `high`-severity match.
+
 ## [2.4.12] - 2026-07-29
 
 ### Fixed
