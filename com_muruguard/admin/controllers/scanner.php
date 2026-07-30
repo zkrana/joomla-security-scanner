@@ -16,6 +16,37 @@ use Joomla\CMS\Component\ComponentHelper;
 class MuruguardControllerScanner extends BaseController
 {
     /**
+     * Bulk selection forms (delete/clean actions) submit one checkbox per
+     * row -- a large scan result (thousands of flagged files, or hundreds
+     * of junk #__template_styles rows) can trip PHP's default
+     * max_input_vars (1000) well before Joomla even gets a chance to look
+     * at the request, silently truncating the POST body. Depending on
+     * where in the field order the truncation lands, this can drop the
+     * CSRF token field itself, surfacing as a confusing "invalid security
+     * token" error that has nothing to do with the token actually being
+     * wrong. The view's JS now consolidates every checked checkbox into a
+     * single JSON-encoded hidden field (see muruConsolidateCheckboxes() in
+     * default.php) BEFORE submit, so the request carries one field
+     * regardless of how many rows are selected. This reads that field
+     * first and only falls back to the legacy one-field-per-row array
+     * (still emitted by the raw HTML for no-JS resilience) when it's
+     * absent or invalid, so old cached page loads / JS-disabled browsers
+     * still work exactly as before, just with the original scaling limit.
+     */
+    private function getBulkField(string $jsonName, string $arrayName): array
+    {
+        $input = Factory::getApplication()->input;
+        $json  = $input->post->get($jsonName, '', 'raw');
+        if ($json !== '') {
+            $decoded = json_decode($json, true);
+            if (is_array($decoded)) {
+                return array_values(array_map('strval', $decoded));
+            }
+        }
+        return $input->post->get($arrayName, [], 'array');
+    }
+
+    /**
      * Triggered by the "Run Scan" and "Re-scan" forms.
      * Runs the full filesystem + DB scan, stores results in the session,
      * then redirects back to the display view so the URL stays clean.
@@ -90,7 +121,7 @@ public function scan()
         \MuruguardHelper::requireDeleteAccess();
 
         $app     = Factory::getApplication();
-        $targets = $app->input->post->get('targets', [], 'array');
+        $targets = $this->getBulkField('targets_json', 'targets');
 
         /** @var MuruguardModelScanner $model */
         $model = $this->getModel('Scanner');
@@ -113,7 +144,7 @@ public function scan()
         \MuruguardHelper::requireEditAccess();
 
         $app     = Factory::getApplication();
-        $targets = $app->input->post->get('targets', [], 'array');
+        $targets = $this->getBulkField('targets_json', 'targets');
 
         /** @var MuruguardModelScanner $model */
         $model = $this->getModel('Scanner');
@@ -140,7 +171,7 @@ public function scan()
         \MuruguardHelper::requireEditAccess();
 
         $app = Factory::getApplication();
-        $ids = $app->input->post->get('menu_xss_ids', [], 'array');
+        $ids = $this->getBulkField('menu_xss_ids_json', 'menu_xss_ids');
 
         /** @var MuruguardModelScanner $model */
         $model = $this->getModel('Scanner');
@@ -159,7 +190,7 @@ public function scan()
         \MuruguardHelper::requireDeleteAccess();
 
         $app = Factory::getApplication();
-        $ids = $app->input->post->get('rogue_asset_ids', [], 'array');
+        $ids = $this->getBulkField('rogue_asset_ids_json', 'rogue_asset_ids');
 
         /** @var MuruguardModelScanner $model */
         $model = $this->getModel('Scanner');
@@ -181,7 +212,7 @@ public function scan()
         \MuruguardHelper::requireDeleteAccess();
 
         $app = Factory::getApplication();
-        $ids = $app->input->post->get('template_defacement_ids', [], 'array');
+        $ids = $this->getBulkField('template_defacement_ids_json', 'template_defacement_ids');
 
         /** @var MuruguardModelScanner $model */
         $model = $this->getModel('Scanner');

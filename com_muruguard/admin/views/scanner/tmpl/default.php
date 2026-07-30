@@ -1155,7 +1155,7 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
         <span><?= Text::_('COM_MURUGUARD_CLEANABLE_INFO') ?></span>
     </div>
     <?php $tag = $this->canEdit ? 'form' : 'div'; ?>
-    <<?= $tag ?><?php if ($this->canEdit): ?> action="index.php?option=com_muruguard&task=scanner.cleancode" method="post"
+    <<?= $tag ?><?php if ($this->canEdit): ?> action="index.php?option=com_muruguard&task=scanner.cleancode" method="post" id="muru-cleancode-form"
           onsubmit="return confirm('<?= Text::_('COM_MURUGUARD_CONFIRM_CLEAN_FILES') ?>');"<?php endif; ?>>
         <div class="flex items-center justify-between mb-3">
             <?php if ($this->canEdit): ?>
@@ -1256,7 +1256,7 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
     </div>
 <?php else: ?>
     <?php $tag = $this->canEdit ? 'form' : 'div'; ?>
-    <<?= $tag ?><?php if ($this->canEdit): ?> action="index.php?option=com_muruguard&task=scanner.cleanmenu" method="post"
+    <<?= $tag ?><?php if ($this->canEdit): ?> action="index.php?option=com_muruguard&task=scanner.cleanmenu" method="post" id="muru-cleanmenu-form"
           onsubmit="return confirm('<?= Text::_('COM_MURUGUARD_CONFIRM_CLEAN_MENU') ?>');"<?php endif; ?>>
         <?php if ($this->canEdit): ?>
         <div class="flex items-center justify-between mb-3">
@@ -1361,7 +1361,7 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
     <?php endif; ?>
     <?php if (!empty($dbFindings['rogue_iconfont'])): ?>
         <?php $tag = $this->canDelete ? 'form' : 'div'; ?>
-        <<?= $tag ?><?php if ($this->canDelete): ?> action="index.php?option=com_muruguard&task=scanner.deleteassets" method="post"
+        <<?= $tag ?><?php if ($this->canDelete): ?> action="index.php?option=com_muruguard&task=scanner.deleteassets" method="post" id="muru-deleteassets-form"
               onsubmit="return confirm('<?= Text::_('COM_MURUGUARD_CONFIRM_DELETE_ASSETS') ?>');"<?php endif; ?>>
             <div class="flex items-center justify-between mb-3">
                 <h4 class="font-bold text-gray-700"><?= Text::_('COM_MURUGUARD_ROGUE_ICONFONT_HEADING') ?>
@@ -1427,7 +1427,7 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
     </div>
 <?php else: ?>
     <?php $tag = $this->canDelete ? 'form' : 'div'; ?>
-    <<?= $tag ?><?php if ($this->canDelete): ?> action="index.php?option=com_muruguard&task=scanner.cleantemplatedefacement" method="post"
+    <<?= $tag ?><?php if ($this->canDelete): ?> action="index.php?option=com_muruguard&task=scanner.cleantemplatedefacement" method="post" id="muru-template-form"
           onsubmit="return confirm('<?= Text::_('COM_MURUGUARD_CONFIRM_CLEAN_DEFACEMENT') ?>');"<?php endif; ?>>
         <?php if ($this->canDelete): ?>
         <div class="flex items-center justify-between mb-3">
@@ -1511,6 +1511,46 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
             muruguardShowOverlay();
         });
     });
+
+    // Bulk delete/clean forms submit one checkbox per row. A large scan
+    // result (thousands of flagged files, or hundreds of junk DB rows) can
+    // exceed PHP's default max_input_vars (1000) before Joomla even sees
+    // the request, silently truncating the POST body -- which can drop the
+    // CSRF token field along with it, surfacing as a confusing "invalid
+    // security token" error unrelated to the token itself. On submit,
+    // every checked box's value is consolidated into one JSON-encoded
+    // hidden field (read by MuruguardControllerScanner::getBulkField(),
+    // which prefers it over the raw array), and the checkboxes' own `name`
+    // attributes are removed so they don't ALSO submit individually --
+    // capping the request at a small, constant number of fields regardless
+    // of how many rows are selected. If JS is unavailable this listener
+    // never runs and the checkboxes submit the old way, still working for
+    // reasonable selection sizes.
+    function muruConsolidateCheckboxes(formId, checkboxClass, hiddenFieldName) {
+        var form = document.getElementById(formId);
+        if (!form) return;
+        form.addEventListener('submit', function () {
+            var boxes = form.querySelectorAll('.' + checkboxClass);
+            var checkedValues = [];
+            boxes.forEach(function (box) {
+                if (box.checked) checkedValues.push(box.value);
+                box.removeAttribute('name');
+            });
+            var hidden = form.querySelector('input[name="' + hiddenFieldName + '"]');
+            if (!hidden) {
+                hidden = document.createElement('input');
+                hidden.type = 'hidden';
+                hidden.name = hiddenFieldName;
+                form.appendChild(hidden);
+            }
+            hidden.value = JSON.stringify(checkedValues);
+        });
+    }
+    muruConsolidateCheckboxes('muru-files-form', 'muru-file-chk', 'targets_json');
+    muruConsolidateCheckboxes('muru-cleancode-form', 'muru-file-chk', 'targets_json');
+    muruConsolidateCheckboxes('muru-cleanmenu-form', 'muru-menu-chk', 'menu_xss_ids_json');
+    muruConsolidateCheckboxes('muru-deleteassets-form', 'muru-asset-chk', 'rogue_asset_ids_json');
+    muruConsolidateCheckboxes('muru-template-form', 'muru-template-chk', 'template_defacement_ids_json');
 
     // Close support widget when clicking outside
     document.addEventListener('click', function(e) {
