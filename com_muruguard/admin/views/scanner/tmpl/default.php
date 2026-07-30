@@ -161,6 +161,40 @@ $rescanUrl  = 'index.php?option=com_muruguard&task=scanner.scan&rescan=1';
   .muru-diff-removed { font-family:ui-monospace,monospace; font-size:12px; line-height:1.6; color:#b91c1c; background:#fef2f2; border:1px solid #fee2e2; border-radius:8px; padding:10px 12px; white-space:pre-wrap; word-break:break-all; margin:0; text-decoration:line-through; text-decoration-color:#fca5a5; }
   .muru-diff-added { font-family:ui-monospace,monospace; font-size:12px; line-height:1.6; color:#15803d; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:10px 12px; white-space:pre-wrap; word-break:break-all; margin:0; }
 
+  /* ── .htaccess hardening modal -- same fixed/re-parent-to-<body>
+     treatment as the modals above, for the same reason. Content here is
+     hand-styled with dedicated classes rather than Tailwind utilities,
+     since a re-parented element sits outside #muruguard-root and loses
+     access to Tailwind's JIT-scoped CSS entirely. */
+  #muru-htaccess-modal { display:none; position:fixed; inset:0; z-index:999997; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  #muru-htaccess-modal.muru-show { display:flex; align-items:center; justify-content:center; padding:24px; }
+  #muru-htaccess-modal-backdrop { position:absolute; inset:0; background:rgba(15,23,42,.65); backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px); }
+  #muru-htaccess-modal-dialog { position:relative; max-width:760px; width:100%; max-height:calc(100vh - 48px); background:#fff; border-radius:20px; box-shadow:0 25px 60px rgba(15,23,42,.35); display:flex; flex-direction:column; overflow:hidden; }
+  #muru-htaccess-modal-header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:20px 24px; background:linear-gradient(135deg,#eef2ff 0%,#f5f3ff 55%,#fdf2f8 100%); border-bottom:1px solid #eef0f4; flex-shrink:0; }
+  #muru-htaccess-modal-header-title { display:flex; align-items:flex-start; gap:12px; }
+  #muru-htaccess-modal-header-icon { flex-shrink:0; display:flex; align-items:center; justify-content:center; width:40px; height:40px; border-radius:12px; background:rgba(255,255,255,.7); font-size:19px; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+  #muru-htaccess-modal-header h3 { font-size:15px; font-weight:800; color:#1f2937; margin:0; }
+  #muru-htaccess-modal-header p { font-size:12px; color:#6b7280; margin:4px 0 0; line-height:1.5; }
+  #muru-htaccess-modal-close { flex-shrink:0; width:30px; height:30px; border-radius:9999px; background:rgba(255,255,255,.8); color:#6b7280; font-size:14px; line-height:1; cursor:pointer; border:0; transition:background .15s, color .15s; }
+  #muru-htaccess-modal-close:hover { background:#fff; color:#111827; }
+  #muru-htaccess-modal-body { padding:20px 24px; overflow-y:auto; background:#fafbfc; }
+  #muru-htaccess-modal-missing-file { display:flex; align-items:center; gap:10px; color:#b45309; background:#fffbeb; border:1px solid #fde68a; border-radius:12px; padding:12px 14px; margin-bottom:16px; font-size:13px; font-weight:600; }
+  .muru-hc-category { font-size:13px; font-weight:800; color:#374151; margin:18px 0 10px; }
+  .muru-hc-category:first-child { margin-top:0; }
+  .muru-hc-item { border:1px solid #e5e7eb; border-radius:12px; margin-bottom:8px; overflow:hidden; }
+  .muru-hc-item.present { background:#f0fdf4; border-color:#bbf7d0; }
+  .muru-hc-item.missing { background:#fffbeb; border-color:#fde68a; }
+  .muru-hc-item summary { cursor:pointer; padding:12px 14px; display:flex; align-items:center; justify-content:space-between; gap:12px; font-size:13px; font-weight:700; color:#1f2937; list-style:none; }
+  .muru-hc-item summary::-webkit-details-marker { display:none; }
+  .muru-hc-status { font-size:11px; font-weight:800; flex-shrink:0; }
+  .muru-hc-status.present { color:#15803d; }
+  .muru-hc-status.missing { color:#b45309; }
+  .muru-hc-body { border-top:1px solid rgba(0,0,0,.06); padding:12px 14px; }
+  .muru-hc-explain { font-size:12px; color:#4b5563; line-height:1.6; margin:0 0 10px; }
+  .muru-hc-rule-label { font-size:11px; font-weight:700; color:#6b7280; margin:0 0 4px; }
+  .muru-hc-rule { font-size:11.5px; line-height:1.6; background:#111827; color:#e5e7eb; border-radius:8px; padding:10px 12px; overflow-x:auto; white-space:pre; font-family:ui-monospace,monospace; margin:0; }
+  #muru-htaccess-modal-footer { padding:12px 24px 18px; font-size:11px; color:#9ca3af; flex-shrink:0; }
+
   /* ── Scan-area picker modal -- same fixed/re-parent-to-<body> treatment
      as the code-analysis modal above, for the same reason (Joomla's
      admin template transforms the content wrapper, which breaks
@@ -824,6 +858,17 @@ $totalAreaCount = array_sum(array_map(fn($g) => count($g['areas']), $scanAreas))
      RESULTS
      ══════════════════════════════════════════════════════════════ -->
 
+<?php
+$htaccessChecks = $this->htaccess['checks'] ?? [];
+$htaccessCriticalMissing = count(array_filter($htaccessChecks, fn($c) => $c['category'] === 'critical' && !$c['present']));
+$htaccessCategoryLabels = [
+    'critical' => Text::_('COM_MURUGUARD_HTACCESS_CATEGORY_CRITICAL'),
+    'header'   => Text::_('COM_MURUGUARD_HTACCESS_CATEGORY_HEADER'),
+];
+$htaccessByCategory = ['critical' => [], 'header' => []];
+foreach ($htaccessChecks as $c) { $htaccessByCategory[$c['category']][] = $c; }
+?>
+
 <!-- Re-scan bar -->
 <div class="anim-in flex flex-wrap items-center justify-between gap-3
             bg-white border border-gray-200 rounded-xl px-5 py-3 mb-6 shadow-sm">
@@ -866,6 +911,61 @@ $totalAreaCount = array_sum(array_map(fn($g) => count($g['areas']), $scanAreas))
             🤖 <?= Text::_('COM_MURUGUARD_AI_INTEGRATION') ?>
             <span class="inline-flex items-center px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-500 text-[10px] font-bold"><?= Text::_('COM_MURUGUARD_SOON_BADGE') ?></span>
         </button>
+        <button type="button" id="muru-open-htaccess-modal"
+                class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-gray-300
+                       rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50
+                       transition-colors shadow-sm">
+            🛡 <?= Text::_('COM_MURUGUARD_TAB_HTACCESS') ?>
+            <?php if ($htaccessCriticalMissing > 0): ?>
+                <span class="inline-flex items-center justify-center min-w-4 h-4 px-1 bg-amber-500 text-white text-[10px] font-bold rounded-full"><?= $htaccessCriticalMissing ?></span>
+            <?php endif; ?>
+        </button>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     .HTACCESS HARDENING MODAL -- opened by #muru-open-htaccess-modal
+     above. Read-only advisory; never writes to .htaccess itself.
+     ══════════════════════════════════════════════════════════════ -->
+<div id="muru-htaccess-modal">
+    <div id="muru-htaccess-modal-backdrop"></div>
+    <div id="muru-htaccess-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="muru-htaccess-modal-title">
+        <div id="muru-htaccess-modal-header">
+            <div id="muru-htaccess-modal-header-title">
+                <span id="muru-htaccess-modal-header-icon">🛡</span>
+                <div>
+                    <h3 id="muru-htaccess-modal-title"><?= Text::_('COM_MURUGUARD_TAB_HTACCESS') ?></h3>
+                    <p><?= Text::_('COM_MURUGUARD_HTACCESS_INFO') ?></p>
+                </div>
+            </div>
+            <button type="button" id="muru-htaccess-modal-close" aria-label="<?= Text::_('COM_MURUGUARD_MODAL_CLOSE') ?>">✕</button>
+        </div>
+        <div id="muru-htaccess-modal-body">
+            <?php if (!$this->htaccess['exists']): ?>
+                <div id="muru-htaccess-modal-missing-file">⚠️ <?= Text::sprintf('COM_MURUGUARD_HTACCESS_MISSING_FILE', htmlspecialchars($this->htaccess['path'])) ?></div>
+            <?php endif; ?>
+            <?php foreach ($htaccessByCategory as $cat => $items): if (empty($items)) continue; ?>
+                <div class="muru-hc-category"><?= $htaccessCategoryLabels[$cat] ?></div>
+                <?php foreach ($items as $c): ?>
+                    <details class="muru-hc-item <?= $c['present'] ? 'present' : 'missing' ?>">
+                        <summary>
+                            <span><?= $c['present'] ? '✅' : '⚠️' ?> <?= htmlspecialchars($c['label']) ?></span>
+                            <span class="muru-hc-status <?= $c['present'] ? 'present' : 'missing' ?>">
+                                <?= $c['present'] ? Text::_('COM_MURUGUARD_HTACCESS_PRESENT') : Text::_('COM_MURUGUARD_HTACCESS_MISSING') ?>
+                            </span>
+                        </summary>
+                        <div class="muru-hc-body">
+                            <p class="muru-hc-explain"><?= htmlspecialchars($c['explanation']) ?></p>
+                            <?php if (!$c['present']): ?>
+                                <p class="muru-hc-rule-label"><?= Text::_('COM_MURUGUARD_HTACCESS_SUGGESTED_RULE') ?></p>
+                                <pre class="muru-hc-rule"><?= htmlspecialchars($c['suggestion']) ?></pre>
+                            <?php endif; ?>
+                        </div>
+                    </details>
+                <?php endforeach; ?>
+            <?php endforeach; ?>
+        </div>
+        <div id="muru-htaccess-modal-footer"><?= Text::sprintf('COM_MURUGUARD_HTACCESS_NOTE', htmlspecialchars($this->htaccess['path'])) ?></div>
     </div>
 </div>
 
@@ -957,8 +1057,6 @@ $deletableFindings = array_filter($fileFindings, fn($f) => !$notDeletable($f));
 $deletableCount = count($deletableFindings);
 $deletableHigh = count(array_filter($deletableFindings, fn($f) => $f['confidence'] === 'high'));
 $deletableMed  = $deletableCount - $deletableHigh;
-$htaccessChecks = $this->htaccess['checks'] ?? [];
-$htaccessCriticalMissing = count(array_filter($htaccessChecks, fn($c) => $c['category'] === 'critical' && !$c['present']));
 $tabs = [
     ['id' => 'files',      'emoji' => '📁', 'title' => Text::_('COM_MURUGUARD_LABEL_SUSPICIOUS_FILES'), 'count' => $deletableCount],
     ['id' => 'cleanable',  'emoji' => '🧹', 'title' => Text::_('COM_MURUGUARD_TAB_CLEANABLE_FILES'),     'count' => $cleanableCount],
@@ -966,7 +1064,6 @@ $tabs = [
     ['id' => 'menu',       'emoji' => '🔗', 'title' => Text::_('COM_MURUGUARD_TAB_MENU_XSS'),            'count' => $menuCount],
     ['id' => 'assets',     'emoji' => '🗄', 'title' => Text::_('COM_MURUGUARD_TAB_SPPB_ASSETS'),         'count' => $assetCount],
     ['id' => 'template',   'emoji' => '🖼', 'title' => Text::_('COM_MURUGUARD_TAB_DEFACEMENT'),          'count' => $deface],
-    ['id' => 'htaccess',   'emoji' => '🛡', 'title' => Text::_('COM_MURUGUARD_TAB_HTACCESS'),            'count' => $htaccessCriticalMissing],
 ];
 // Open on the first tab that has findings; otherwise the first tab.
 $activeTab = $tabs[0]['id'];
@@ -1484,54 +1581,6 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
 <?php endif; ?>
 <?php muru_section_close(); ?>
 
-<!-- ── 6. .htaccess Hardening (advisory, read-only) ────────────── -->
-<?php muru_section_open('sec-htaccess', '🛡', Text::_('COM_MURUGUARD_TAB_HTACCESS'), $htaccessCriticalMissing); ?>
-<div class="flex items-center gap-3 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3 mb-4 text-xs text-indigo-800">
-    <span class="text-lg flex-shrink-0">ℹ️</span>
-    <span><?= Text::_('COM_MURUGUARD_HTACCESS_INFO') ?></span>
-</div>
-<?php if (!$this->htaccess['exists']): ?>
-    <div class="flex items-center gap-3 text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-[10px] mb-4">
-        <span class="text-2xl">⚠️</span>
-        <span class="font-medium"><?= Text::sprintf('COM_MURUGUARD_HTACCESS_MISSING_FILE', htmlspecialchars($this->htaccess['path'])) ?></span>
-    </div>
-<?php endif; ?>
-<?php
-$htaccessCategoryLabels = [
-    'critical' => Text::_('COM_MURUGUARD_HTACCESS_CATEGORY_CRITICAL'),
-    'header'   => Text::_('COM_MURUGUARD_HTACCESS_CATEGORY_HEADER'),
-];
-$htaccessByCategory = ['critical' => [], 'header' => []];
-foreach ($htaccessChecks as $c) { $htaccessByCategory[$c['category']][] = $c; }
-?>
-<?php foreach ($htaccessByCategory as $cat => $items): if (empty($items)) continue; ?>
-    <h4 class="font-bold text-gray-700 mb-3 mt-2"><?= $htaccessCategoryLabels[$cat] ?></h4>
-    <div class="space-y-2 mb-5">
-        <?php foreach ($items as $c): ?>
-            <details class="<?= $c['present'] ? 'bg-green-50 border-green-100' : 'bg-amber-50 border-amber-100' ?> border rounded-xl overflow-hidden">
-                <summary class="cursor-pointer px-4 py-3 flex items-center justify-between hover:bg-black/5">
-                    <div class="flex items-center gap-3">
-                        <span><?= $c['present'] ? '✅' : '⚠️' ?></span>
-                        <span class="font-bold text-sm text-gray-800"><?= htmlspecialchars($c['label']) ?></span>
-                    </div>
-                    <span class="text-xs font-semibold <?= $c['present'] ? 'text-green-700' : 'text-amber-700' ?>">
-                        <?= $c['present'] ? Text::_('COM_MURUGUARD_HTACCESS_PRESENT') : Text::_('COM_MURUGUARD_HTACCESS_MISSING') ?>
-                    </span>
-                </summary>
-                <div class="border-t <?= $c['present'] ? 'border-green-100' : 'border-amber-100' ?> p-4">
-                    <p class="text-xs text-gray-600 mb-3"><?= htmlspecialchars($c['explanation']) ?></p>
-                    <?php if (!$c['present']): ?>
-                        <p class="text-xs font-semibold text-gray-500 mb-1"><?= Text::_('COM_MURUGUARD_HTACCESS_SUGGESTED_RULE') ?></p>
-                        <pre class="text-xs bg-gray-900 text-gray-100 rounded-lg p-3 overflow-x-auto"><?= htmlspecialchars($c['suggestion']) ?></pre>
-                    <?php endif; ?>
-                </div>
-            </details>
-        <?php endforeach; ?>
-    </div>
-<?php endforeach; ?>
-<p class="text-xs text-gray-400"><?= Text::sprintf('COM_MURUGUARD_HTACCESS_NOTE', htmlspecialchars($this->htaccess['path'])) ?></p>
-<?php muru_section_close(); ?>
-
 <?php endif; // end $this->scanned ?>
 </div><!-- /#muru-main-content -->
 
@@ -1545,7 +1594,7 @@ foreach ($htaccessChecks as $c) { $htaccessByCategory[$c['category']][] = $c; }
     // animating the collapsible sidebar, and a transformed ancestor
     // breaks `position: fixed` for any descendant, confining it to that
     // ancestor's box instead of the actual viewport.
-    ['muruguard-overlay', 'muru-header-actions', 'muru-modal', 'muru-scan-modal'].forEach(function (id) {
+    ['muruguard-overlay', 'muru-header-actions', 'muru-modal', 'muru-scan-modal', 'muru-htaccess-modal'].forEach(function (id) {
         var el = document.getElementById(id);
         if (el && el.parentNode !== document.body) {
             document.body.appendChild(el);
@@ -1711,6 +1760,25 @@ foreach ($htaccessChecks as $c) { $htaccessByCategory[$c['category']][] = $c; }
     });
     document.addEventListener('keydown', function (e) {
         if (e.key === 'Escape') closeScanModal();
+    });
+
+    // ── .htaccess hardening modal ────────────────────────────────
+    var htaccessModal   = document.getElementById('muru-htaccess-modal');
+    var openHtaccessBtn = document.getElementById('muru-open-htaccess-modal');
+    function openHtaccessModal() {
+        if (htaccessModal) htaccessModal.classList.add('muru-show');
+    }
+    function closeHtaccessModal() {
+        if (htaccessModal) htaccessModal.classList.remove('muru-show');
+    }
+    if (openHtaccessBtn) openHtaccessBtn.addEventListener('click', openHtaccessModal);
+    document.addEventListener('click', function (e) {
+        if (e.target.id === 'muru-htaccess-modal-close' || e.target.id === 'muru-htaccess-modal-backdrop') {
+            closeHtaccessModal();
+        }
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') closeHtaccessModal();
     });
 
     // ── Code-analysis modal ─────────────────────────────────────
