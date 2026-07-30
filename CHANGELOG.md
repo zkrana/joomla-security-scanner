@@ -8,6 +8,12 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Unreleased]
 
+## [2.6.1] - 2026-07-30
+
+### Changed
+
+- Settings and Support are now reached ONLY through the new left-sidebar submenu (under the MuRu Guard menu item) added in 2.6.0, not duplicated as floating buttons in the top-right corner. The top-right area now shows just the version badge.
+
 ## [2.6.0] - 2026-07-30
 
 ### Security

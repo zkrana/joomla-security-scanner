@@ -120,10 +120,6 @@ $rescanUrl  = 'index.php?option=com_muruguard&task=scanner.scan&rescan=1';
 
   #muru-header-actions { position: fixed; top: 64px; right: 20px; z-index: 999998; display: flex; align-items: center; gap: 8px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
   #muru-version-badge { display:flex; align-items:center; gap:5px; background:#f3f4f6; border:1px solid #e5e7eb; border-radius:9999px; padding:6px 12px; font-size:12px; font-weight:700; color:#6b7280; white-space:nowrap; }
-  #muru-settings-btn, #muru-support-btn { display:flex; align-items:center; gap:8px; background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:8px 16px; font-size:14px; font-weight:600; color:#374151; box-shadow:0 1px 3px rgba(0,0,0,.08); transition:box-shadow .2s, background .2s, color .2s; cursor:pointer; }
-  #muru-settings-btn:hover, #muru-support-btn:hover { box-shadow:0 4px 10px rgba(0,0,0,.1); }
-  #muru-settings-btn.muru-settings-open { background:#4338ca; border-color:#4338ca; color:#fff; }
-  #muru-support-btn.muru-settings-open { background:#059669; border-color:#059669; color:#fff; }
 
   /* ── Code-analysis modal ──────────────────────────────────────
      Same plain-CSS + re-parent-to-<body> treatment as the overlay and
@@ -331,17 +327,13 @@ if ($w !== null && $w['safe'] !== true):
     </div>
 </div>
 
-<!-- ── Settings + Support (re-parented to <body> at runtime, see script) ── -->
+<!-- ── Version badge (re-parented to <body> at runtime, see script) ──
+     Settings/Support navigation lives in the left sidebar submenu now
+     (see MuruguardViewScanner::addSubmenu()), not duplicated here. -->
 <div id="muru-header-actions">
     <?php if ($this->componentVersion !== ''): ?>
     <span id="muru-version-badge" title="<?= Text::_('COM_MURUGUARD_VERSION_BADGE_TITLE') ?>">🛡️ v<?= htmlspecialchars($this->componentVersion) ?></span>
     <?php endif; ?>
-    <button type="button" id="muru-settings-btn" aria-pressed="false">
-        ⚙️ <?= Text::_('COM_MURUGUARD_SETTINGS_BTN') ?>
-    </button>
-    <button type="button" id="muru-support-btn" aria-pressed="false">
-        💬 <?= Text::_('COM_MURUGUARD_SUPPORT_BTN') ?>
-    </button>
 </div>
 
 <!-- ── Code-analysis modal (re-parented to <body> at runtime, see script) ── -->
@@ -1834,8 +1826,7 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
         if (!settingsPanel) return;
         hideAllPanels();
         settingsPanel.classList.remove('hidden');
-        settingsBtn.classList.add('muru-settings-open');
-        settingsBtn.setAttribute('aria-pressed', 'true');
+        if (settingsBtn) { settingsBtn.classList.add('muru-settings-open'); settingsBtn.setAttribute('aria-pressed', 'true'); }
     }
     function closeSettings() {
         hideAllPanels();
@@ -1845,8 +1836,7 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
         if (!supportPanel) return;
         hideAllPanels();
         supportPanel.classList.remove('hidden');
-        supportBtn.classList.add('muru-settings-open');
-        supportBtn.setAttribute('aria-pressed', 'true');
+        if (supportBtn) { supportBtn.classList.add('muru-settings-open'); supportBtn.setAttribute('aria-pressed', 'true'); }
     }
     function closeSupport() {
         hideAllPanels();
