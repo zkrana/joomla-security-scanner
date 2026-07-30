@@ -8,6 +8,13 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-07-30
+
+### Fixed
+
+- **Selecting a large batch (e.g. "Select all" on ~1800 flagged files) and clicking Delete/Clean failed with "The most recent request was denied because it had an invalid security token", alongside a PHP warning about `max_input_vars` being exceeded.** Every bulk delete/clean form (Suspicious Files, Cleanable Files, Menu XSS, SPPB Assets, Template Defacement) submitted one POST field per selected checkbox — at scale this blew past PHP's default `max_input_vars` (1000) before Joomla ever saw the request, silently truncating the POST body, which could drop the CSRF token field along with it. The confusing "invalid token" message had nothing to do with the token actually being wrong.
+- On submit, every checked box's value is now consolidated client-side into a single JSON-encoded hidden field, and the checkboxes' own `name` attributes are stripped so they never also submit individually — capping each request at a small, constant number of fields regardless of how many rows are selected (verified with a simulated 1800-target request: 1 POST field instead of 1800). The controller reads this consolidated field first and falls back to the original one-field-per-row array when it's absent (JS-disabled browsers, cached old page loads), so nothing regresses for smaller selections.
+
 ## [2.4.13] - 2026-07-29
 
 ### Fixed
