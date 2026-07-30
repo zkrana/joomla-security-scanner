@@ -8,6 +8,15 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Unreleased]
 
+## [2.5.4] - 2026-07-30
+
+### Fixed
+
+- **False positive: `modules/index.html` and `templates/index.html` (Joomla's own "prevent directory listing" blank stubs sitting directly at the group root) flagged as fake module/template folders.** Same class of bug already fixed for `plugins/<group>/index.html` -- a bare file directly at the modules/ or templates/ root was being read as if its filename were itself a module/template name. Fixed for both.
+- **False positive: `media/.../iconfont/icomoon` flagged "Unrecognized folder inside icon-font asset directory".** "icomoon" is IcoMoon's own icon-font export/build tool name -- a legitimate, common vendor subfolder (SP Page Builder's bundled icon picker uses it), not a red flag. Added to the allow-list.
+- **Real gap found while fixing the above: files nested two or more levels inside an `iconfont/` tree (e.g. `iconfont/icomoon/whatever.ext`) were never checked against the icon-font file-type allow-list at all** -- only files directly at the immediate `iconfont/` level were. A non-executable-but-unexpected file type (anything other than the standard font/css/json/doc extensions) hidden inside an allowed subfolder like `icomoon/` would previously slide through undetected by this check. Now checked at any depth, closing the gap the "icomoon" fix above would otherwise have introduced -- allow-listing a folder name is no longer a free pass for what's placed inside it.
+- **False positive: `libraries/vendor/symfony/http-client-contracts/Test/Fixtures/web/index.php` (a legitimate Symfony package's own test-fixture HTTP server script) flagged "Non-standard index.php".** `libraries/vendor/` is Joomla's bundled Composer dependency tree -- hundreds of third-party packages that don't follow Joomla's own "blank stub" index.php convention; a package's test fixtures/dev tooling can legitimately ship a fully functional index.php. This one structural signal isn't reliable for arbitrary vendor code; the ordinary content-signature scan (which runs on every file regardless of location) still catches an actual malicious payload dropped there.
+
 ## [2.5.3] - 2026-07-30
 
 ### Fixed

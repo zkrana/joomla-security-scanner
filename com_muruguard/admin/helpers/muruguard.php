@@ -297,7 +297,12 @@ class MuruguardHelper
                 '/administrator/components/com_admintools/',
             ],
 
-            'ICONFONT_ALLOWED_DIRNAMES'   => ['css', 'font', 'fonts', 'demo', 'docs', 'demo-files'],
+            // "icomoon" is IcoMoon's own icon-font export/build tool name --
+            // SP Page Builder (and many other extensions' icon pickers)
+            // bundle their icon font exactly as IcoMoon exports it, top-
+            // level folder name included, so this is a common, legitimate
+            // subfolder name here, not a real red flag.
+            'ICONFONT_ALLOWED_DIRNAMES'   => ['css', 'font', 'fonts', 'demo', 'docs', 'demo-files', 'icomoon'],
             'ICONFONT_ALLOWED_EXTENSIONS' => ['woff', 'woff2', 'ttf', 'eot', 'otf', 'svg', 'css', 'json', 'html', 'htm', 'txt', 'md'],
             'ICONFONT_ALLOWED_BARE_NAMES' => ['license', 'readme', 'changelog'],
 
@@ -998,6 +1003,14 @@ class MuruguardHelper
             return null;
         }
 
+        // Joomla's own "prevent directory listing" blank stub sits
+        // directly in templates/ (and administrator/templates/) itself --
+        // never a real template name, so a bare file at that level (not a
+        // template subfolder) is never treated as one.
+        if (count($parts) === $clientId + 2 && in_array(strtolower($topFolder), ['index.html', 'index.php'], true)) {
+            return null;
+        }
+
         // "system" is Joomla's own bundled fallback template (offline.php,
         // error.php, fatal.php, ...), present in a stock install on both the
         // site and admin side. It's core Joomla, not an installed extension
@@ -1116,6 +1129,15 @@ class MuruguardHelper
         }
         if ($modIdx !== null) {
             $modName = $parts[$modIdx] ?? '';
+
+            // Joomla's own "prevent directory listing" blank stub sits
+            // directly in modules/ itself -- never a real module name, so
+            // a bare file at that level (not a module subfolder) is never
+            // treated as one.
+            if (count($parts) === $modIdx + 1 && in_array(strtolower($modName), ['index.html', 'index.php'], true)) {
+                return null;
+            }
+
             if ($modName !== '' && stripos($modName, 'mod_') !== 0) {
                 return "Sits inside \"{$modName}\" — a modules/ folder not named with Joomla's required \"mod_\" prefix, meaning this could never be a real installed module.";
             }
@@ -1253,6 +1275,25 @@ class MuruguardHelper
         }
 
         if (preg_match('#^(administrator/)?templates/[^/]+/index\.php$#i', $relPath)) return null;
+
+        // libraries/vendor/ is Joomla's bundled Composer dependency tree --
+        // hundreds of third-party open-source packages, none of which
+        // follow Joomla's own "blank stub" index.php convention (it's not
+        // their convention to begin with). A package's own test fixtures,
+        // examples, or dev tooling can legitimately ship a fully
+        // functional index.php (e.g. Symfony's http-client-contracts test
+        // fixtures, which run a real local HTTP server for integration
+        // tests) -- structurally indistinguishable from this check's
+        // "webshell hiding behind a blank-stub filename" pattern, since
+        // that's exactly what a real one looks like: code where a blank
+        // stub was expected. This one structural signal isn't reliable
+        // enough to flag arbitrary vendor code on its own; the ordinary
+        // content-signature scan (scanFileContent(), which runs on every
+        // file regardless of location) still catches an actual malicious
+        // payload dropped/injected here.
+        if (stripos($relPath, 'libraries/vendor/') === 0 || stripos($relPath, '/libraries/vendor/') !== false) {
+            return null;
+        }
 
         $contents = @file_get_contents($absPath, false, null, 0, 4096);
         if ($contents === false) return null;

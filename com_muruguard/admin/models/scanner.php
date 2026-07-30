@@ -465,7 +465,19 @@ class MuruguardModelScanner extends BaseDatabaseModel
                 $flagged = false;
                 $reasons = [];
 
-                // iconfont strict allow-list
+                // iconfont strict allow-list -- file TYPE is checked at
+                // ANY depth inside an iconfont/ tree (icomoon/, css/,
+                // fonts/, or any other allowed subfolder), not just its
+                // immediate children. A subfolder name being on the
+                // allow-list (e.g. "icomoon", IcoMoon's own export/build
+                // tool name -- a legitimate, common icon-font vendor
+                // folder) only means the FOLDER itself isn't flagged as
+                // unrecognized; it is never a free pass for what's placed
+                // inside it -- every file there still has its own
+                // extension checked against the allow-list below, on top
+                // of the depth-independent executable check and the
+                // ordinary content-signature scan every file gets
+                // regardless of location.
                 if (stripos($path, '/iconfont/') !== false) {
                     $parentBase = strtolower(basename(dirname($path)));
                     if ($isDir) {
@@ -478,7 +490,7 @@ class MuruguardModelScanner extends BaseDatabaseModel
                         if (in_array($extL, $sig['EXEC_EXTS'], true)) {
                             $flagged = true;
                             $reasons[] = 'Executable file inside icon-font asset folder.';
-                        } elseif ($parentBase === 'iconfont') {
+                        } else {
                             $baseNoExt = strtolower(pathinfo($basename, PATHINFO_FILENAME));
                             if (!in_array($extL, $sig['ICONFONT_ALLOWED_EXTENSIONS'], true)
                                 && !($extL === '' && in_array($baseNoExt, $sig['ICONFONT_ALLOWED_BARE_NAMES'], true))) {
