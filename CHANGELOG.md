@@ -8,6 +8,12 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Unreleased]
 
+## [2.5.1] - 2026-07-30
+
+### Added
+
+- **New ".htaccess Hardening" tab** — a read-only advisory that reads the site's actual root `.htaccess` and checks it against a fixed set of recommended directives: blocking PHP execution inside writable upload-style directories (media/images/uploads/tmp/cache — the single most directly relevant check, since a dropped webshell still runs the moment it's requested unless the server refuses to execute PHP there), disabling directory listing, blocking direct access to sensitive files (.env, .git, composer.json/lock, .sql/.bak), plus advisory security headers (X-Content-Type-Options, Permissions-Policy, HSTS -- only shown once the site is actually on HTTPS, Content-Security-Policy with an explicit caution about testing before enabling). Each missing check shows a copy-ready suggested rule. This tool never writes to `.htaccess` itself — a wrong edit to this specific file can take the whole site down with no way to test a rewrite rule server-side before it's live, so it only reports and suggests.
+
 ## [2.5.0] - 2026-07-30
 
 ### Fixed
