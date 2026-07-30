@@ -1688,12 +1688,26 @@ class MuruguardHelper
      */
     private static function findInjectedHeadScript(string $contents): ?array
     {
-        $headPos = stripos($contents, '<head');
-        if ($headPos === false) return null;
+        // A real script-injection defacement plants its payload as the
+        // very FIRST thing inside <head>, before any legitimate meta/
+        // title/link tag -- that's what makes it run on every single
+        // page. This used to just search for a <script> tag ANYWHERE
+        // later in the file, which matched countless entirely legitimate
+        // files: any page/template/vendor library with BOTH a <head> tag
+        // and an unrelated <script> block somewhere else in the document
+        // (a near-universal combination) -- Joomla's own templates/system
+        // error pages, com_finder's HTML parser, php-debugbar's and
+        // Symfony's own large debug-toolbar/exception-page renderers, a
+        // template framework's "coming soon" countdown page, ... none of
+        // which have anything actually injected. Only a script tag
+        // sitting IMMEDIATELY after <head> (nothing but whitespace in
+        // between) counts now.
+        if (!preg_match('/<head\b[^>]*>\s*/i', $contents, $headMatch, PREG_OFFSET_CAPTURE)) return null;
+        $headOpenEnd = $headMatch[0][1] + strlen($headMatch[0][0]);
 
-        $scriptOpenPos = stripos($contents, '<script', $headPos);
-        if ($scriptOpenPos === false) return null;
+        if (stripos($contents, '<script', $headOpenEnd) !== $headOpenEnd) return null;
 
+        $scriptOpenPos = $headOpenEnd;
         $openTagCloseAt = strpos($contents, '>', $scriptOpenPos);
         if ($openTagCloseAt === false) return null;
         $bodyStart = $openTagCloseAt + 1;

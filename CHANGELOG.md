@@ -8,6 +8,13 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Unreleased]
 
+## [2.5.3] - 2026-07-30
+
+### Fixed
+
+- **The MuRu Guard Shield plugin flagged its own file (`plugins/system/muruguardshield/muruguardshield.php`) as a suspected webshell.** A code comment explaining why user-agent blocking has its own toggle used `eval(base64_decode())` as an illustrative example -- literal text that matches the `eval_encoded_blob` content signature. Same class of bug as the earlier `com_sppbscan` self-flagging issue, just via a comment instead of the signature table itself. Reworded the comment to avoid the literal pattern; see also the v1.1.1 Shield plugin release, which ships the corrected file.
+- **Widespread false positives on legitimate Joomla core/vendor files** (`templates/system/*.html`, `media/system/html/noxml.html`, `com_finder`'s HTML parser, `libraries/vendor/php-debugbar/.../JavascriptRenderer.php`, `libraries/vendor/symfony/error-handler/.../exception_full.html.php`, Helix Ultimate's `comingsoon.php` layouts) **flagged as "obfuscated script injected right after `<head>` tag".** The check searched for a `<script>` tag ANYWHERE later in the file after the first `<head>`, not actually adjacent to it -- so any file with both a `<head>` tag and an unrelated large/JS-heavy `<script>` block *anywhere else* in the document (a near-universal combination in real HTML-rendering code) matched, even when nothing was actually injected. Now requires the `<script>` tag to sit immediately after `<head...>` (only whitespace in between) -- the actual shape of a real head-injection defacement, which plants its payload as the very first thing in `<head>` specifically so it runs on every page. Verified: genuine immediate-injection patterns (including with realistic whitespace/newlines before the script tag) still correctly flagged; all five reported false-positive file shapes no longer match.
+
 ## [2.5.2] - 2026-07-30
 
 ### Added

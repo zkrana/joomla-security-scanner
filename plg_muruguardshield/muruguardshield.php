@@ -219,7 +219,7 @@ class plgSystemMuruguardshield extends CMSPlugin
         // Bad-user-agent matches are gated behind their own dedicated
         // toggle, not the general pattern-block switch -- blocking on a
         // User-Agent string ALONE is a meaningfully different (and more
-        // false-positive-prone) risk than e.g. an eval(base64_decode())
+        // false-positive-prone) risk than an actual code-execution
         // payload in a query parameter, so an admin who wants one
         // shouldn't be forced to accept the other.
         $shouldBlock = $match['rule'] === 'known_scanner_user_agent'
