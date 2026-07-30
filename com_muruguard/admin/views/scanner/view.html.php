@@ -46,6 +46,7 @@ class MuruguardViewScanner extends HtmlView
     public $shieldBlockCountries = false;
     public $shieldBlockedCountries = '';
     public array $ipList = [];
+    public array $falsePositives = [];
     public string $componentVersion = '';
     public string $activePanel = 'dashboard';
 
@@ -114,6 +115,7 @@ class MuruguardViewScanner extends HtmlView
         $this->shieldBlockCountries  = (bool) $cfgParams->get('shield_block_countries', 0);
         $this->shieldBlockedCountries = (string) $cfgParams->get('shield_blocked_countries', '');
         $this->ipList                = MuruguardHelper::getIpList();
+        $this->falsePositives        = MuruguardHelper::getFalsePositives();
 
         // Restore cached scan results
         $cachedAt = (int) $session->get('muruguard.filefindings_time', 0);

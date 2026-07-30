@@ -12,7 +12,7 @@ Need Help? <a href="https://www.linkedin.com/in/zkranadevs/">Reach Me</a> or Ema
 
 ---
 
-## 🚧 Temporary: GitHub Releases are currently down (Joomla 3 not supported)
+## 🚧 Temporary: GitHub Releases are currently down (Joomla 3 not supported) (Please, Uninstall previous version then install latest version)
 
 GitHub is having a platform-side GitHub Actions outage — workflow runs stuck in "Queued" indefinitely or failing at startup before any job even runs. This isn't specific to this repo's code or workflow config (already checked billing, permissions, and runner config, and reported it to GitHub Support); it's blocking the automated pipeline from publishing new release zips to the [Releases](../../releases) page.
 

@@ -1,0 +1,16 @@
+# This folder stores this component's own security-relevant scan data --
+# attack-log.json, ip-list.json, login-attempts.json, geoip-cache.json,
+# false-positives.json -- meant to be read only by this extension's own
+# PHP code (via JPATH_ADMINISTRATOR), never served directly over HTTP.
+# index.html alone (still present, kept for defence in depth on servers
+# that ignore this file) only stops directory LISTING; it does nothing
+# to stop a direct request for a known filename. Denies everything here
+# unconditionally, both the modern (Apache 2.4+) and legacy (2.2) syntax
+# so this works regardless of which the host is still running.
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Order deny,allow
+    Deny from all
+</IfModule>

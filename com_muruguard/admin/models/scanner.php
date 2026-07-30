@@ -442,13 +442,14 @@ class MuruguardModelScanner extends BaseDatabaseModel
         $registeredTemplates = $this->getRegisteredTemplates();
         $registeredPlugins = $this->getRegisteredPlugins();
         $registeredComponents = $this->getRegisteredComponents();
+        $falsePositives = MuruguardHelper::getFalsePositiveLookup();
 
         foreach ($sig['SCAN_CONFIG'] as $relDir => $mode) {
             if (!$this->isAreaSelected($relDir)) continue;
             $dir = $this->root . '/' . $relDir;
             if (!is_dir($dir)) continue;
 
-            MuruguardHelper::walkDir($dir, function (string $path, bool $isDir) use ($sig, $mode, $maxSize, $isIgnored, $selfBackupPattern, $registeredTemplates, $registeredPlugins, $registeredComponents) {
+            MuruguardHelper::walkDir($dir, function (string $path, bool $isDir) use ($sig, $mode, $maxSize, $isIgnored, $selfBackupPattern, $registeredTemplates, $registeredPlugins, $registeredComponents, $falsePositives) {
                 foreach ($sig['SAFE_COMPONENT_PATHS'] as $safeFrag) {
                     if (stripos($path, $safeFrag) !== false) return;
                 }
@@ -593,7 +594,19 @@ class MuruguardModelScanner extends BaseDatabaseModel
 
                 if ($flagged) {
                     $this->seenAbs[$path] = true;
-                    MuruguardHelper::recordFinding($this->fileFindings, $path, $this->root, $reasons, $isDir);
+                    // Admin-dismissed false positives (see the "Mark as
+                    // Safe" button on each finding row) are keyed on the
+                    // exact reasons text, not just the path -- if this
+                    // exact same file later matches something DIFFERENT
+                    // (e.g. an attacker overwrites a previously-dismissed
+                    // path with a real backdoor, which trips a different/
+                    // additional signature), the fingerprint no longer
+                    // matches and it reappears as a fresh finding rather
+                    // than staying silently suppressed forever.
+                    $fingerprint = MuruguardHelper::fingerprintReasons($reasons);
+                    if (!MuruguardHelper::isFalsePositive($falsePositives, 'file', $relCheck, $fingerprint)) {
+                        MuruguardHelper::recordFinding($this->fileFindings, $path, $this->root, $reasons, $isDir);
+                    }
                 }
             });
         }
@@ -723,6 +736,7 @@ class MuruguardModelScanner extends BaseDatabaseModel
 
         $db  = $this->getDatabase();
         $sig = MuruguardHelper::getSignatures();
+        $falsePositives = MuruguardHelper::getFalsePositiveLookup();
 
         try {
             $query = $db->getQuery(true)
@@ -738,10 +752,19 @@ class MuruguardModelScanner extends BaseDatabaseModel
                 $why = [];
                 if (stripos($row['email'], 'secure.local') !== false) { $suspicious = true; $why[] = 'email domain: secure.local (known attacker marker)'; }
                 if (preg_match('/webmanager\d+|codex|sppb/i', $row['username'])) { $suspicious = true; $why[] = 'username matches known attacker pattern'; }
+                // Only a "suspicious" row is ever a candidate for dismissal
+                // -- an already-normal row has nothing to suppress.
+                if ($suspicious) {
+                    $fingerprint = MuruguardHelper::fingerprintReasons($why);
+                    if (MuruguardHelper::isFalsePositive($falsePositives, 'superusers', (string) $row['id'], $fingerprint)) {
+                        $suspicious = false;
+                        $why = [];
+                    }
+                }
                 $this->dbFindings['superusers'][] = [
                     'id' => $row['id'], 'name' => $row['name'], 'username' => $row['username'],
                     'email' => $row['email'], 'registered' => $row['registerDate'], 'lastvisit' => $row['lastvisitDate'],
-                    'suspicious' => $suspicious, 'why' => implode('; ', $why),
+                    'suspicious' => $suspicious, 'why' => implode('; ', $why), 'why_list' => $why,
                 ];
             }
         } catch (\Throwable $e) { /* table missing or query failed -- non-fatal */ }
@@ -757,9 +780,12 @@ class MuruguardModelScanner extends BaseDatabaseModel
                     if (preg_match($re, $params)) $matches[] = $label;
                 }
                 if (!empty($matches)) {
-                    $this->dbFindings['menu_xss'][] = [
-                        'id' => $row['id'], 'title' => $row['title'], 'link' => $row['link'], 'matches' => $matches,
-                    ];
+                    $fingerprint = MuruguardHelper::fingerprintReasons($matches);
+                    if (!MuruguardHelper::isFalsePositive($falsePositives, 'menu_xss', (string) $row['id'], $fingerprint)) {
+                        $this->dbFindings['menu_xss'][] = [
+                            'id' => $row['id'], 'title' => $row['title'], 'link' => $row['link'], 'matches' => $matches,
+                        ];
+                    }
                 }
             }
         } catch (\Throwable $e) { /* non-fatal */ }
@@ -859,14 +885,18 @@ class MuruguardModelScanner extends BaseDatabaseModel
             // above).
             if (!in_array($name, $sig['KNOWN_GOOD_ICONFONT_NAMES'], true)) {
 
-                $reasons[] = 'Non-default iconfont';
-
+                $iconfontReasons = ['Non-default iconfont'];
                 if ($createdBy === 0) {
-                    $reasons[] = 'Created by Guest/System';
+                    $iconfontReasons[] = 'Created by Guest/System';
                 }
+                $reasons = array_merge($reasons, $iconfontReasons);
 
-                // Separate delete candidates
-                $this->dbFindings['rogue_iconfont'][] = $row;
+                $rogueFingerprint = MuruguardHelper::fingerprintReasons($iconfontReasons);
+                if (!MuruguardHelper::isFalsePositive($falsePositives, 'rogue_iconfont', (string) $row['id'], $rogueFingerprint)) {
+                    $rogueRow = $row;
+                    $rogueRow['scan_reasons'] = $iconfontReasons;
+                    $this->dbFindings['rogue_iconfont'][] = $rogueRow;
+                }
             }
         }
 
@@ -878,7 +908,10 @@ class MuruguardModelScanner extends BaseDatabaseModel
 
             $row['scan_reasons'] = array_values(array_unique($reasons));
 
-            $this->dbFindings['sppb_assets'][] = $row;
+            $sppbFingerprint = MuruguardHelper::fingerprintReasons($row['scan_reasons']);
+            if (!MuruguardHelper::isFalsePositive($falsePositives, 'sppb_assets', (string) $row['id'], $sppbFingerprint)) {
+                $this->dbFindings['sppb_assets'][] = $row;
+            }
         }
     }
 
@@ -945,9 +978,12 @@ class MuruguardModelScanner extends BaseDatabaseModel
                 }
 
                 if (!empty($matches)) {
-                    $this->dbFindings['template_defacement'][] = [
-                        'id' => $row['id'], 'template' => $row['template'], 'title' => $row['title'], 'matches' => $matches,
-                    ];
+                    $fingerprint = MuruguardHelper::fingerprintReasons($matches);
+                    if (!MuruguardHelper::isFalsePositive($falsePositives, 'template_defacement', (string) $row['id'], $fingerprint)) {
+                        $this->dbFindings['template_defacement'][] = [
+                            'id' => $row['id'], 'template' => $row['template'], 'title' => $row['title'], 'matches' => $matches,
+                        ];
+                    }
                 }
             }
         } catch (\Throwable $e) { /* non-fatal */ }

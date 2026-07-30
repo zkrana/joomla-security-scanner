@@ -8,6 +8,20 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-07-30
+
+### Added
+
+- **"Mark as Safe" on every finding row** (Suspicious Files, Cleanable Files, Super Users, Menu XSS, SPPB Assets, Rogue Iconfont, Template Defacement) -- dismisses a specific finding as a false positive so it's no longer flagged on future scans. Deliberately NOT a simple path/row-id suppression: every dismissal is fingerprinted against the exact reasons text reviewed at the time (`MuruguardHelper::fingerprintReasons()`), so if the same file/row later matches something DIFFERENT (e.g. an attacker overwrites a previously-dismissed path with a real backdoor), the fingerprint no longer matches and it reappears as a fresh finding rather than staying silently hidden forever -- verified with an explicit test simulating exactly that scenario. New "False Positives" management section in Settings lists every current dismissal with a one-click restore. Same edit-level permission as Clean.
+
+### Security
+
+- **`administrator/components/com_muruguard/helpers/data/` (attack log, IP allow/block list, login attempts, GeoIP cache, and now the false-positives list) had no protection against direct HTTP access to a known filename** -- the folder's `index.html` only ever blocked directory *listing*, not a direct request for e.g. `.../data/attack-log.json`. Added `.htaccess` denying all direct access to this folder outright (both modern and legacy Apache syntax), found and fixed while reviewing where the new false-positives data would live.
+
+### Fixed
+
+- **False positive: the MuRu Guard Shield plugin's own folder flagged as a fake/malicious plugin when its files are present but not yet installed through Joomla** (e.g. uploaded via FTP but Install was never clicked in Extensions > Manage). Added a specific, accurate, non-alarming message explaining exactly what this is and how to resolve it (install the plugin), replacing the generic "no matching #__extensions row" wording -- still shown, not silently hidden, so the admin is prompted to actually finish activating real-time protection.
+
 ## [2.6.3] - 2026-07-30
 
 ### Fixed

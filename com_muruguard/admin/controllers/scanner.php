@@ -437,6 +437,53 @@ public function scan()
         $this->setRedirect('index.php?option=com_muruguard');
     }
 
+    /**
+     * Dismisses a single finding as a false positive ("Mark as Safe" on
+     * its row) -- see MuruguardHelper::addFalsePositive()/
+     * fingerprintReasons() for why this is keyed on the exact reasons
+     * text, not just the path/row-id, so a later genuine compromise of
+     * the same path/row isn't silently hidden by an old dismissal. Same
+     * edit-level permission as Clean, since dismissing a security finding
+     * is a comparable judgment call.
+     */
+    public function markfalsepositive()
+    {
+        Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
+        \MuruguardHelper::requireEditAccess();
+
+        $app   = Factory::getApplication();
+        $input = $app->input;
+
+        $category    = $input->getCmd('fp_category', '');
+        $identifier  = $input->getString('fp_identifier', '');
+        $fingerprint = $input->getString('fp_fingerprint', '');
+        $note        = $input->getString('fp_note', '');
+
+        $result = \MuruguardHelper::addFalsePositive($category, $identifier, $fingerprint, $note);
+        if ($result['ok']) {
+            $app->enqueueMessage(Text::_('COM_MURUGUARD_FP_MARKED_MSG'), 'message');
+        } else {
+            $app->enqueueMessage(htmlspecialchars($result['error']), 'error');
+        }
+
+        $this->setRedirect('index.php?option=com_muruguard');
+    }
+
+    /** Reverses a "Mark as Safe" dismissal, making the finding reappear on the next scan. */
+    public function unmarkfalsepositive()
+    {
+        Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
+        \MuruguardHelper::requireEditAccess();
+
+        $id = Factory::getApplication()->input->getString('fp_id', '');
+        if ($id !== '') {
+            \MuruguardHelper::removeFalsePositive($id);
+        }
+
+        Factory::getApplication()->enqueueMessage(Text::_('COM_MURUGUARD_FP_UNMARKED_MSG'), 'message');
+        $this->setRedirect('index.php?option=com_muruguard');
+    }
+
     /** Clears the Protection Log. Requires the same admin-level permission as changing settings, since it's destroying a security audit trail, not just tidying a scan result. */
     public function clearattacklog()
     {

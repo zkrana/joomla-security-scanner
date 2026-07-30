@@ -698,6 +698,53 @@ if ($w !== null && $w['safe'] !== true):
             <?php endif; ?>
         </div>
 
+        <!-- False Positives -->
+        <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-5">
+            <div class="mb-4">
+                <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">✅ <?= Text::_('COM_MURUGUARD_FP_TITLE') ?></h3>
+                <p class="text-xs text-gray-500 mt-1 max-w-xl"><?= Text::_('COM_MURUGUARD_FP_DESC') ?></p>
+            </div>
+
+            <?php if (empty($this->falsePositives)): ?>
+                <div class="flex items-center gap-3 text-gray-500 bg-gray-50 rounded-xl p-[10px] text-xs">
+                    <span class="text-lg">ℹ️</span>
+                    <span><?= Text::_('COM_MURUGUARD_FP_EMPTY') ?></span>
+                </div>
+            <?php else: ?>
+                <div class="tbl-wrap rounded-xl border border-gray-100 overflow-hidden">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="bg-gray-50 border-b border-gray-100">
+                                <th class="px-4 py-2.5 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_('COM_MURUGUARD_FP_COL_CATEGORY') ?></th>
+                                <th class="px-4 py-2.5 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_('COM_MURUGUARD_FP_COL_IDENTIFIER') ?></th>
+                                <th class="px-4 py-2.5 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_('COM_MURUGUARD_FP_COL_ADDED') ?></th>
+                                <th class="w-10 px-4 py-2.5"></th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-50">
+                        <?php foreach ($this->falsePositives as $entry): ?>
+                            <tr class="hover:bg-gray-50/60 transition-colors">
+                                <td class="px-4 py-2.5 text-xs text-gray-600"><?= htmlspecialchars($entry['category'] ?? '') ?></td>
+                                <td class="px-4 py-2.5 font-mono text-xs text-gray-700 break-all"><?= htmlspecialchars($entry['identifier'] ?? '') ?></td>
+                                <td class="px-4 py-2.5 text-xs text-gray-400"><?= isset($entry['addedAt']) ? date('Y-m-d H:i', (int) $entry['addedAt']) : '' ?></td>
+                                <td class="px-4 py-2.5">
+                                    <?php if ($this->canEdit): ?>
+                                    <form action="<?= Route::_('index.php?option=com_muruguard&task=scanner.unmarkfalsepositive') ?>" method="post"
+                                          onsubmit="return confirm('<?= Text::_('COM_MURUGUARD_FP_REMOVE_CONFIRM') ?>');">
+                                        <?= HTMLHelper::_('form.token') ?>
+                                        <input type="hidden" name="fp_id" value="<?= htmlspecialchars($entry['id'] ?? '') ?>">
+                                        <button type="submit" class="text-gray-400 hover:text-indigo-600 transition-colors" title="<?= Text::_('COM_MURUGUARD_FP_REMOVE_BTN') ?>">↩️</button>
+                                    </form>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
+        </div>
+
         <?php
         $attackEntries = array_filter($this->attackLog, fn($e) => ($e['type'] ?? '') === 'request');
         $bruteEntries  = array_filter($this->attackLog, fn($e) => ($e['type'] ?? '') === 'bruteforce');
@@ -1008,7 +1055,7 @@ foreach ($htaccessChecks as $c) { $htaccessByCategory[$c['category']][] = $c; }
         <?php endif; ?>
         <?php if ($this->componentVersion !== ''): ?>
             <span class="text-gray-300">·</span>
-            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-500" title="<?= Text::_('COM_MURUGUARD_VERSION_BADGE_TITLE') ?>">
+            <span class=" absolute -top-[6px] top-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-[rgb(239 137 235)] text-gray-200" title="<?= Text::_('COM_MURUGUARD_VERSION_BADGE_TITLE') ?>">
                 🛡️ v<?= htmlspecialchars($this->componentVersion) ?>
             </span>
         <?php endif; ?>
@@ -1230,13 +1277,36 @@ function muru_section_close(): void {
     echo '</div></section>';
 }
 
+/**
+ * "Mark as Safe" button for one finding row -- deliberately a plain
+ * <button>, not a nested <form>, since every table this renders inside
+ * already sits inside the tab's own bulk-select/delete <form>, and HTML
+ * doesn't allow nested forms (it would silently break the outer one).
+ * A shared, delegated JS click handler (see the page-bottom script)
+ * submits it via fetch() instead. $reasonsList must be the EXACT same
+ * list already shown for this finding -- fingerprintReasons() is what
+ * ties the dismissal to this specific reviewed content, so it stops
+ * applying if the same path/row later matches something different.
+ */
+function muru_mark_safe_button(string $category, string $identifier, array $reasonsList, bool $canEdit): void {
+    if (!$canEdit) return;
+    $fingerprint = \MuruguardHelper::fingerprintReasons($reasonsList);
+    ?>
+    <button type="button" class="muru-mark-safe-btn flex-shrink-0 w-7 h-7 inline-flex items-center justify-center rounded-lg text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
+            data-fp-category="<?= htmlspecialchars($category) ?>"
+            data-fp-identifier="<?= htmlspecialchars($identifier) ?>"
+            data-fp-fingerprint="<?= htmlspecialchars($fingerprint) ?>"
+            title="<?= Text::_('COM_MURUGUARD_FP_MARK_BTN') ?>" aria-label="<?= Text::_('COM_MURUGUARD_FP_MARK_BTN') ?>">✅</button>
+    <?php
+}
+
 /** Shared <tr> markup for a file finding -- used by both the Suspicious
  *  Files and Cleanable Files tabs so the two stay visually identical.
  *  $showCleanPreview is only turned on for the Cleanable Files tab, and
  *  only actually renders a preview when the file's CURRENT on-disk
  *  content still has a pattern this scanner can auto-repair -- it never
  *  shows a preview for something Clean can't actually fix. */
-function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $showCheckbox = true, ?array $registeredTemplates = null): void {
+function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $showCheckbox = true, ?array $registeredTemplates = null, bool $canEdit = false): void {
     $pathDir  = dirname($f['rel']);
     $pathBase = basename($f['rel']);
     $isProtectedEntry = \MuruguardHelper::isProtectedEntryPath($f['rel'], \MuruguardHelper::getSignatures(), $f['abs'] ?? null, $registeredTemplates);
@@ -1302,6 +1372,7 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
         </td>
         <td class="px-4 py-3 text-xs text-gray-500"><?= \MuruguardHelper::humanSize($f['size']) ?></td>
         <td class="px-4 py-3 text-xs text-gray-400"><?= $f['mtime'] ? date('Y-m-d H:i',$f['mtime']) : '—' ?></td>
+        <td class="px-4 py-3"><?php muru_mark_safe_button('file', $f['rel'], $reasonsList, $canEdit); ?></td>
     </tr>
     <?php
 }
@@ -1344,10 +1415,11 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
                         <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_('COM_MURUGUARD_COL_REASON') ?></th>
                         <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_('COM_MURUGUARD_COL_SIZE') ?></th>
                         <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_('COM_MURUGUARD_COL_MODIFIED') ?></th>
+                        <th class="w-10 px-4 py-3"></th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-50">
-                <?php foreach ($deletableFindings as $f): muru_render_file_row($f, false, $this->canDelete, $registeredTemplates); endforeach; ?>
+                <?php foreach ($deletableFindings as $f): muru_render_file_row($f, false, $this->canDelete, $registeredTemplates, $this->canEdit); endforeach; ?>
                 </tbody>
             </table>
         </div>
@@ -1408,10 +1480,11 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
                         <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_('COM_MURUGUARD_COL_REASON') ?></th>
                         <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_('COM_MURUGUARD_COL_SIZE') ?></th>
                         <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_('COM_MURUGUARD_COL_MODIFIED') ?></th>
+                        <th class="w-10 px-4 py-3"></th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-50">
-                <?php foreach ($cleanableFindings as $f): muru_render_file_row($f, true, $this->canEdit, $registeredTemplates); endforeach; ?>
+                <?php foreach ($cleanableFindings as $f): muru_render_file_row($f, true, $this->canEdit, $registeredTemplates, $this->canEdit); endforeach; ?>
                 </tbody>
             </table>
         </div>
@@ -1448,6 +1521,7 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
                     <?php foreach (['COM_MURUGUARD_COL_ID','COM_MURUGUARD_COL_NAME','COM_MURUGUARD_COL_USERNAME','COM_MURUGUARD_COL_EMAIL','COM_MURUGUARD_COL_REGISTERED','COM_MURUGUARD_COL_LAST_VISIT','COM_MURUGUARD_COL_STATUS'] as $h): ?>
                         <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_($h) ?></th>
                     <?php endforeach; ?>
+                        <th class="w-10 px-4 py-3"></th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-gray-50">
@@ -1465,6 +1539,11 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
                             <div class="text-xs text-red-600"><?= htmlspecialchars($u['why']) ?></div>
                         <?php else: ?>
                             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-bold">✓ <?= Text::_('COM_MURUGUARD_NORMAL_BADGE') ?></span>
+                        <?php endif; ?>
+                    </td>
+                    <td class="px-4 py-3">
+                        <?php if ($u['suspicious']): ?>
+                            <?php muru_mark_safe_button('superusers', (string) $u['id'], $u['why_list'] ?? [$u['why']], $this->canEdit); ?>
                         <?php endif; ?>
                     </td>
                 </tr>
@@ -1503,6 +1582,7 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
                         <?php foreach (['COM_MURUGUARD_COL_ID','COM_MURUGUARD_COL_TITLE','COM_MURUGUARD_COL_LINK','COM_MURUGUARD_COL_MATCHED_SIGNATURES'] as $h): ?>
                             <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_($h) ?></th>
                         <?php endforeach; ?>
+                        <th class="w-10 px-4 py-3"></th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-50">
@@ -1513,6 +1593,7 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
                         <td class="px-4 py-3 font-medium"><?= htmlspecialchars($m['title']) ?></td>
                         <td class="px-4 py-3"><code class="text-xs break-all text-gray-600"><?= htmlspecialchars($m['link']) ?></code></td>
                         <td class="px-4 py-3 text-xs text-amber-700 font-medium"><?= htmlspecialchars(implode(', ', $m['matches'] ?? [])) ?></td>
+                        <td class="px-4 py-3"><?php muru_mark_safe_button('menu_xss', (string) $m['id'], $m['matches'] ?? [], $this->canEdit); ?></td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>
@@ -1580,6 +1661,11 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
 
                     <div class="border-t border-red-100 p-4">
                         <pre class="text-xs text-red-800 overflow-x-auto"><?= htmlspecialchars(json_encode($row, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)) ?></pre>
+                        <?php if ($this->canEdit): ?>
+                            <div class="mt-2 flex justify-end">
+                                <?php muru_mark_safe_button('sppb_assets', (string) $row['id'], $row['scan_reasons'] ?? [], $this->canEdit); ?>
+                            </div>
+                        <?php endif; ?>
                     </div>
 
                 </details>
@@ -1613,6 +1699,7 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
                             <?php foreach (['COM_MURUGUARD_COL_ID','COM_MURUGUARD_COL_NAME','COM_MURUGUARD_COL_TITLE','COM_MURUGUARD_COL_CREATED','COM_MURUGUARD_COL_BY','COM_MURUGUARD_COL_ASSETS'] as $h): ?>
                                 <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_($h) ?></th>
                             <?php endforeach; ?>
+                            <th class="w-10 px-4 py-3"></th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-50">
@@ -1625,6 +1712,7 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
                             <td class="px-4 py-3 text-xs text-gray-400"><?= htmlspecialchars($row['created']) ?></td>
                             <td class="px-4 py-3 text-xs text-gray-500"><?= (int)$row['created_by'] ?></td>
                             <td class="px-4 py-3"><code class="text-xs text-red-600 break-all"><?= htmlspecialchars($row['assets']) ?></code></td>
+                            <td class="px-4 py-3"><?php muru_mark_safe_button('rogue_iconfont', (string) $row['id'], $row['scan_reasons'] ?? [], $this->canEdit); ?></td>
                         </tr>
                     <?php endforeach; ?>
                     </tbody>
@@ -1674,6 +1762,7 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
                         <?php foreach (['COM_MURUGUARD_COL_ID','COM_MURUGUARD_COL_TEMPLATE','COM_MURUGUARD_COL_TITLE','COM_MURUGUARD_COL_MATCHES'] as $h): ?>
                             <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_($h) ?></th>
                         <?php endforeach; ?>
+                        <th class="w-10 px-4 py-3"></th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-50">
@@ -1684,6 +1773,7 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
                         <td class="px-4 py-3"><code class="text-xs text-gray-600"><?= htmlspecialchars($row['template']) ?></code></td>
                         <td class="px-4 py-3 font-medium"><?= htmlspecialchars($row['title']) ?></td>
                         <td class="px-4 py-3 text-xs text-amber-700 font-medium"><?= htmlspecialchars(implode(', ', $row['matches'])) ?></td>
+                        <td class="px-4 py-3"><?php muru_mark_safe_button('template_defacement', (string) $row['id'], $row['matches'], $this->canEdit); ?></td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>
@@ -1780,6 +1870,39 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
     muruConsolidateCheckboxes('muru-deleteassets-form', 'muru-asset-chk', 'rogue_asset_ids_json');
     muruConsolidateCheckboxes('muru-template-form', 'muru-template-chk', 'template_defacement_ids_json');
 
+    // ── "Mark as Safe" (dismiss a finding as a false positive) ──────
+    // A plain button, not a <form>, since every table this appears in
+    // already sits inside that tab's own bulk-select/delete <form> --
+    // HTML doesn't allow nested forms. Submitted via fetch() instead,
+    // using event delegation since these buttons exist inside tab panels
+    // that can be re-rendered/hidden by the tab switcher above.
+    var muruFpToken = <?= json_encode(\Joomla\CMS\Session\Session::getFormToken()) ?>;
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest('.muru-mark-safe-btn');
+        if (!btn) return;
+        if (btn.disabled) return;
+        if (!confirm(<?= json_encode(Text::_('COM_MURUGUARD_FP_MARK_CONFIRM')) ?>)) return;
+
+        btn.disabled = true;
+        var body = new URLSearchParams();
+        body.set('fp_category', btn.getAttribute('data-fp-category'));
+        body.set('fp_identifier', btn.getAttribute('data-fp-identifier'));
+        body.set('fp_fingerprint', btn.getAttribute('data-fp-fingerprint'));
+        body.set(muruFpToken, '1');
+
+        fetch('index.php?option=com_muruguard&task=scanner.markfalsepositive', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: body.toString(),
+        }).then(function () {
+            // Simplest way to keep every tab's counts/badges/lists
+            // consistent with the change, rather than hand-patching the
+            // DOM in six different places.
+            window.location.reload();
+        }).catch(function () {
+            btn.disabled = false;
+        });
+    });
 
     // ── Tabbed results ──────────────────────────────────────────
     var tabs   = document.querySelectorAll('.muru-tab');

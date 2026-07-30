@@ -694,6 +694,143 @@ class MuruguardHelper
     }
 
     // ------------------------------------------------------------------
+    // Admin-dismissed false positives ("Mark as Safe" on a finding row) --
+    // same JSON-file-under-this-component's-own-data-folder pattern as
+    // attack-log.json/ip-list.json. Deliberately NOT keyed on path/row-id
+    // alone: every entry also stores a fingerprint of the exact reasons
+    // text that was reviewed at the time it was dismissed. A future scan
+    // only suppresses a finding when BOTH the identifier AND that
+    // fingerprint still match -- if the same file/row later trips a
+    // DIFFERENT or ADDITIONAL signature (e.g. an attacker overwrites a
+    // previously-dismissed file with a real backdoor), the fingerprint no
+    // longer matches and it reappears as a fresh finding rather than
+    // staying silently hidden forever. This is what makes "Mark as Safe"
+    // safe to offer at all on a security tool -- a naive path/id-only
+    // suppression would be a standing blind spot an attacker could target
+    // specifically (compromise something already dismissed once).
+    // ------------------------------------------------------------------
+
+    private static function falsePositivesFilePath(): string
+    {
+        return JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/false-positives.json';
+    }
+
+    /** Deterministic fingerprint of a finding's reasons -- order-independent, so the same set of matched reasons in a different order still counts as the same review. */
+    public static function fingerprintReasons(array $reasonsList): string
+    {
+        $normalized = array_values(array_unique(array_map('strval', $reasonsList)));
+        sort($normalized);
+        return md5(implode('|', $normalized));
+    }
+
+    public static function getFalsePositives(): array
+    {
+        $path = self::falsePositivesFilePath();
+        if (!is_file($path)) return [];
+        $contents = @file_get_contents($path);
+        if ($contents === false) return [];
+        $decoded = json_decode($contents, true);
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    /** ['<category>|<identifier>' => '<fingerprint>', ...] -- built once per scan and passed around, rather than re-reading/re-parsing the JSON file once per finding. */
+    public static function getFalsePositiveLookup(): array
+    {
+        $lookup = [];
+        foreach (self::getFalsePositives() as $entry) {
+            $key = ($entry['category'] ?? '') . '|' . ($entry['identifier'] ?? '');
+            $lookup[$key] = (string) ($entry['fingerprint'] ?? '');
+        }
+        return $lookup;
+    }
+
+    public static function isFalsePositive(array $lookup, string $category, string $identifier, string $currentFingerprint): bool
+    {
+        $key = $category . '|' . $identifier;
+        return isset($lookup[$key]) && $lookup[$key] !== '' && $lookup[$key] === $currentFingerprint;
+    }
+
+    private const FALSE_POSITIVE_CATEGORIES = ['file', 'superusers', 'menu_xss', 'sppb_assets', 'rogue_iconfont', 'template_defacement'];
+
+    /**
+     * @param string $category One of FALSE_POSITIVE_CATEGORIES.
+     * @param string $identifier Relative path for 'file', numeric row id (as string) for every DB category.
+     * @param string $fingerprint See fingerprintReasons() -- the exact reasons/matches text being dismissed, so a later content change un-suppresses it.
+     */
+    public static function addFalsePositive(string $category, string $identifier, string $fingerprint, string $note = ''): array
+    {
+        $category = strtolower(trim($category));
+        $identifier = trim($identifier);
+
+        if (!in_array($category, self::FALSE_POSITIVE_CATEGORIES, true)) {
+            return ['ok' => false, 'error' => 'Unknown finding category.'];
+        }
+        if ($identifier === '') {
+            return ['ok' => false, 'error' => 'Missing identifier.'];
+        }
+
+        $entry = [
+            'id'          => bin2hex(random_bytes(8)),
+            'category'    => $category,
+            'identifier'  => $identifier,
+            'fingerprint' => $fingerprint,
+            'note'        => mb_substr(trim($note), 0, 200),
+            'addedAt'     => time(),
+        ];
+
+        $path = self::falsePositivesFilePath();
+        $fh = @fopen($path, 'c+');
+        if ($fh === false) return ['ok' => false, 'error' => 'Could not open storage file.'];
+
+        if (@flock($fh, LOCK_EX)) {
+            $size = filesize($path) ?: 0;
+            $contents = $size > 0 ? fread($fh, $size) : '';
+            $list = json_decode((string) $contents, true);
+            if (!is_array($list)) $list = [];
+
+            // Replace an existing dismissal for the same category+
+            // identifier (e.g. re-dismissing after the fingerprint
+            // changed) rather than accumulating stale duplicate entries.
+            $list = array_values(array_filter($list, fn($e) =>
+                ($e['category'] ?? '') !== $category || ($e['identifier'] ?? '') !== $identifier
+            ));
+            $list[] = $entry;
+
+            ftruncate($fh, 0);
+            rewind($fh);
+            fwrite($fh, json_encode($list));
+            fflush($fh);
+            flock($fh, LOCK_UN);
+        }
+        fclose($fh);
+
+        return ['ok' => true, 'entry' => $entry];
+    }
+
+    public static function removeFalsePositive(string $id): void
+    {
+        $path = self::falsePositivesFilePath();
+        $fh = @fopen($path, 'c+');
+        if ($fh === false) return;
+
+        if (@flock($fh, LOCK_EX)) {
+            $size = filesize($path) ?: 0;
+            $contents = $size > 0 ? fread($fh, $size) : '';
+            $list = json_decode((string) $contents, true);
+            if (!is_array($list)) $list = [];
+
+            $list = array_values(array_filter($list, fn($e) => ($e['id'] ?? '') !== $id));
+
+            ftruncate($fh, 0);
+            rewind($fh);
+            fwrite($fh, json_encode($list));
+            fflush($fh);
+            flock($fh, LOCK_UN);
+        }
+        fclose($fh);
+    }
+
+    // ------------------------------------------------------------------
     // Manual IP block/allow list -- same JSON-file-under-this-component's-
     // -own-data-folder pattern as attack-log.json/login-attempts.json
     // above. Independent of, and checked AHEAD of, every pattern/
@@ -1224,6 +1361,22 @@ class MuruguardHelper
                             return null;
                         }
                     }
+                }
+
+                // This scanner's own companion plugin (MuRu Guard Shield)
+                // is a real, expected exception to "unregistered = fake":
+                // its files can legitimately sit here without a matching
+                // #__extensions row simply because the admin uploaded/
+                // extracted them but hasn't clicked Install in Extensions
+                // > Manage yet -- not a compromise, just an incomplete
+                // setup step. A distinct, accurate, non-alarming message
+                // replaces the generic "fake plugin" wording so it's
+                // obvious what this actually is and how to resolve it,
+                // while still SHOWING it (rather than silently hiding it)
+                // so the admin is prompted to actually finish installing
+                // it and get real-time protection active.
+                if (strtolower($group) === 'system' && strtolower($name) === 'muruguardshield') {
+                    return "This is MuRu Guard Shield — this scanner's own companion real-time-protection plugin, not a malicious file. Its files are present but not yet installed through Joomla. Go to Extensions → Manage → Install (or Discover) and install it to activate real-time protection; this notice clears automatically once it's registered.";
                 }
 
                 return "Sits inside plugins/{$group}/{$name} — no matching #__extensions row of type \"plugin\" exists for it, meaning Joomla never actually installed this as a real plugin.";
