@@ -12,7 +12,7 @@ Need Help? <a href="https://www.linkedin.com/in/zkranadevs/">Reach Me</a> or Ema
 
 ---
 
-## 🚧 Temporary: GitHub Releases are currently down
+## 🚧 Temporary: GitHub Releases are currently down (Joomla 3 not supported)
 
 GitHub is having a platform-side GitHub Actions outage — workflow runs stuck in "Queued" indefinitely or failing at startup before any job even runs. This isn't specific to this repo's code or workflow config (already checked billing, permissions, and runner config, and reported it to GitHub Support); it's blocking the automated pipeline from publishing new release zips to the [Releases](../../releases) page.
 
@@ -66,7 +66,7 @@ This ships as **two** standard Joomla extension packages — no manual file uplo
 ### 2. Install via the Joomla administrator
 
 1. Log into your Joomla administrator as a Super User.
-2. Go to **System → Import → Extensions** (or **System → Manage → Install** on older Joomla versions).
+2. Go to **System → Import → Extensions** (or **System → Manage → Install** on Joomla versions from 4.x.x to latest).
 3. Upload `com_muruguard-X.X.X.zip` first, then `plg_muruguardshield-X.X.X.zip` (or point Joomla at either one via **Install from Folder / URL**).
 4. Once installed, the scanner appears under **Components → MuRu Guard** in the admin sidebar.
 5. If you installed the plugin, enable it under **System → Manage → Plugins**, search "MuRu Guard Shield", and toggle it on. It does nothing until enabled here *and* until Protection Mode is turned on from the scanner's own Settings panel — see below.
