@@ -8,6 +8,19 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-07-30
+
+### Security
+
+- **This scanner's own files were completely invisible to itself.** `SAFE_COMPONENT_PATHS` blanket-skipped ALL scanning (not just content signatures -- every structural check too) for `administrator/components/com_muruguard/` and its pre-rebrand name `com_sppbscan/`, meaning a real backdoor injected into the scanner's own code would never have been detected. Replaced with `SELF_CONTENT_SIGNATURE_EXEMPTIONS`, a narrow, per-file, per-signature allow-list covering ONLY the specific, empirically-verified content-signature matches that come from `helpers/muruguard.php` and `models/scanner.php` legitimately containing their own signature definitions and marker strings as source text (e.g. the literal text `"xss.report"`, `"FilesMan"`, `"gsocket"`). Every other content signature and every structural check now runs normally against this scanner's own files, including these same two files. Verified with a real backdoor injection test: `eval(base64_decode($_POST['cmd']))` appended to the scanner's own helper file is correctly caught, while the genuine, unmodified files stay clean.
+
+### Added
+
+- **Left-sidebar submenu** (Dashboard / Settings / Support), the same navigation pattern used by SP Page Builder and other multi-page components, instead of everything living behind floating header buttons only.
+- **Component version badge** in the top-right header, read live from the installed manifest.
+- **"Support This Project" page** with real funding details (Payoneer, PayPal Zoom/bKash) plus direct contact links, reached from the new Support submenu entry.
+- **Restricted to Super Users by default.** A fresh install now denies `core.admin`/`core.manage`/`core.delete`/`core.edit` for the standard Manager and Administrator groups via a new install script (`script.php`), leaving only Super Users able to see or use the component out of the box -- they always bypass ACL entirely regardless of configuration. Only applied when the component's ACL is still completely untouched, so upgrading never silently overwrites a site owner's own already-customised permissions; access can always be granted back to any group afterwards via System > Users > Access Levels/Permissions.
+
 ## [2.5.5] - 2026-07-30
 
 ### Fixed

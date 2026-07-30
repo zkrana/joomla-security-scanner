@@ -118,20 +118,12 @@ $rescanUrl  = 'index.php?option=com_muruguard&task=scanner.scan&rescan=1';
   @keyframes muruguard-bar-slide { 0%{width:15%;margin-left:0} 50%{width:55%;margin-left:20%} 100%{width:15%;margin-left:100%} }
   .muruguard-overlay-note { color:#64748b; font-size:11px; line-height:1.6; margin:0; }
 
-  #muru-header-actions { position: fixed; top: 64px; right: 20px; z-index: 999998; display: flex; align-items: flex-start; gap: 8px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-  #muru-settings-btn { display:flex; align-items:center; gap:8px; background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:8px 16px; font-size:14px; font-weight:600; color:#374151; box-shadow:0 1px 3px rgba(0,0,0,.08); transition:box-shadow .2s, background .2s, color .2s; cursor:pointer; }
-  #muru-settings-btn:hover { box-shadow:0 4px 10px rgba(0,0,0,.1); }
+  #muru-header-actions { position: fixed; top: 64px; right: 20px; z-index: 999998; display: flex; align-items: center; gap: 8px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  #muru-version-badge { display:flex; align-items:center; gap:5px; background:#f3f4f6; border:1px solid #e5e7eb; border-radius:9999px; padding:6px 12px; font-size:12px; font-weight:700; color:#6b7280; white-space:nowrap; }
+  #muru-settings-btn, #muru-support-btn { display:flex; align-items:center; gap:8px; background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:8px 16px; font-size:14px; font-weight:600; color:#374151; box-shadow:0 1px 3px rgba(0,0,0,.08); transition:box-shadow .2s, background .2s, color .2s; cursor:pointer; }
+  #muru-settings-btn:hover, #muru-support-btn:hover { box-shadow:0 4px 10px rgba(0,0,0,.1); }
   #muru-settings-btn.muru-settings-open { background:#4338ca; border-color:#4338ca; color:#fff; }
-  #support-widget { position: relative; }
-  #support-widget summary { list-style:none; cursor:pointer; user-select:none; display:flex; align-items:center; gap:8px; background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:8px 16px; font-size:14px; font-weight:600; color:#374151; box-shadow:0 1px 3px rgba(0,0,0,.08); transition:box-shadow .2s; }
-  #support-widget summary::-webkit-details-marker { display:none; }
-  #support-widget summary:hover { box-shadow:0 4px 10px rgba(0,0,0,.1); }
-  #support-widget .muru-caret { color:#9ca3af; font-size:11px; transition:transform .2s; }
-  #support-widget[open] .muru-caret { transform: rotate(180deg); }
-  #support-widget-menu { position:absolute; right:0; margin-top:8px; width:224px; background:#fff; border:1px solid #f3f4f6; border-radius:12px; box-shadow:0 10px 25px rgba(0,0,0,.12); overflow:hidden; }
-  #support-widget-menu a { display:flex; align-items:center; gap:8px; padding:12px 16px; font-size:14px; color:#374151; text-decoration:none; border-bottom:1px solid #f9fafb; transition:background .15s; }
-  #support-widget-menu a:last-child { border-bottom:0; }
-  #support-widget-menu a:hover { background:#f9fafb; }
+  #muru-support-btn.muru-settings-open { background:#059669; border-color:#059669; color:#fff; }
 
   /* ── Code-analysis modal ──────────────────────────────────────
      Same plain-CSS + re-parent-to-<body> treatment as the overlay and
@@ -341,20 +333,15 @@ if ($w !== null && $w['safe'] !== true):
 
 <!-- ── Settings + Support (re-parented to <body> at runtime, see script) ── -->
 <div id="muru-header-actions">
+    <?php if ($this->componentVersion !== ''): ?>
+    <span id="muru-version-badge" title="<?= Text::_('COM_MURUGUARD_VERSION_BADGE_TITLE') ?>">🛡️ v<?= htmlspecialchars($this->componentVersion) ?></span>
+    <?php endif; ?>
     <button type="button" id="muru-settings-btn" aria-pressed="false">
         ⚙️ <?= Text::_('COM_MURUGUARD_SETTINGS_BTN') ?>
     </button>
-    <details id="support-widget">
-        <summary>
-            💬 <?= Text::_('COM_MURUGUARD_SUPPORT_BTN') ?>
-            <span class="muru-caret">▾</span>
-        </summary>
-        <div id="support-widget-menu">
-            <a href="mailto:zkranao@gmail.com" target="_blank" rel="noopener">☕ <?= Text::_('COM_MURUGUARD_SUPPORT_COFFEE') ?></a>
-            <a href="mailto:zkranao@gmail.com" target="_blank" rel="noopener">✉️ <?= Text::_('COM_MURUGUARD_SUPPORT_EMAIL') ?></a>
-            <a href="https://www.linkedin.com/in/zkranadevs/" target="_blank" rel="noopener">💼 <?= Text::_('COM_MURUGUARD_SUPPORT_LINKEDIN') ?></a>
-        </div>
-    </details>
+    <button type="button" id="muru-support-btn" aria-pressed="false">
+        💬 <?= Text::_('COM_MURUGUARD_SUPPORT_BTN') ?>
+    </button>
 </div>
 
 <!-- ── Code-analysis modal (re-parented to <body> at runtime, see script) ── -->
@@ -833,6 +820,49 @@ if ($w !== null && $w['safe'] !== true):
                 </div>
                 <?php endif; ?>
             <?php endif; ?>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SUPPORT PANEL -- hidden by default, toggled by the sidebar's
+     Support entry / the header Support widget. Same show/hide-vs-
+     #muru-main-content mechanism as the Settings panel above; the two
+     are mutually exclusive (opening one closes the other).
+     ══════════════════════════════════════════════════════════════ -->
+<div id="muru-support-panel" class="hidden">
+    <div class="flex items-center justify-between mb-6">
+        <h2 class="text-lg font-bold text-gray-800 flex items-center gap-2">💬 <?= Text::_('COM_MURUGUARD_SUPPORT_HEADING') ?></h2>
+        <button type="button" id="muru-support-back" class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors shadow-sm">
+            ← <?= Text::_('COM_MURUGUARD_SETTINGS_BACK') ?>
+        </button>
+    </div>
+
+    <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-5">
+        <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2 mb-2">☕ <?= Text::_('COM_MURUGUARD_SUPPORT_FUND_TITLE') ?></h3>
+        <p class="text-xs text-gray-500 mb-4 max-w-xl"><?= Text::_('COM_MURUGUARD_SUPPORT_FUND_DESC') ?></p>
+
+        <div class="grid sm:grid-cols-2 gap-3">
+            <div class="border border-gray-200 rounded-xl p-4">
+                <div class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">💳 Payoneer</div>
+                <code class="text-sm font-mono text-gray-800 break-all"><?= htmlspecialchars(Text::_('COM_MURUGUARD_SUPPORT_PAYONEER_EMAIL')) ?></code>
+                <p class="text-[11px] text-gray-400 mt-1.5"><?= Text::_('COM_MURUGUARD_SUPPORT_PAYONEER_NOTE') ?></p>
+            </div>
+            <div class="border border-gray-200 rounded-xl p-4">
+                <div class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">📱 <?= Text::_('COM_MURUGUARD_SUPPORT_PAYPALZOOM_LABEL') ?></div>
+                <code class="text-sm font-mono text-gray-800 break-all"><?= htmlspecialchars(Text::_('COM_MURUGUARD_SUPPORT_PAYPALZOOM_NUMBER')) ?></code>
+                <p class="text-[11px] text-gray-400 mt-1.5"><?= Text::_('COM_MURUGUARD_SUPPORT_PAYPALZOOM_NOTE') ?></p>
+            </div>
+        </div>
+
+        <p class="text-[11px] text-gray-400 mt-4"><?= Text::_('COM_MURUGUARD_SUPPORT_CONFIRM_NOTE') ?></p>
+    </div>
+
+    <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6">
+        <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2 mb-3">✉️ <?= Text::_('COM_MURUGUARD_SUPPORT_CONTACT_TITLE') ?></h3>
+        <div class="flex flex-col gap-2 text-sm">
+            <a href="mailto:zkranao@gmail.com" target="_blank" rel="noopener" class="inline-flex items-center gap-2 text-indigo-600 hover:text-indigo-800">✉️ zkranao@gmail.com</a>
+            <a href="https://www.linkedin.com/in/zkranadevs/" target="_blank" rel="noopener" class="inline-flex items-center gap-2 text-indigo-600 hover:text-indigo-800">💼 <?= Text::_('COM_MURUGUARD_SUPPORT_LINKEDIN') ?></a>
         </div>
     </div>
 </div>
@@ -1762,13 +1792,6 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
     muruConsolidateCheckboxes('muru-deleteassets-form', 'muru-asset-chk', 'rogue_asset_ids_json');
     muruConsolidateCheckboxes('muru-template-form', 'muru-template-chk', 'template_defacement_ids_json');
 
-    // Close support widget when clicking outside
-    document.addEventListener('click', function(e) {
-        var widget = document.getElementById('support-widget');
-        if (widget && widget.open && !widget.contains(e.target)) {
-            widget.removeAttribute('open');
-        }
-    });
 
     // ── Tabbed results ──────────────────────────────────────────
     var tabs   = document.querySelectorAll('.muru-tab');
@@ -1794,24 +1817,55 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
     var settingsBack  = document.getElementById('muru-settings-back');
     var settingsPanel = document.getElementById('muru-settings-panel');
     var mainContent   = document.getElementById('muru-main-content');
+    var supportBtn    = document.getElementById('muru-support-btn');
+    var supportBack   = document.getElementById('muru-support-back');
+    var supportPanel  = document.getElementById('muru-support-panel');
+    // Settings and Support are mutually exclusive with each other AND
+    // with the dashboard content -- opening either closes the other one
+    // first, so at most one of the three is ever visible.
+    function hideAllPanels() {
+        if (mainContent) mainContent.classList.add('hidden');
+        if (settingsPanel) settingsPanel.classList.add('hidden');
+        if (supportPanel) supportPanel.classList.add('hidden');
+        if (settingsBtn) { settingsBtn.classList.remove('muru-settings-open'); settingsBtn.setAttribute('aria-pressed', 'false'); }
+        if (supportBtn) { supportBtn.classList.remove('muru-settings-open'); supportBtn.setAttribute('aria-pressed', 'false'); }
+    }
     function openSettings() {
-        if (!settingsPanel || !mainContent) return;
-        mainContent.classList.add('hidden');
+        if (!settingsPanel) return;
+        hideAllPanels();
         settingsPanel.classList.remove('hidden');
         settingsBtn.classList.add('muru-settings-open');
         settingsBtn.setAttribute('aria-pressed', 'true');
     }
     function closeSettings() {
-        if (!settingsPanel || !mainContent) return;
-        settingsPanel.classList.add('hidden');
-        mainContent.classList.remove('hidden');
-        settingsBtn.classList.remove('muru-settings-open');
-        settingsBtn.setAttribute('aria-pressed', 'false');
+        hideAllPanels();
+        if (mainContent) mainContent.classList.remove('hidden');
+    }
+    function openSupport() {
+        if (!supportPanel) return;
+        hideAllPanels();
+        supportPanel.classList.remove('hidden');
+        supportBtn.classList.add('muru-settings-open');
+        supportBtn.setAttribute('aria-pressed', 'true');
+    }
+    function closeSupport() {
+        hideAllPanels();
+        if (mainContent) mainContent.classList.remove('hidden');
     }
     if (settingsBtn) settingsBtn.addEventListener('click', openSettings);
     var cronBadge = document.getElementById('muru-cron-status-badge');
     if (cronBadge) cronBadge.addEventListener('click', openSettings);
     if (settingsBack) settingsBack.addEventListener('click', closeSettings);
+    if (supportBtn) supportBtn.addEventListener('click', openSupport);
+    if (supportBack) supportBack.addEventListener('click', closeSupport);
+
+    // Land on the right panel when arriving from the left sidebar's
+    // Dashboard/Settings/Support submenu (see MuruguardViewScanner::
+    // addSubmenu()) -- server-rendered, so this only ever matches what
+    // Joomla itself already decided the active panel is.
+    var initialPanel = <?= json_encode($this->activePanel) ?>;
+    if (initialPanel === 'settings') { openSettings(); }
+    else if (initialPanel === 'support') { openSupport(); }
 
     // ── Settings sub-tabs (Scheduled Scanning / Setup Guide) ─────
     var settingsTabs   = document.querySelectorAll('.muru-settings-tab');

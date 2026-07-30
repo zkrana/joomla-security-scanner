@@ -561,7 +561,15 @@ class MuruguardModelScanner extends BaseDatabaseModel
                 if (!$isDir) {
                     $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
                     if (MuruguardHelper::scanFileContent($path, $ext, $sig, $maxSize, $reasons)) {
-                        $flagged = true;
+                        // Strip only this scanner's own narrow, known,
+                        // per-file self-matches (see
+                        // SELF_CONTENT_SIGNATURE_EXEMPTIONS) -- never a
+                        // blanket skip, so an actually-injected backdoor
+                        // in this scanner's own files is still caught.
+                        $reasons = MuruguardHelper::filterSelfSignatureExemptions($relCheck, $sig, $reasons);
+                        if (!empty($reasons)) {
+                            $flagged = true;
+                        }
                     }
                 }
 

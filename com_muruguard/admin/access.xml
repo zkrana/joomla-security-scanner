@@ -9,7 +9,19 @@
              requireEditAccess(), requireAdminAccess()). A user group can
              be granted core.manage alone to view scan results without
              being able to delete files, clean/modify them, or change
-             scheduled-scan settings. -->
+             scheduled-scan settings.
+
+             Default values for these actions (not set here; access.xml
+             only DEFINES the actions, not their default per-group grants)
+             come from ../script.php's postflight(), which explicitly
+             denies every action here for the standard Manager and
+             Administrator groups on first install, leaving only Super
+             Users able to see or use this component out of the box;
+             they always bypass ACL entirely regardless of what's
+             configured. A site owner can grant it back to any group
+             normally afterwards via System > Users > Access Levels /
+             Permissions; that install-time default is never re-applied
+             once it's been changed. -->
         <action name="core.admin" title="JACTION_ADMIN" description="JACTION_ADMIN_COMPONENT_DESC" />
         <action name="core.manage" title="JACTION_MANAGE" description="JACTION_MANAGE_COMPONENT_DESC" />
         <action name="core.delete" title="JACTION_DELETE" description="JACTION_DELETE_COMPONENT_DESC" />

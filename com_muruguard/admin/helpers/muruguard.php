@@ -274,19 +274,17 @@ class MuruguardHelper
             ],
 
             'SAFE_COMPONENT_PATHS' => [
-                '/administrator/components/com_muruguard/',
-                // com_sppbscan is this same extension's own pre-2.2.0 name
-                // (see CHANGELOG.md "Rebrand SPPB Scan to MuRu Guard") -- a
-                // leftover copy from before that rebrand is legitimate old
-                // code, not a compromise. Without this, it self-flags: this
-                // scanner's own CONTENT_SIGNATURES table necessarily
-                // contains the literal marker text/regex source it's
-                // matching against (e.g. "xss.report", "secure.local",
-                // "FilesMan"), so a raw content scan of its own source
-                // finds "matches" against itself. The current-named copy
-                // only escapes this by coincidence, via the entry right
-                // above skipping content scanning for its own live path.
-                '/administrator/components/com_sppbscan/',
+                // Deliberately does NOT include this scanner's own
+                // component path (or its pre-2.2.0 name, com_sppbscan) --
+                // see SELF_CONTENT_SIGNATURE_EXEMPTIONS below for why a
+                // blanket "never scan yourself" exemption is actively
+                // dangerous for a security tool (it would make the one
+                // place an attacker would most want to backdoor -- the
+                // scanner itself -- permanently invisible to it), and how
+                // this scans its own files fully while still avoiding the
+                // narrow, specific false positives that come from
+                // literally containing its own signature definitions as
+                // text.
                 '/administrator/components/com_rsfirewall/',
                 '/administrator/components/com_htprotect/',
                 '/administrator/components/com_akeeba/',
@@ -295,6 +293,45 @@ class MuruguardHelper
                 // above) -- same vendor, same trust level.
                 '/administrator/components/com_akeebabackup/',
                 '/administrator/components/com_admintools/',
+            ],
+
+            // A security scanner's OWN files are exactly what a
+            // sufficiently determined attacker would most want to
+            // backdoor -- disabling or blinding the thing meant to catch
+            // them, rather than risk detection elsewhere. A blanket
+            // "don't scan your own component" exemption (the previous
+            // design) would make that permanently invisible. Instead,
+            // every one of this scanner's own files gets the SAME full
+            // scan as any other file -- these are narrow, per-file,
+            // per-signature exemptions covering ONLY the specific
+            // content-signature false positives that come from this
+            // scanner's helper/model files literally containing their own
+            // signature definitions and marker strings as source text
+            // (e.g. the literal text "xss.report", "FilesMan", "gsocket"
+            // appearing inside the very CONTENT_SIGNATURES/REQUEST_SIGNATURES
+            // table and the SPPB-asset marker check that reference them).
+            // Every OTHER content signature not listed here (eval_base64_post,
+            // assert_backdoor, shell_exec_chain, cookie_gated_eval,
+            // self_replicating_dropper, phpkoru_encoder, ...) and every
+            // structural check still runs normally against these exact
+            // same files, so an actually-injected backdoor is still
+            // caught. Verified empirically against the real files, not
+            // guessed -- re-verify with an isolated scanFileContent() test
+            // any time CONTENT_SIGNATURES/REQUEST_SIGNATURES changes,
+            // since a new signature could introduce a new self-match here.
+            // com_sppbscan is this scanner's own pre-2.2.0 name (see
+            // CHANGELOG.md "Rebrand SPPB Scan to MuRu Guard") -- a
+            // leftover copy from before that rebrand is the same source,
+            // so it gets the same exemptions.
+            'SELF_CONTENT_SIGNATURE_EXEMPTIONS' => [
+                'administrator/components/com_muruguard/helpers/muruguard.php' =>
+                    ['eval_encoded_blob', 'gsocket_indicator', 'xss_report_payload', 'webshell_generic', 'secure_local_marker', 'stream_wrapper_payload'],
+                'administrator/components/com_sppbscan/helpers/muruguard.php' =>
+                    ['eval_encoded_blob', 'gsocket_indicator', 'xss_report_payload', 'webshell_generic', 'secure_local_marker', 'stream_wrapper_payload'],
+                'administrator/components/com_muruguard/models/scanner.php' =>
+                    ['xss_report_payload', 'secure_local_marker'],
+                'administrator/components/com_sppbscan/models/scanner.php' =>
+                    ['xss_report_payload', 'secure_local_marker'],
             ],
 
             // "icomoon" is IcoMoon's own icon-font export/build tool name --
@@ -2009,6 +2046,31 @@ class MuruguardHelper
         }
 
         return $flagged;
+    }
+
+    /**
+     * Strips ONLY this scanner's own known, narrow, per-file content-
+     * signature false positives (see SELF_CONTENT_SIGNATURE_EXEMPTIONS'
+     * docblock for the full reasoning) out of a findings reasons list --
+     * never used to skip a file from scanning entirely, only to remove
+     * the specific self-referential matches after the fact. Any OTHER
+     * reason (a different content signature, a structural/location
+     * check, ...) present in the same list is left untouched. Returns the
+     * filtered reasons list; the caller re-derives whether the file is
+     * still flagged from whether it's non-empty.
+     */
+    public static function filterSelfSignatureExemptions(string $relPath, array $sig, array $reasons): array
+    {
+        $relNorm = ltrim(str_replace('\\', '/', $relPath), '/');
+        $exemptSigNames = $sig['SELF_CONTENT_SIGNATURE_EXEMPTIONS'][$relNorm] ?? null;
+        if ($exemptSigNames === null) return $reasons;
+
+        return array_values(array_filter($reasons, function ($r) use ($exemptSigNames) {
+            foreach ($exemptSigNames as $sigName) {
+                if (stripos((string) $r, "Content signature: {$sigName} ") === 0) return false;
+            }
+            return true;
+        }));
     }
 
     /**

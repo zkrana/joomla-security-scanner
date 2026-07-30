@@ -46,10 +46,24 @@ class MuruguardViewScanner extends HtmlView
     public $shieldBlockCountries = false;
     public $shieldBlockedCountries = '';
     public array $ipList = [];
+    public string $componentVersion = '';
+    public string $activePanel = 'dashboard';
 
     public function display($tpl = null)
     {
         MuruguardHelper::requireManageAccess();
+
+        // Read straight from the manifest on disk rather than the DB's
+        // manifest_cache -- accurate even if files were ever overwritten
+        // outside Joomla's own installer/updater flow (manifest_cache
+        // only refreshes on an actual install/update through Joomla).
+        $manifestPath = JPATH_ADMINISTRATOR . '/components/com_muruguard/muruguard.xml';
+        if (is_file($manifestPath)) {
+            $manifestXml = @simplexml_load_file($manifestPath);
+            if ($manifestXml !== false) {
+                $this->componentVersion = (string) $manifestXml->version;
+            }
+        }
 
         $app     = Factory::getApplication();
         $session = $app->getSession();
@@ -129,7 +143,21 @@ class MuruguardViewScanner extends HtmlView
             $this->scanStartedAt = $cachedAt;
         }
 
+        // Which panel the left sidebar submenu (see addSubmenu()) should
+        // land on -- a plain custom query param rather than Joomla's
+        // reserved &layout=, since there's deliberately no separate
+        // tmpl/settings.php / tmpl/support.php file: this component is
+        // still one page with everything on it, the submenu just jumps
+        // straight to the right part of it (auto-opening the existing
+        // Settings panel / Support section client-side) rather than a
+        // full page reload into isolated views, which would mean
+        // duplicating the scan-results header/stats across three
+        // separate templates for no real benefit.
+        $requestedPanel = $app->input->getCmd('view_panel', 'dashboard');
+        $this->activePanel = in_array($requestedPanel, ['dashboard', 'settings', 'support'], true) ? $requestedPanel : 'dashboard';
+
         $this->addToolbar();
+        $this->addSubmenu();
 
         parent::display($tpl);
     }
@@ -144,5 +172,32 @@ class MuruguardViewScanner extends HtmlView
         }
 
         // Help button intentionally omitted for Joomla 3/4/5/6 compatibility.
+    }
+
+    /**
+     * Left-sidebar submenu (Dashboard / Settings / Support), the same
+     * mechanism com_content/com_banners/... and third-party components
+     * like SP Page Builder use for their own multi-page navigation.
+     */
+    protected function addSubmenu(): void
+    {
+        \Joomla\CMS\HTML\HTMLHelper::_(
+            'sidebar.addEntry',
+            Text::_('COM_MURUGUARD_SUBMENU_DASHBOARD'),
+            'index.php?option=com_muruguard&view_panel=dashboard',
+            $this->activePanel === 'dashboard'
+        );
+        \Joomla\CMS\HTML\HTMLHelper::_(
+            'sidebar.addEntry',
+            Text::_('COM_MURUGUARD_SUBMENU_SETTINGS'),
+            'index.php?option=com_muruguard&view_panel=settings',
+            $this->activePanel === 'settings'
+        );
+        \Joomla\CMS\HTML\HTMLHelper::_(
+            'sidebar.addEntry',
+            Text::_('COM_MURUGUARD_SUBMENU_SUPPORT'),
+            'index.php?option=com_muruguard&view_panel=support',
+            $this->activePanel === 'support'
+        );
     }
 }
