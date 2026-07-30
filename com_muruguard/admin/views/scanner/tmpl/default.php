@@ -1055,7 +1055,7 @@ foreach ($htaccessChecks as $c) { $htaccessByCategory[$c['category']][] = $c; }
         <?php endif; ?>
         <?php if ($this->componentVersion !== ''): ?>
             <span class="text-gray-300">·</span>
-            <span class=" absolute -top-[6px] top-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-[rgb(239 137 235)] text-gray-200" title="<?= Text::_('COM_MURUGUARD_VERSION_BADGE_TITLE') ?>">
+            <span class="absolute -top-[6px] top-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-[#EF89EB] text-gray-200" title="<?= Text::_('COM_MURUGUARD_VERSION_BADGE_TITLE') ?>">
                 🛡️ v<?= htmlspecialchars($this->componentVersion) ?>
             </span>
         <?php endif; ?>

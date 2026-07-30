@@ -8,6 +8,12 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Unreleased]
 
+## [2.7.1] - 2026-07-30
+
+### Fixed
+
+- Version badge styling: fixed a missing space between two Tailwind classes (`bg-[#EF89EB]text-gray-200`) that merged them into one invalid class, silently dropping both the background and text color.
+
 ## [2.7.0] - 2026-07-30
 
 ### Added
