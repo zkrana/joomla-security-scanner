@@ -118,8 +118,6 @@ $rescanUrl  = 'index.php?option=com_muruguard&task=scanner.scan&rescan=1';
   @keyframes muruguard-bar-slide { 0%{width:15%;margin-left:0} 50%{width:55%;margin-left:20%} 100%{width:15%;margin-left:100%} }
   .muruguard-overlay-note { color:#64748b; font-size:11px; line-height:1.6; margin:0; }
 
-  #muru-header-actions { position: fixed; top: 64px; right: 20px; z-index: 999998; display: flex; align-items: center; gap: 8px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-  #muru-version-badge { display:flex; align-items:center; gap:5px; background:#f3f4f6; border:1px solid #e5e7eb; border-radius:9999px; padding:6px 12px; font-size:12px; font-weight:700; color:#6b7280; white-space:nowrap; }
 
   /* ── Code-analysis modal ──────────────────────────────────────
      Same plain-CSS + re-parent-to-<body> treatment as the overlay and
@@ -327,14 +325,6 @@ if ($w !== null && $w['safe'] !== true):
     </div>
 </div>
 
-<!-- ── Version badge (re-parented to <body> at runtime, see script) ──
-     Settings/Support navigation lives in the left sidebar submenu now
-     (see MuruguardViewScanner::addSubmenu()), not duplicated here. -->
-<div id="muru-header-actions">
-    <?php if ($this->componentVersion !== ''): ?>
-    <span id="muru-version-badge" title="<?= Text::_('COM_MURUGUARD_VERSION_BADGE_TITLE') ?>">🛡️ v<?= htmlspecialchars($this->componentVersion) ?></span>
-    <?php endif; ?>
-</div>
 
 <!-- ── Code-analysis modal (re-parented to <body> at runtime, see script) ── -->
 <div id="muru-modal">
@@ -1015,6 +1005,12 @@ foreach ($htaccessChecks as $c) { $htaccessByCategory[$c['category']][] = $c; }
             <button type="button" id="muru-cron-status-badge" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors" title="<?= Text::_('COM_MURUGUARD_CRON_BADGE_TITLE') ?>">
                 ⏰ <?= Text::_('COM_MURUGUARD_CRON_ON_BADGE') ?>
             </button>
+        <?php endif; ?>
+        <?php if ($this->componentVersion !== ''): ?>
+            <span class="text-gray-300">·</span>
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-500" title="<?= Text::_('COM_MURUGUARD_VERSION_BADGE_TITLE') ?>">
+                🛡️ v<?= htmlspecialchars($this->componentVersion) ?>
+            </span>
         <?php endif; ?>
     </div>
     <div class="flex items-center gap-2">
@@ -1726,7 +1722,7 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
     // animating the collapsible sidebar, and a transformed ancestor
     // breaks `position: fixed` for any descendant, confining it to that
     // ancestor's box instead of the actual viewport.
-    ['muruguard-overlay', 'muru-header-actions', 'muru-modal', 'muru-scan-modal', 'muru-htaccess-modal'].forEach(function (id) {
+    ['muruguard-overlay', 'muru-modal', 'muru-scan-modal', 'muru-htaccess-modal'].forEach(function (id) {
         var el = document.getElementById(id);
         if (el && el.parentNode !== document.body) {
             document.body.appendChild(el);

@@ -9,6 +9,7 @@ defined('_JEXEC') or die;
 
 use Joomla\CMS\Factory;
 use Joomla\CMS\Table\Asset;
+use Joomla\CMS\Table\Table;
 
 /**
  * Joomla's own Super Users group always bypasses every ACL check
@@ -75,6 +76,97 @@ class com_muruguardInstallerScript
             }
         } catch (\Throwable $e) {
             // Never let a default-ACL step block the install/update itself.
+        }
+
+        $this->addAdminSubmenuItems();
+    }
+
+    /**
+     * The manifest's own <menu> tag only ever creates ONE top-level
+     * #__menu row (client_id=1) for "MuRu Guard" -- Joomla does not
+     * generate an expandable, arrow-icon submenu under it just from that.
+     * Components that DO show one there (SP Page Builder's own Settings/
+     * Pages/... submenu is the example this was modelled on) have
+     * multiple #__menu rows sharing that same parent_id. This adds
+     * "Settings" and "Support" as children of the auto-created "MuRu
+     * Guard" item -- its own link already goes straight to the
+     * dashboard/overview, so no separate "Dashboard" child is needed,
+     * matching how clicking the parent item itself (not just its arrow)
+     * still navigates there.
+     *
+     * Uses Joomla's own Table\Menu class -- #__menu is a nested-set tree
+     * (lft/rgt columns shared by EVERY admin menu item on the whole
+     * site, not just this component's), so raw INSERT statements risk
+     * corrupting that tree for every other menu item too; setLocation()
+     * + store() is the safe, official way to insert into it. Idempotent
+     * (checks for existing children first) so repeated updates don't
+     * duplicate these rows, and never touches any menu item other than
+     * this component's own children.
+     */
+    protected function addAdminSubmenuItems(): void
+    {
+        try {
+            $db = Factory::getDbo();
+            $query = $db->getQuery(true)
+                ->select($db->quoteName(['id', 'menutype', 'component_id', 'access']))
+                ->from($db->quoteName('#__menu'))
+                ->where($db->quoteName('client_id') . ' = 1')
+                ->where($db->quoteName('type') . ' = ' . $db->quote('component'))
+                ->where($db->quoteName('link') . ' = ' . $db->quote('index.php?option=com_muruguard'));
+            $db->setQuery($query);
+            $parentMenu = $db->loadObject();
+            if ($parentMenu === null) {
+                return; // Manifest <menu> item not created yet -- nothing to attach children to.
+            }
+
+            $countQuery = $db->getQuery(true)
+                ->select('COUNT(*)')
+                ->from($db->quoteName('#__menu'))
+                ->where($db->quoteName('parent_id') . ' = ' . (int) $parentMenu->id);
+            $db->setQuery($countQuery);
+            if ((int) $db->loadResult() > 0) {
+                return; // Already set up (or a site owner customised it) -- never touch it again.
+            }
+
+            $children = [
+                ['title' => 'Settings', 'link' => 'index.php?option=com_muruguard&view_panel=settings'],
+                ['title' => 'Support',  'link' => 'index.php?option=com_muruguard&view_panel=support'],
+            ];
+
+            foreach ($children as $child) {
+                /** @var \Joomla\CMS\Table\Menu $table */
+                $table = Table::getInstance('Menu');
+                $table->setLocation((int) $parentMenu->id, 'last-child');
+                $table->menutype     = (string) $parentMenu->menutype;
+                $table->title        = $child['title'];
+                $table->alias        = $child['title'];
+                $table->note         = '';
+                $table->link         = $child['link'];
+                $table->type         = 'component';
+                $table->published    = 1;
+                $table->parent_id    = (int) $parentMenu->id;
+                $table->component_id = (int) $parentMenu->component_id;
+                $table->client_id    = 1;
+                $table->browserNav   = 0;
+                $table->access       = (int) $parentMenu->access;
+                $table->img          = 'class:default';
+                $table->language     = '*';
+                $table->params       = '{}';
+                $table->home         = 0;
+
+                if ($table->check()) {
+                    $table->store();
+                }
+            }
+
+            // Recalculates lft/rgt for the whole tree from parent_id
+            // relationships -- the safe way to guarantee a consistent
+            // nested set after inserting new nodes via setLocation().
+            Table::getInstance('Menu')->rebuild();
+        } catch (\Throwable $e) {
+            // Never let this block the install/update itself -- worst
+            // case, the submenu just doesn't appear and the component is
+            // still fully reachable via its own top-level menu link.
         }
     }
 }

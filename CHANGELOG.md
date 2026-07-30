@@ -8,6 +8,13 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Unreleased]
 
+## [2.6.2] - 2026-07-30
+
+### Fixed
+
+- **The 2.6.0 sidebar submenu didn't actually appear as an expandable dropdown under "MuRu Guard" in the primary left admin menu tree** (confirmed via the site's own rendered HTML: `class="no-dropdown"`, no child items). `HTMLHelper::_('sidebar.addEntry', ...)` populates a different, separate in-page panel -- it was never going to produce the arrow-icon/expandable-children behavior seen on components like SP Page Builder. That requires actual child rows in Joomla's admin menu table (`#__menu`) sharing the same `parent_id` as the component's own auto-created menu item. Added this properly via the install script (`script.php`), using Joomla's own nested-set-safe `Table\Menu` API (`setLocation()` + `rebuild()`) rather than raw SQL, since `#__menu`'s lft/rgt columns are shared by every admin menu item on the whole site -- a wrong raw INSERT could corrupt the entire admin sidebar, not just this component's part of it. Adds "Settings" and "Support" as children (no separate "Dashboard" child needed -- the parent item's own link already goes straight there). Idempotent: only runs once, never touches an already-populated submenu, so it's safe on repeated updates. This only takes effect on an actual install/update through Joomla's installer, same as the ACL default from 2.6.0.
+- Moved the version badge out of the floating top-right corner into the existing scan-results toolbar (next to "Last scanned" / cron status), instead of a separate floating element.
+
 ## [2.6.1] - 2026-07-30
 
 ### Changed
