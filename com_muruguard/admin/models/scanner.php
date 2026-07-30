@@ -355,8 +355,16 @@ class MuruguardModelScanner extends BaseDatabaseModel
      * this is the only place that plugin's behaviour is actually
      * configured, there is no separate plugin-side settings screen.
      */
-    public function saveShieldSettings(bool $enabled, bool $blockPatterns, bool $blockBruteForce, int $threshold, int $window): void
-    {
+    public function saveShieldSettings(
+        bool $enabled,
+        bool $blockPatterns,
+        bool $blockBruteForce,
+        int $threshold,
+        int $window,
+        bool $blockUserAgents = false,
+        bool $blockCountries = false,
+        string $blockedCountries = ''
+    ): void {
         $table = new \Joomla\CMS\Table\Extension($this->getDatabase());
         if (!$table->load(['element' => 'com_muruguard', 'type' => 'component'])) return;
 
@@ -367,6 +375,16 @@ class MuruguardModelScanner extends BaseDatabaseModel
         $params['shield_block_bruteforce'] = $blockBruteForce ? 1 : 0;
         $params['shield_bruteforce_threshold'] = max(2, min(50, $threshold));
         $params['shield_bruteforce_window'] = max(1, min(1440, $window));
+        $params['shield_block_useragents'] = $blockUserAgents ? 1 : 0;
+        $params['shield_block_countries'] = $blockCountries ? 1 : 0;
+        // Normalise to a clean, de-duplicated, comma-separated list of
+        // 2-letter codes -- whatever stray formatting an admin pastes in
+        // (extra spaces, lowercase, trailing commas) still works.
+        $codes = array_unique(array_filter(array_map(
+            fn($c) => strtoupper(trim($c)),
+            explode(',', $blockedCountries)
+        ), fn($c) => preg_match('/^[A-Z]{2}$/', $c)));
+        $params['shield_blocked_countries'] = implode(',', $codes);
         $table->params = json_encode($params);
         $table->store();
     }

@@ -368,17 +368,72 @@ public function scan()
         $app   = Factory::getApplication();
         $input = $app->input;
 
-        $enabled         = (bool) $input->getInt('shield_enabled', 0);
-        $blockPatterns   = (bool) $input->getInt('shield_block_patterns', 0);
-        $blockBruteForce = (bool) $input->getInt('shield_block_bruteforce', 0);
-        $threshold       = $input->getInt('shield_bruteforce_threshold', 5);
-        $window          = $input->getInt('shield_bruteforce_window', 15);
+        $enabled          = (bool) $input->getInt('shield_enabled', 0);
+        $blockPatterns    = (bool) $input->getInt('shield_block_patterns', 0);
+        $blockBruteForce  = (bool) $input->getInt('shield_block_bruteforce', 0);
+        $threshold        = $input->getInt('shield_bruteforce_threshold', 5);
+        $window           = $input->getInt('shield_bruteforce_window', 15);
+        $blockUserAgents  = (bool) $input->getInt('shield_block_useragents', 0);
+        $blockCountries   = (bool) $input->getInt('shield_block_countries', 0);
+        $blockedCountries = $input->getString('shield_blocked_countries', '');
 
         /** @var MuruguardModelScanner $model */
         $model = $this->getModel('Scanner');
-        $model->saveShieldSettings($enabled, $blockPatterns, $blockBruteForce, $threshold, $window);
+        $model->saveShieldSettings(
+            $enabled,
+            $blockPatterns,
+            $blockBruteForce,
+            $threshold,
+            $window,
+            $blockUserAgents,
+            $blockCountries,
+            $blockedCountries
+        );
 
         $app->enqueueMessage(Text::_('COM_MURUGUARD_SETTINGS_SAVED_MSG'), 'message');
+        $this->setRedirect('index.php?option=com_muruguard');
+    }
+
+    /**
+     * Adds one entry to the manual IP Access List (see
+     * MuruguardHelper::addIpListEntry() for validation/storage). Same
+     * admin-level permission as changing Protection Mode settings, since
+     * a wrong entry here can lock an admin out of the site.
+     */
+    public function addipentry()
+    {
+        Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
+        \MuruguardHelper::requireAdminAccess();
+
+        $app   = Factory::getApplication();
+        $input = $app->input;
+
+        $value = $input->getString('ip_value', '');
+        $mode  = $input->getString('ip_mode', 'block');
+        $note  = $input->getString('ip_note', '');
+
+        $result = \MuruguardHelper::addIpListEntry($value, $mode, $note);
+        if ($result['ok']) {
+            $app->enqueueMessage(Text::_('COM_MURUGUARD_IPLIST_ADDED_MSG'), 'message');
+        } else {
+            $app->enqueueMessage(htmlspecialchars($result['error']), 'error');
+        }
+
+        $this->setRedirect('index.php?option=com_muruguard');
+    }
+
+    /** Removes one entry from the manual IP Access List. */
+    public function removeipentry()
+    {
+        Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
+        \MuruguardHelper::requireAdminAccess();
+
+        $id = Factory::getApplication()->input->getString('ip_id', '');
+        if ($id !== '') {
+            \MuruguardHelper::removeIpListEntry($id);
+        }
+
+        Factory::getApplication()->enqueueMessage(Text::_('COM_MURUGUARD_IPLIST_REMOVED_MSG'), 'message');
         $this->setRedirect('index.php?option=com_muruguard');
     }
 

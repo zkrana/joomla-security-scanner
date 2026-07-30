@@ -118,9 +118,36 @@ class plgSystemMuruguardshield extends CMSPlugin
         $input = $app->input;
         $ip    = (string) $input->server->get('REMOTE_ADDR', '', 'string');
 
-        // Brute-force IP block -- checked first and regardless of who's
-        // asking, since an attacker hammering the login form is by
-        // definition not an authenticated user yet.
+        // Manual IP allow/block list -- checked FIRST, ahead of every
+        // other check below, including brute-force. An explicit "allow"
+        // entry bypasses everything else entirely (a trusted admin IP or
+        // monitoring service should never trip a pattern/country/brute-
+        // force rule); an explicit "block" entry rejects unconditionally,
+        // regardless of what the request itself looks like.
+        if ($ip !== '') {
+            $ipListResult = \MuruguardHelper::checkIpList($ip);
+            if ($ipListResult === 'allow') return;
+            if ($ipListResult === 'block') {
+                \MuruguardHelper::recordAttackLogEntry([
+                    'type'       => 'ip_list',
+                    'ip'         => $ip,
+                    'time'       => time(),
+                    'blocked'    => true,
+                    'rule'       => 'manual_ip_block',
+                    'severity'   => 'high',
+                    'why'        => 'IP blocked: matches a manually-added entry in the IP Access List.',
+                    'matched'    => '',
+                    'uri'        => mb_substr((string) $input->server->get('REQUEST_URI', '', 'string'), 0, 300),
+                    'user_agent' => mb_substr((string) $input->server->get('HTTP_USER_AGENT', '', 'string'), 0, 200),
+                ]);
+                $this->rejectRequest();
+                return;
+            }
+        }
+
+        // Brute-force IP block -- regardless of who's asking, since an
+        // attacker hammering the login form is by definition not an
+        // authenticated user yet.
         if ($params->get('shield_block_bruteforce', 0) && $ip !== '') {
             $threshold = (int) $params->get('shield_bruteforce_threshold', 5);
             $window    = (int) $params->get('shield_bruteforce_window', 15);
@@ -143,14 +170,43 @@ class plgSystemMuruguardshield extends CMSPlugin
             }
         }
 
-        // Request-pattern checks are skipped for already-authenticated,
-        // non-guest users. A genuine unauthenticated RCE/webshell
-        // attacker is by definition not logged in -- exempting real
-        // admin sessions avoids the actually-dangerous failure mode
-        // here, which is an admin's own legitimate action tripping a
-        // false block and locking THEM out of their own site.
+        // Request-pattern AND country checks below are skipped for
+        // already-authenticated, non-guest users. A genuine
+        // unauthenticated RCE/webshell attacker is by definition not
+        // logged in -- exempting real admin sessions avoids the
+        // actually-dangerous failure mode here, which is an admin's own
+        // legitimate action (or their own IP resolving to a blocked
+        // country while travelling/on a VPN) tripping a false block and
+        // locking THEM out of their own site.
         $user = $app->getIdentity();
         if ($user && !$user->guest) return;
+
+        // Country block -- independent of, and checked before, pattern
+        // matching. lookupCountryForIp() fails open (returns null, never
+        // blocks) on any lookup error, so a third-party GeoIP service
+        // outage can never take real visitors down.
+        if ($params->get('shield_block_countries', 0) && $ip !== '') {
+            $blockedCountries = (string) $params->get('shield_blocked_countries', '');
+            if ($blockedCountries !== '') {
+                $country = \MuruguardHelper::lookupCountryForIp($ip);
+                if (\MuruguardHelper::isCountryBlocked($country, $blockedCountries)) {
+                    \MuruguardHelper::recordAttackLogEntry([
+                        'type'       => 'country',
+                        'ip'         => $ip,
+                        'time'       => time(),
+                        'blocked'    => true,
+                        'rule'       => 'country_block',
+                        'severity'   => 'medium',
+                        'why'        => "IP blocked: resolved to country {$country}, which is on the blocked-countries list.",
+                        'matched'    => (string) $country,
+                        'uri'        => mb_substr((string) $input->server->get('REQUEST_URI', '', 'string'), 0, 300),
+                        'user_agent' => mb_substr((string) $input->server->get('HTTP_USER_AGENT', '', 'string'), 0, 200),
+                    ]);
+                    $this->rejectRequest();
+                    return;
+                }
+            }
+        }
 
         $uri       = (string) $input->server->get('REQUEST_URI', '', 'string');
         $userAgent = (string) $input->server->get('HTTP_USER_AGENT', '', 'string');
@@ -160,7 +216,15 @@ class plgSystemMuruguardshield extends CMSPlugin
         $match = \MuruguardHelper::scanRequestForAttack($get, $post, $uri, $userAgent);
         if ($match === null) return;
 
-        $shouldBlock = $match['block_eligible'] && (bool) $params->get('shield_block_patterns', 0);
+        // Bad-user-agent matches are gated behind their own dedicated
+        // toggle, not the general pattern-block switch -- blocking on a
+        // User-Agent string ALONE is a meaningfully different (and more
+        // false-positive-prone) risk than e.g. an eval(base64_decode())
+        // payload in a query parameter, so an admin who wants one
+        // shouldn't be forced to accept the other.
+        $shouldBlock = $match['rule'] === 'known_scanner_user_agent'
+            ? (bool) $params->get('shield_block_useragents', 0)
+            : ($match['block_eligible'] && (bool) $params->get('shield_block_patterns', 0));
 
         \MuruguardHelper::recordAttackLogEntry([
             'type'       => 'request',

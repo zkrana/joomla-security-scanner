@@ -8,6 +8,18 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Unreleased]
 
+## [2.5.2] - 2026-07-30
+
+### Added
+
+- **MuRu Guard Shield: manual IP Access List.** Admin-managed persistent list of IPs/CIDR ranges to always block or always allow, independent of pattern/brute-force/country checks. Checked first, ahead of everything else -- an allow entry bypasses every other check; a block entry rejects unconditionally. IPv4 exact-address and CIDR entries are supported (IPv6 exact-address only, no CIDR containment).
+- **MuRu Guard Shield: bad user-agent blocking.** Known scanner/bot user agents (sqlmap, nikto, acunetix, ...) were previously only ever logged. A new, separately-toggleable switch lets these be actively rejected, kept distinct from the general pattern-block switch since a User-Agent string alone is more prone to spoofing/false positives than an actual attack payload.
+- **MuRu Guard Shield: country blocking.** Rejects requests from a configured list of countries, resolved via a free IP-to-country lookup (ip-api.com) cached indefinitely per IP -- a one-time network call per unique visitor IP ever seen, not a per-request dependency, and fails open (never blocks) if the lookup service is unreachable. Never applied to your own logged-in admin session, or to private/reserved IP ranges (localhost, LAN, ...). No GeoIP database is bundled -- deliberately avoids MaxMind licensing/staleness questions in favor of an on-demand, cached lookup.
+
+### Fixed
+
+- Adding the ".htaccess Hardening" advisory as a 7th results tab pushed the tab bar to a second line. Moved it out of the tab bar entirely into its own modal, opened from a new "🛡 .htaccess Hardening" button in the toolbar (next to Change Scan Areas / Re-scan Now / AI Integration). Back to 6 tabs on one line. (Re-released as its own version number rather than an in-place update to 2.5.1, to avoid any ambiguity from a cached/stale download of a previously-issued version.)
+
 ## [2.5.1] - 2026-07-30
 
 ### Added

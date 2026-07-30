@@ -639,6 +639,245 @@ class MuruguardHelper
         return false;
     }
 
+    // ------------------------------------------------------------------
+    // Manual IP block/allow list -- same JSON-file-under-this-component's-
+    // -own-data-folder pattern as attack-log.json/login-attempts.json
+    // above. Independent of, and checked AHEAD of, every pattern/
+    // threshold-based check in runShieldCheck(): an explicit "allow"
+    // entry bypasses brute-force/pattern/country blocking entirely (the
+    // whole point of an allowlist -- e.g. an admin's own static IP, or a
+    // trusted external monitoring/uptime service that would otherwise
+    // occasionally trip a rule), and an explicit "block" entry rejects
+    // regardless of what the request itself looks like.
+    // ------------------------------------------------------------------
+
+    private static function ipListFilePath(): string
+    {
+        return JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/ip-list.json';
+    }
+
+    public static function getIpList(): array
+    {
+        $path = self::ipListFilePath();
+        if (!is_file($path)) return [];
+        $contents = @file_get_contents($path);
+        if ($contents === false) return [];
+        $decoded = json_decode($contents, true);
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    /**
+     * Accepts a plain IPv4/IPv6 address OR CIDR notation (e.g.
+     * "203.0.113.0/24"). Returns ['ok' => true, 'entry' => ...] or
+     * ['ok' => false, 'error' => '...'] -- never throws, since this is
+     * called directly from a controller action handling raw admin input.
+     */
+    public static function addIpListEntry(string $ipOrCidr, string $mode, string $note): array
+    {
+        $ipOrCidr = trim($ipOrCidr);
+        $mode = $mode === 'allow' ? 'allow' : 'block';
+
+        if ($ipOrCidr === '') {
+            return ['ok' => false, 'error' => 'Empty value.'];
+        }
+
+        if (strpos($ipOrCidr, '/') !== false) {
+            [$addr, $prefix] = array_pad(explode('/', $ipOrCidr, 2), 2, '');
+            if (filter_var($addr, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) === false || !ctype_digit($prefix) || (int) $prefix > 32) {
+                return ['ok' => false, 'error' => 'Invalid CIDR range -- only IPv4 CIDR notation is supported (e.g. 203.0.113.0/24).'];
+            }
+        } elseif (filter_var($ipOrCidr, FILTER_VALIDATE_IP) === false) {
+            return ['ok' => false, 'error' => 'Not a valid IP address or CIDR range.'];
+        }
+
+        $entry = [
+            'id'      => bin2hex(random_bytes(8)),
+            'value'   => $ipOrCidr,
+            'mode'    => $mode,
+            'note'    => mb_substr(trim($note), 0, 200),
+            'addedAt' => time(),
+        ];
+
+        $path = self::ipListFilePath();
+        $fh = @fopen($path, 'c+');
+        if ($fh === false) return ['ok' => false, 'error' => 'Could not open storage file.'];
+
+        if (@flock($fh, LOCK_EX)) {
+            $size = filesize($path) ?: 0;
+            $contents = $size > 0 ? fread($fh, $size) : '';
+            $list = json_decode((string) $contents, true);
+            if (!is_array($list)) $list = [];
+
+            $list[] = $entry;
+
+            ftruncate($fh, 0);
+            rewind($fh);
+            fwrite($fh, json_encode($list));
+            fflush($fh);
+            flock($fh, LOCK_UN);
+        }
+        fclose($fh);
+
+        return ['ok' => true, 'entry' => $entry];
+    }
+
+    public static function removeIpListEntry(string $id): void
+    {
+        $path = self::ipListFilePath();
+        $fh = @fopen($path, 'c+');
+        if ($fh === false) return;
+
+        if (@flock($fh, LOCK_EX)) {
+            $size = filesize($path) ?: 0;
+            $contents = $size > 0 ? fread($fh, $size) : '';
+            $list = json_decode((string) $contents, true);
+            if (!is_array($list)) $list = [];
+
+            $list = array_values(array_filter($list, fn($e) => ($e['id'] ?? '') !== $id));
+
+            ftruncate($fh, 0);
+            rewind($fh);
+            fwrite($fh, json_encode($list));
+            fflush($fh);
+            flock($fh, LOCK_UN);
+        }
+        fclose($fh);
+    }
+
+    /** True if $ip falls inside IPv4 CIDR range $cidr (e.g. "203.0.113.0/24"). IPv6 CIDR is not supported -- returns false rather than a wrong answer. */
+    public static function ipMatchesCidr(string $ip, string $cidr): bool
+    {
+        if (strpos($cidr, '/') === false) return false;
+        [$subnet, $prefix] = explode('/', $cidr, 2);
+        if (!ctype_digit($prefix)) return false;
+        $prefix = (int) $prefix;
+
+        $ipLong = ip2long($ip);
+        $subnetLong = ip2long($subnet);
+        if ($ipLong === false || $subnetLong === false) return false;
+
+        if ($prefix === 0) return true;
+        $mask = -1 << (32 - $prefix);
+        return ($ipLong & $mask) === ($subnetLong & $mask);
+    }
+
+    /**
+     * Checked FIRST in runShieldCheck(), ahead of brute-force/pattern/
+     * country blocking -- see the list's own docblock above for why.
+     * Returns 'allow', 'block', or null (no matching entry). If an IP
+     * somehow matches both an allow and a block entry, allow wins --
+     * an allowlist entry is always a deliberate, specific admin action,
+     * so it should never be silently overridden by a broader block rule.
+     */
+    public static function checkIpList(string $ip): ?string
+    {
+        if ($ip === '') return null;
+        $blocked = false;
+        foreach (self::getIpList() as $entry) {
+            $value = (string) ($entry['value'] ?? '');
+            $mode  = (string) ($entry['mode'] ?? '');
+            $matches = $value === $ip || (strpos($value, '/') !== false && self::ipMatchesCidr($ip, $value));
+            if (!$matches) continue;
+            if ($mode === 'allow') return 'allow';
+            if ($mode === 'block') $blocked = true;
+        }
+        return $blocked ? 'block' : null;
+    }
+
+    // ------------------------------------------------------------------
+    // GeoIP / country blocking -- deliberately does NOT bundle a GeoIP
+    // database (MaxMind's GeoLite2 requires a free account + license key
+    // this project can't obtain on an admin's behalf, and a stale bundled
+    // copy would silently rot). Instead uses a free lookup API
+    // (ip-api.com) with an aggressive, indefinite local cache keyed by
+    // IP -- a given IP's country essentially never changes, so this is a
+    // ONE-TIME network call per unique visitor IP ever seen, not a
+    // per-request dependency. Fails open (returns null, never blocks) on
+    // any lookup error/timeout/malformed response -- a third-party
+    // service hiccup must never be able to take real visitors down.
+    // ------------------------------------------------------------------
+
+    private static function geoipCacheFilePath(): string
+    {
+        return JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/geoip-cache.json';
+    }
+
+    /** Returns a 2-letter ISO country code, or null if unknown/lookup failed. */
+    public static function lookupCountryForIp(string $ip): ?string
+    {
+        if ($ip === '' || filter_var($ip, FILTER_VALIDATE_IP) === false) return null;
+        // Private/reserved ranges (localhost, LAN, Docker/CI runners, ...)
+        // are never geolocatable and would otherwise burn a lookup (and
+        // cache slot) on every dev/staging environment.
+        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) return null;
+
+        $cachePath = self::geoipCacheFilePath();
+        $cache = [];
+        if (is_file($cachePath)) {
+            $decoded = json_decode((string) @file_get_contents($cachePath), true);
+            if (is_array($decoded)) $cache = $decoded;
+        }
+
+        if (array_key_exists($ip, $cache)) {
+            return $cache[$ip]['country'] !== '' ? $cache[$ip]['country'] : null;
+        }
+
+        $country = self::fetchCountryFromApi($ip);
+
+        $fh = @fopen($cachePath, 'c+');
+        if ($fh !== false) {
+            if (@flock($fh, LOCK_EX)) {
+                $size = filesize($cachePath) ?: 0;
+                $contents = $size > 0 ? fread($fh, $size) : '';
+                $freshCache = json_decode((string) $contents, true);
+                if (!is_array($freshCache)) $freshCache = [];
+
+                // Cap cache size so a distributed scan/attack hitting
+                // thousands of unique IPs can't grow this file unbounded
+                // -- oldest entries are dropped first (insertion order).
+                if (count($freshCache) > 20000) {
+                    $freshCache = array_slice($freshCache, -15000, null, true);
+                }
+                $freshCache[$ip] = ['country' => (string) $country, 'cachedAt' => time()];
+
+                ftruncate($fh, 0);
+                rewind($fh);
+                fwrite($fh, json_encode($freshCache));
+                fflush($fh);
+                flock($fh, LOCK_UN);
+            }
+            fclose($fh);
+        }
+
+        return $country;
+    }
+
+    /** Isolated for testability -- swap/mock this in tests rather than the caching wrapper above. */
+    protected static function fetchCountryFromApi(string $ip): ?string
+    {
+        try {
+            $context = stream_context_create(['http' => ['timeout' => 2, 'ignore_errors' => true]]);
+            $response = @file_get_contents("http://ip-api.com/json/{$ip}?fields=status,countryCode", false, $context);
+            if ($response === false) return null;
+
+            $data = json_decode($response, true);
+            if (!is_array($data) || ($data['status'] ?? '') !== 'success') return null;
+
+            $code = (string) ($data['countryCode'] ?? '');
+            return preg_match('/^[A-Z]{2}$/', $code) ? $code : null;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /** $blockedCountriesCsv is a comma-separated list of 2-letter ISO codes from the Settings panel, e.g. "CN,RU,KP". */
+    public static function isCountryBlocked(?string $countryCode, string $blockedCountriesCsv): bool
+    {
+        if ($countryCode === null || $countryCode === '') return false;
+        $blocked = array_filter(array_map('trim', explode(',', strtoupper($blockedCountriesCsv))));
+        return in_array(strtoupper($countryCode), $blocked, true);
+    }
+
     /**
      * Detects files whose PATH masquerades as legitimate Joomla core even
      * though no such file exists in a clean install -- the stealthiest

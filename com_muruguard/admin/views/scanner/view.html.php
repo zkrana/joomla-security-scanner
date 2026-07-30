@@ -42,6 +42,10 @@ class MuruguardViewScanner extends HtmlView
     public $attackLog = [];
     public ?array $registeredTemplates = null;
     public array $htaccess = [];
+    public $shieldBlockUserAgents = false;
+    public $shieldBlockCountries = false;
+    public $shieldBlockedCountries = '';
+    public array $ipList = [];
 
     public function display($tpl = null)
     {
@@ -92,6 +96,10 @@ class MuruguardViewScanner extends HtmlView
         $this->shieldWindow          = (int) $cfgParams->get('shield_bruteforce_window', 15);
         $this->shieldPluginActive    = $model->isShieldPluginActive();
         $this->attackLog             = MuruguardHelper::getAttackLog();
+        $this->shieldBlockUserAgents = (bool) $cfgParams->get('shield_block_useragents', 0);
+        $this->shieldBlockCountries  = (bool) $cfgParams->get('shield_block_countries', 0);
+        $this->shieldBlockedCountries = (string) $cfgParams->get('shield_blocked_countries', '');
+        $this->ipList                = MuruguardHelper::getIpList();
 
         // Restore cached scan results
         $cachedAt = (int) $session->get('muruguard.filefindings_time', 0);
