@@ -8,6 +8,12 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Unreleased]
 
+## [2.5.5] - 2026-07-30
+
+### Fixed
+
+- **False positive: an `#__sppagebuilder_assets` row named "icomoon" flagged "Non-default iconfont" and listed as a rogue/deletable registration.** The docblock already documented "icofont, icomoon, ..." as known-legitimate iconfont names, but the actual comparison only ever checked against the single name `icofont` -- `icomoon` (IcoMoon's own extremely common icon-font export tool name, already allow-listed on the filesystem side) was never actually in the list it was compared against. Added a proper `KNOWN_GOOD_ICONFONT_NAMES` list covering both; a genuinely unrecognized name is still surfaced for review as before, and the underlying content checks (base64_decode/eval/script tags/PHP tags/event handlers) still run against every row regardless of name either way.
+
 ## [2.5.4] - 2026-07-30
 
 ### Fixed

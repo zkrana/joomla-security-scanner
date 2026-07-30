@@ -305,6 +305,18 @@ class MuruguardHelper
             'ICONFONT_ALLOWED_DIRNAMES'   => ['css', 'font', 'fonts', 'demo', 'docs', 'demo-files', 'icomoon'],
             'ICONFONT_ALLOWED_EXTENSIONS' => ['woff', 'woff2', 'ttf', 'eot', 'otf', 'svg', 'css', 'json', 'html', 'htm', 'txt', 'md'],
             'ICONFONT_ALLOWED_BARE_NAMES' => ['license', 'readme', 'changelog'],
+            // #__sppagebuilder_assets rows of type "iconfont" named
+            // something other than these are flagged as "Non-default" --
+            // NOT because a non-default name is itself malicious (the
+            // actual content checks run against every row regardless of
+            // name, see scanDatabase()), just because it's a weaker,
+            // secondary signal worth surfacing for manual review. "icofont"
+            // is SP Page Builder's own bundled default; "icomoon" is
+            // IcoMoon's own extremely common icon-font export/build tool
+            // name (see ICONFONT_ALLOWED_DIRNAMES above) -- just as
+            // legitimate a choice for a real site to have added, not a
+            // red flag on its own.
+            'KNOWN_GOOD_ICONFONT_NAMES'   => ['icofont', 'icomoon'],
 
             'JCE_UPLOAD_PATH_FRAGMENTS'      => ['/media/com_jce/editor/tiny_mce/plugins/filemanager/'],
             'JCE_UPLOAD_ALLOWED_EXTENSIONS'  => ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'zip', 'css', 'js', 'json', 'html', 'htm'],

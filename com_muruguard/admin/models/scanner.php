@@ -845,8 +845,11 @@ class MuruguardModelScanner extends BaseDatabaseModel
          */
         if ($type === 'iconfont') {
 
-            // Ignore official IcoFont
-            if ($name !== 'icofont') {
+            // Ignore known-legitimate iconfont names (see
+            // KNOWN_GOOD_ICONFONT_NAMES's docblock for why this is only
+            // a secondary signal, not a substitute for the content checks
+            // above).
+            if (!in_array($name, $sig['KNOWN_GOOD_ICONFONT_NAMES'], true)) {
 
                 $reasons[] = 'Non-default iconfont';
 
