@@ -957,6 +957,8 @@ $deletableFindings = array_filter($fileFindings, fn($f) => !$notDeletable($f));
 $deletableCount = count($deletableFindings);
 $deletableHigh = count(array_filter($deletableFindings, fn($f) => $f['confidence'] === 'high'));
 $deletableMed  = $deletableCount - $deletableHigh;
+$htaccessChecks = $this->htaccess['checks'] ?? [];
+$htaccessCriticalMissing = count(array_filter($htaccessChecks, fn($c) => $c['category'] === 'critical' && !$c['present']));
 $tabs = [
     ['id' => 'files',      'emoji' => '📁', 'title' => Text::_('COM_MURUGUARD_LABEL_SUSPICIOUS_FILES'), 'count' => $deletableCount],
     ['id' => 'cleanable',  'emoji' => '🧹', 'title' => Text::_('COM_MURUGUARD_TAB_CLEANABLE_FILES'),     'count' => $cleanableCount],
@@ -964,6 +966,7 @@ $tabs = [
     ['id' => 'menu',       'emoji' => '🔗', 'title' => Text::_('COM_MURUGUARD_TAB_MENU_XSS'),            'count' => $menuCount],
     ['id' => 'assets',     'emoji' => '🗄', 'title' => Text::_('COM_MURUGUARD_TAB_SPPB_ASSETS'),         'count' => $assetCount],
     ['id' => 'template',   'emoji' => '🖼', 'title' => Text::_('COM_MURUGUARD_TAB_DEFACEMENT'),          'count' => $deface],
+    ['id' => 'htaccess',   'emoji' => '🛡', 'title' => Text::_('COM_MURUGUARD_TAB_HTACCESS'),            'count' => $htaccessCriticalMissing],
 ];
 // Open on the first tab that has findings; otherwise the first tab.
 $activeTab = $tabs[0]['id'];
@@ -1479,6 +1482,54 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
     </<?= $tag ?>>
     <p class="text-xs text-gray-400"><?= Text::_('COM_MURUGUARD_DEFACEMENT_NOTE') ?></p>
 <?php endif; ?>
+<?php muru_section_close(); ?>
+
+<!-- ── 6. .htaccess Hardening (advisory, read-only) ────────────── -->
+<?php muru_section_open('sec-htaccess', '🛡', Text::_('COM_MURUGUARD_TAB_HTACCESS'), $htaccessCriticalMissing); ?>
+<div class="flex items-center gap-3 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3 mb-4 text-xs text-indigo-800">
+    <span class="text-lg flex-shrink-0">ℹ️</span>
+    <span><?= Text::_('COM_MURUGUARD_HTACCESS_INFO') ?></span>
+</div>
+<?php if (!$this->htaccess['exists']): ?>
+    <div class="flex items-center gap-3 text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-[10px] mb-4">
+        <span class="text-2xl">⚠️</span>
+        <span class="font-medium"><?= Text::sprintf('COM_MURUGUARD_HTACCESS_MISSING_FILE', htmlspecialchars($this->htaccess['path'])) ?></span>
+    </div>
+<?php endif; ?>
+<?php
+$htaccessCategoryLabels = [
+    'critical' => Text::_('COM_MURUGUARD_HTACCESS_CATEGORY_CRITICAL'),
+    'header'   => Text::_('COM_MURUGUARD_HTACCESS_CATEGORY_HEADER'),
+];
+$htaccessByCategory = ['critical' => [], 'header' => []];
+foreach ($htaccessChecks as $c) { $htaccessByCategory[$c['category']][] = $c; }
+?>
+<?php foreach ($htaccessByCategory as $cat => $items): if (empty($items)) continue; ?>
+    <h4 class="font-bold text-gray-700 mb-3 mt-2"><?= $htaccessCategoryLabels[$cat] ?></h4>
+    <div class="space-y-2 mb-5">
+        <?php foreach ($items as $c): ?>
+            <details class="<?= $c['present'] ? 'bg-green-50 border-green-100' : 'bg-amber-50 border-amber-100' ?> border rounded-xl overflow-hidden">
+                <summary class="cursor-pointer px-4 py-3 flex items-center justify-between hover:bg-black/5">
+                    <div class="flex items-center gap-3">
+                        <span><?= $c['present'] ? '✅' : '⚠️' ?></span>
+                        <span class="font-bold text-sm text-gray-800"><?= htmlspecialchars($c['label']) ?></span>
+                    </div>
+                    <span class="text-xs font-semibold <?= $c['present'] ? 'text-green-700' : 'text-amber-700' ?>">
+                        <?= $c['present'] ? Text::_('COM_MURUGUARD_HTACCESS_PRESENT') : Text::_('COM_MURUGUARD_HTACCESS_MISSING') ?>
+                    </span>
+                </summary>
+                <div class="border-t <?= $c['present'] ? 'border-green-100' : 'border-amber-100' ?> p-4">
+                    <p class="text-xs text-gray-600 mb-3"><?= htmlspecialchars($c['explanation']) ?></p>
+                    <?php if (!$c['present']): ?>
+                        <p class="text-xs font-semibold text-gray-500 mb-1"><?= Text::_('COM_MURUGUARD_HTACCESS_SUGGESTED_RULE') ?></p>
+                        <pre class="text-xs bg-gray-900 text-gray-100 rounded-lg p-3 overflow-x-auto"><?= htmlspecialchars($c['suggestion']) ?></pre>
+                    <?php endif; ?>
+                </div>
+            </details>
+        <?php endforeach; ?>
+    </div>
+<?php endforeach; ?>
+<p class="text-xs text-gray-400"><?= Text::sprintf('COM_MURUGUARD_HTACCESS_NOTE', htmlspecialchars($this->htaccess['path'])) ?></p>
 <?php muru_section_close(); ?>
 
 <?php endif; // end $this->scanned ?>

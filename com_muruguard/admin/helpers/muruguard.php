@@ -14,6 +14,7 @@ defined('_JEXEC') or die;
 
 use Joomla\CMS\Factory;
 use Joomla\CMS\Language\Text;
+use Joomla\CMS\Uri\Uri;
 
 class MuruguardHelper
 {
@@ -1907,5 +1908,142 @@ class MuruguardHelper
 
         if (!$changed) return ['cleaned' => $paramsJson, 'changed' => false];
         return ['cleaned' => json_encode($decoded, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), 'changed' => true];
+    }
+
+    /**
+     * Read-only .htaccess hardening advisor -- reads the site's actual
+     * root .htaccess (if any) and checks it against a fixed set of
+     * recommended directives, most directly relevant to what this
+     * scanner exists to catch: PHP execution inside writable upload-style
+     * directories is exactly how a dropped webshell gets run in the
+     * first place, so blocking it at the web-server level is a strong,
+     * independent layer even if a malicious file is never cleaned up.
+     * Deliberately NEVER writes to .htaccess itself -- this only reports
+     * what's missing and shows the suggested rule text for the admin to
+     * add by hand, since a wrong edit to this specific file can 500 the
+     * entire site and there's no reliable way to test a rewrite rule
+     * server-side before it's live.
+     *
+     * Each check's regex is intentionally loose (matches the INTENT of a
+     * directive, not one exact phrasing) to avoid a false "missing"
+     * result against a site that already has equivalent protection
+     * worded differently -- a false negative here just means a
+     * redundant suggestion, which is far less harmful than repeatedly
+     * telling an admin who already handled something that they haven't.
+     *
+     * @return array{
+     *   exists: bool,
+     *   path: string,
+     *   checks: list<array{id:string,category:string,severity:string,label:string,present:bool,explanation:string,suggestion:string}>
+     * }
+     */
+    public static function getHtaccessSuggestions(string $root): array
+    {
+        $path = $root . '/.htaccess';
+        $exists = is_file($path);
+        $contents = $exists ? (string) @file_get_contents($path) : '';
+
+        $has = function (string $re) use ($contents): bool {
+            return (bool) preg_match($re, $contents);
+        };
+
+        $checks = [];
+
+        // 1. PHP/executable execution blocked inside writable upload-style
+        // directories -- the single most directly relevant check this
+        // tool can make: every real webshell drop this scanner detects
+        // still runs the moment it's requested unless the server itself
+        // refuses to execute PHP there.
+        $blocksExecution = $has('/RewriteRule[^\n]*\[[^\]]*F[^\]]*\]/i')
+            || $has('/<FilesMatch[^>]*php[^>]*>\s*(?:\r?\n)+\s*(?:Require\s+all\s+denied|Deny\s+from\s+all)/is');
+        $mentionsUploadDir = $has('/\b(media|images|uploads|tmp|cache)\b/i');
+        $checks[] = [
+            'id' => 'block_php_in_uploads',
+            'category' => 'critical',
+            'severity' => 'high',
+            'label' => 'Block PHP execution inside upload/writable directories',
+            'present' => $blocksExecution && $mentionsUploadDir,
+            'explanation' => 'A webshell dropped into a normally-writable folder (media, images, uploads, tmp, cache, ...) still runs the moment it\'s requested unless Apache itself refuses to execute PHP there -- this blocks it at the server level even before this scanner ever gets a chance to find and remove the file.',
+            'suggestion' => "<IfModule mod_rewrite.c>\n    RewriteEngine On\n    RewriteCond %{REQUEST_URI} ^/(media|images|uploads|tmp|cache|files)/ [NC]\n    RewriteCond %{REQUEST_URI} \\.(php|phtml|phar|php[0-9]|pht)\$ [NC]\n    RewriteRule .* - [F,L]\n</IfModule>",
+        ];
+
+        // 2. Directory listing disabled.
+        $checks[] = [
+            'id' => 'disable_indexes',
+            'category' => 'critical',
+            'severity' => 'medium',
+            'label' => 'Disable directory listing',
+            'present' => $has('/Options\s+[^\n]*-Indexes/i') || $has('/IndexIgnore\s+\*/i'),
+            'explanation' => 'Without this, browsing directly to a folder with no index file (e.g. an upload directory) lists every file in it -- handing an attacker a directory of exactly what to try requesting, and revealing dropped files that were otherwise hidden.',
+            'suggestion' => "Options -Indexes",
+        ];
+
+        // 3. Sensitive files/dotfiles blocked from direct web access --
+        // .env, .git internals, composer manifests, and backup/log files
+        // can leak credentials or source layout if requested directly.
+        $checks[] = [
+            'id' => 'block_sensitive_files',
+            'category' => 'critical',
+            'severity' => 'medium',
+            'label' => 'Block direct access to sensitive/dotfiles',
+            'present' => $has('/<FilesMatch[^>]*\\\\\.(?:env|git|bak|sql)[^>]*>/i') || $has('/RewriteRule[^\n]*\\\\.(?:env|git)/i'),
+            'explanation' => 'A .env file, .git directory, composer.lock, or a stray .sql/.bak backup sitting in the webroot can leak database credentials or the exact software versions in use if it\'s ever requested directly -- none of this is meant to be served over HTTP at all.',
+            'suggestion' => "<FilesMatch \"(?i)(\\.env|\\.git.*|composer\\.(json|lock)|.*\\.sql|.*\\.bak)\$\">\n    Require all denied\n</FilesMatch>",
+        ];
+
+        // 4. X-Content-Type-Options.
+        $checks[] = [
+            'id' => 'header_nosniff',
+            'category' => 'header',
+            'severity' => 'low',
+            'label' => 'X-Content-Type-Options: nosniff',
+            'present' => $has('/X-Content-Type-Options/i'),
+            'explanation' => 'Stops browsers from guessing ("sniffing") a file\'s type from its content instead of trusting the server\'s declared Content-Type -- closes off one way a maliciously-crafted upload can be tricked into executing as something other than what it was uploaded as.',
+            'suggestion' => "<IfModule mod_headers.c>\n    Header always set X-Content-Type-Options \"nosniff\"\n</IfModule>",
+        ];
+
+        // 5. Permissions-Policy.
+        $checks[] = [
+            'id' => 'header_permissions_policy',
+            'category' => 'header',
+            'severity' => 'low',
+            'label' => 'Permissions-Policy (restrictive baseline)',
+            'present' => $has('/Permissions-Policy/i'),
+            'explanation' => 'Disables browser features (camera, microphone, geolocation, payment, ...) this site has no legitimate reason to use, so an injected script can\'t invoke them even if one ever makes it onto the page.',
+            'suggestion' => "<IfModule mod_headers.c>\n    Header always set Permissions-Policy \"geolocation=(), microphone=(), camera=(), payment=()\"\n</IfModule>",
+        ];
+
+        // 6. HSTS -- only actually meaningful (and safe to suggest) once
+        // the site is already serving over HTTPS; suggesting it on a
+        // plain-HTTP site would be premature and confusing.
+        $isHttps = Uri::getInstance()->isSsl();
+        $checks[] = [
+            'id' => 'header_hsts',
+            'category' => 'header',
+            'severity' => 'low',
+            'label' => 'Strict-Transport-Security (HSTS)',
+            'present' => !$isHttps || $has('/Strict-Transport-Security/i'),
+            'explanation' => $isHttps
+                ? 'Tells browsers to always use HTTPS for this domain from now on, even if a user types or clicks a plain http:// link -- closes the window an attacker gets from a single unencrypted request.'
+                : 'Not applicable yet -- this site isn\'t currently being served over HTTPS. Set up SSL first; adding this header before then would have no effect.',
+            'suggestion' => "<IfModule mod_headers.c>\n    Header always set Strict-Transport-Security \"max-age=31536000; includeSubDomains\" env=HTTPS\n</IfModule>",
+        ];
+
+        // 7. CSP -- deliberately advisory-only with a strong caveat: a
+        // misconfigured Content-Security-Policy can break legitimate site
+        // functionality (many Joomla extensions rely on inline scripts),
+        // so this is never treated as a "problem" the way the checks
+        // above are, only offered as an optional next step.
+        $checks[] = [
+            'id' => 'header_csp',
+            'category' => 'header',
+            'severity' => 'info',
+            'label' => 'Content-Security-Policy (advisory -- test before enabling)',
+            'present' => $has('/Content-Security-Policy/i'),
+            'explanation' => 'Restricts which sources scripts/styles/etc. can load from, meaningfully raising the bar against injected/XSS content actually executing. Test thoroughly before enabling on a live site -- an overly strict policy can silently break legitimate extension or template functionality, and \'unsafe-inline\'/\'unsafe-eval\' (often required for older Joomla extensions to keep working) meaningfully weakens the protection this header is meant to provide.',
+            'suggestion' => "<IfModule mod_headers.c>\n    Header always set Content-Security-Policy \"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';\"\n</IfModule>",
+        ];
+
+        return ['exists' => $exists, 'path' => $path, 'checks' => $checks];
     }
 }

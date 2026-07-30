@@ -41,6 +41,7 @@ class MuruguardViewScanner extends HtmlView
     public $shieldPluginActive = false;
     public $attackLog = [];
     public ?array $registeredTemplates = null;
+    public array $htaccess = [];
 
     public function display($tpl = null)
     {
@@ -62,6 +63,11 @@ class MuruguardViewScanner extends HtmlView
 
         // Show SPPB version warning
         $this->sppbWarning = $model->getSppbVersionWarning();
+
+        // .htaccess hardening advisor -- read-only, cheap (one file read +
+        // a handful of regexes), so it's always available regardless of
+        // whether a scan has been run yet.
+        $this->htaccess = MuruguardHelper::getHtaccessSuggestions(JPATH_ROOT);
 
         // Directory-picker definitions + the user's last selection.
         $this->scanAreas     = MuruguardHelper::getScanAreas();
