@@ -88,20 +88,23 @@ class com_muruguardInstallerScript
      * Components that DO show one there (SP Page Builder's own Settings/
      * Pages/... submenu is the example this was modelled on) have
      * multiple #__menu rows sharing that same parent_id. This adds
-     * "Settings" and "Support" as children of the auto-created "MuRu
-     * Guard" item -- its own link already goes straight to the
-     * dashboard/overview, so no separate "Dashboard" child is needed,
-     * matching how clicking the parent item itself (not just its arrow)
-     * still navigates there.
+     * "Dashboard", "Settings", and "Support" as children of the auto-
+     * created "MuRu Guard" item -- Dashboard is listed explicitly (not
+     * left implicit via the parent's own link) since that's what's
+     * actually expected here, matching every other multi-item Joomla
+     * admin submenu.
      *
      * Uses Joomla's own Table\Menu class -- #__menu is a nested-set tree
      * (lft/rgt columns shared by EVERY admin menu item on the whole
      * site, not just this component's), so raw INSERT statements risk
      * corrupting that tree for every other menu item too; setLocation()
-     * + store() is the safe, official way to insert into it. Idempotent
-     * (checks for existing children first) so repeated updates don't
-     * duplicate these rows, and never touches any menu item other than
-     * this component's own children.
+     * + store() is the safe, official way to insert into it. Idempotency
+     * is checked PER ITEM (by exact link, not just "does the parent have
+     * any children at all") so a later update can add a newly-introduced
+     * item -- like Dashboard here, added after some sites already had
+     * Settings/Support from an earlier release -- without duplicating
+     * rows that already exist, and never touches any menu item other
+     * than this component's own children.
      */
     protected function addAdminSubmenuItems(): void
     {
@@ -119,24 +122,27 @@ class com_muruguardInstallerScript
                 return; // Manifest <menu> item not created yet -- nothing to attach children to.
             }
 
-            $countQuery = $db->getQuery(true)
-                ->select('COUNT(*)')
-                ->from($db->quoteName('#__menu'))
-                ->where($db->quoteName('parent_id') . ' = ' . (int) $parentMenu->id);
-            $db->setQuery($countQuery);
-            if ((int) $db->loadResult() > 0) {
-                return; // Already set up (or a site owner customised it) -- never touch it again.
-            }
-
             $children = [
-                ['title' => 'Settings', 'link' => 'index.php?option=com_muruguard&view_panel=settings'],
-                ['title' => 'Support',  'link' => 'index.php?option=com_muruguard&view_panel=support'],
+                ['title' => 'Dashboard', 'link' => 'index.php?option=com_muruguard&view_panel=dashboard', 'position' => 'first-child'],
+                ['title' => 'Settings',  'link' => 'index.php?option=com_muruguard&view_panel=settings',  'position' => 'last-child'],
+                ['title' => 'Support',   'link' => 'index.php?option=com_muruguard&view_panel=support',   'position' => 'last-child'],
             ];
 
+            $anyCreated = false;
             foreach ($children as $child) {
+                $existsQuery = $db->getQuery(true)
+                    ->select('COUNT(*)')
+                    ->from($db->quoteName('#__menu'))
+                    ->where($db->quoteName('parent_id') . ' = ' . (int) $parentMenu->id)
+                    ->where($db->quoteName('link') . ' = ' . $db->quote($child['link']));
+                $db->setQuery($existsQuery);
+                if ((int) $db->loadResult() > 0) {
+                    continue; // This specific item already exists -- leave it alone.
+                }
+
                 /** @var \Joomla\CMS\Table\Menu $table */
                 $table = Table::getInstance('Menu');
-                $table->setLocation((int) $parentMenu->id, 'last-child');
+                $table->setLocation((int) $parentMenu->id, $child['position']);
                 $table->menutype     = (string) $parentMenu->menutype;
                 $table->title        = $child['title'];
                 $table->alias        = $child['title'];
@@ -156,13 +162,16 @@ class com_muruguardInstallerScript
 
                 if ($table->check()) {
                     $table->store();
+                    $anyCreated = true;
                 }
             }
 
-            // Recalculates lft/rgt for the whole tree from parent_id
-            // relationships -- the safe way to guarantee a consistent
-            // nested set after inserting new nodes via setLocation().
-            Table::getInstance('Menu')->rebuild();
+            if ($anyCreated) {
+                // Recalculates lft/rgt for the whole tree from parent_id
+                // relationships -- the safe way to guarantee a consistent
+                // nested set after inserting new nodes via setLocation().
+                Table::getInstance('Menu')->rebuild();
+            }
         } catch (\Throwable $e) {
             // Never let this block the install/update itself -- worst
             // case, the submenu just doesn't appear and the component is

@@ -8,6 +8,12 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Unreleased]
 
+## [2.6.3] - 2026-07-30
+
+### Fixed
+
+- **The 2.6.2 admin submenu was missing an explicit "Dashboard"/"Overview" item** -- confirmed working (arrow icon, expandable, Settings + Support both present) via the site's own rendered HTML, but Dashboard was deliberately left out on the assumption that clicking the parent "MuRu Guard" item itself was enough; that's not what's actually expected here. Added as a third child, positioned first. Idempotency is now checked PER ITEM (by exact link) rather than "does the parent already have any children at all" -- sites that already got Settings/Support from 2.6.2 will only have the new Dashboard item added on their next update, not duplicate rows for the two that already exist.
+
 ## [2.6.2] - 2026-07-30
 
 ### Fixed
