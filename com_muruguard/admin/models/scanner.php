@@ -541,11 +541,6 @@ class MuruguardModelScanner extends BaseDatabaseModel
                             $flagged = true;
                             $reasons[] = "Executable file (.$ext) inside an upload directory — these should never contain runnable code.";
                         }
-                        if (!$isKnownSafeEntry) {
-                            foreach ($sig['SUSPICIOUS_FILENAME_REGEXES'] as $re) {
-                                if (preg_match($re, $basename)) { $flagged = true; $reasons[] = 'Filename matches known malicious pattern.'; break; }
-                            }
-                        }
                         if ($basename === '.htaccess') {
                             $contents = @file_get_contents($path, false, null, 0, 4096);
                             if ($contents !== false
@@ -571,6 +566,27 @@ class MuruguardModelScanner extends BaseDatabaseModel
                         if (!empty($reasons)) {
                             $flagged = true;
                         }
+                    }
+                }
+
+                // known-malicious filename pattern (location-independent, runs both modes --
+                // malware doesn't respect the upload-vs-code folder distinction)
+                if (!$isDir && !$isKnownSafeEntry) {
+                    foreach ($sig['SUSPICIOUS_FILENAME_REGEXES'] as $re) {
+                        if (preg_match($re, $basename)) { $flagged = true; $reasons[] = 'Filename matches known malicious pattern.'; break; }
+                    }
+                }
+
+                // .htaccess rewriting a non-PHP extension to execute as PHP
+                // (location-independent, runs both modes) -- confirmed real
+                // backdoor technique: pairs with a *.php.json-style dropped
+                // file (see SUSPICIOUS_FILENAME_REGEXES above) to defeat any
+                // filter that only blocks the .php extension itself.
+                if (!$isDir && !$isKnownSafeEntry && $basename === '.htaccess') {
+                    $htaccessContents = @file_get_contents($path, false, null, 0, 8192);
+                    if ($htaccessContents !== false) {
+                        $handlerHijack = MuruguardHelper::checkMaliciousHtaccessHandler($htaccessContents);
+                        if ($handlerHijack !== null) { $flagged = true; $reasons[] = $handlerHijack; }
                     }
                 }
 
@@ -656,6 +672,9 @@ class MuruguardModelScanner extends BaseDatabaseModel
 
             $masqRoot = MuruguardHelper::checkCoreMasquerade($relCheck, false, $sig, $p);
             if ($masqRoot !== null) { $flaggedRoot = true; $reasonsRoot[] = $masqRoot; }
+
+            $dotfileRoot = MuruguardHelper::checkRootLevelDotfile($it);
+            if ($dotfileRoot !== null) { $flaggedRoot = true; $reasonsRoot[] = $dotfileRoot; }
 
             $extR = strtolower(pathinfo($p, PATHINFO_EXTENSION));
             MuruguardHelper::scanFileContent($p, $extR, $sig, $maxSize, $reasonsRoot);

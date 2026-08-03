@@ -117,6 +117,15 @@ class MuruguardHelper
                 '/\.php\.gif$/i',
                 '/\.xml\.php$/i',
                 '/^x\.xml$/i',
+                '/^filefuns\.php$/i',
+                '/^elp\.php$/i',
+                // Confirmed in a real backdoor sample: a webshell renamed
+                // to double-extension .php.json (sometimes stacked twice,
+                // .php.json.json) to slip past any filter that only blocks
+                // .php, paired with a .htaccess that rewrites .json to
+                // execute as PHP anyway (see checkMaliciousHtaccessHandler()).
+                // No legitimate file is ever named this way -- always malicious.
+                '/\.php(?:\.json)+$/i',
             ],
 
             'ROOT_SUSPICIOUS_FILENAME_REGEXES' => [
@@ -159,8 +168,8 @@ class MuruguardHelper
                     'severity' => 'high', 'why' => 'Runs attacker-supplied request data as an OS shell command via shell_exec() — direct remote command execution.'],
                 'xss_report_payload' => ['re' => '/xss\.report|_hu_inject/i',
                     'severity' => 'high', 'why' => 'Matches the known xss.report / _hu_inject marker used by the Helix Ultimate mega-menu XSS campaign tied to this SPPB compromise.'],
-                'webshell_generic'   => ['re' => '/FilesMan|c99shell|r57shell|WSO\s*Web\s*Shell/i',
-                    'severity' => 'high', 'why' => 'Matches the signature banner of a well-known, widely-distributed PHP webshell kit.'],
+                'webshell_generic'   => ['re' => '/FilesMan|c99shell|r57shell|WSO\s*Web\s*Shell|H3K\s*\|\s*Tiny\s*File\s*Manager/i',
+                    'severity' => 'high', 'why' => 'Matches the signature banner of a well-known, widely-distributed PHP webshell kit -- including "H3K | Tiny File Manager", a full filesystem-access file-manager backdoor commonly dropped to give an attacker browse/edit/upload/delete access to the entire site through a browser.'],
                 'self_replicating_dropper' => ['re' => '/glob\s*\(.{0,40}GLOB_ONLYDIR.{0,200}?file_put_contents\s*\(.{0,400}?md5\s*\(\s*\$\w+\s*\)\s*==\s*md5\s*\(\s*file_get_contents/is',
                     'severity' => 'high', 'why' => 'Walks directories and rewrites files only when their content differs from a reference copy — a self-replicating/self-healing dropper pattern, not something legitimate code does.'],
                 'noop_comment_padding' => ['re' => '/(;\s*\/\*\s*\w{3,12}\s*\*\/\s*;\s*){8,}/i',
@@ -1410,6 +1419,66 @@ class MuruguardHelper
         return null;
     }
 
+    /**
+     * Detects the ".htaccess makes a non-PHP extension execute as PHP"
+     * technique -- confirmed in a real backdoor sample:
+     *   <FilesMatch "\.json$">
+     *   SetHandler application/x-httpd-php
+     *   </FilesMatch>
+     * paired with a webshell dropped as e.g. "shell.php.json" (see the
+     * \.php\.json$ entry in SUSPICIOUS_FILENAME_REGEXES) -- this makes
+     * Apache execute it as PHP despite the .json extension, defeating any
+     * filter/scanner that only blocks the literal ".php" extension.
+     * Deliberately requires BOTH a php-execution handler directive AND a
+     * <FilesMatch> targeting a NON-php extension in the same file --
+     * `<FilesMatch "\.php$"> SetHandler application/x-httpd-php
+     * </FilesMatch>` is a completely ordinary, common directive on shared
+     * hosting (it's how PHP itself often gets enabled for .php files) and
+     * must never be flagged.
+     */
+    public static function checkMaliciousHtaccessHandler(string $content): ?string
+    {
+        $hasPhpHandler = (bool) preg_match(
+            '/(?:SetHandler|AddHandler|AddType)\s+["\']?application\/x-httpd-php\d*["\']?/i',
+            $content
+        );
+        if (!$hasPhpHandler) {
+            return null;
+        }
+
+        if (preg_match('/<FilesMatch\s+["\']?\\\\?\.(?!php\b)[a-z0-9]+\$?["\']?\s*>/i', $content, $m)) {
+            return "Contains a directive that executes a non-PHP file extension as PHP ({$m[0]} combined with a PHP execution handler) — the exact technique used to run a dropped webshell despite a disguised extension (e.g. \".json\"), defeating any filter that only blocks \".php\" files directly.";
+        }
+
+        return null;
+    }
+
+    /**
+     * ".profile" is a Unix shell-startup dotfile (bash/sh reads it from a
+     * user's home directory) -- it has no meaning to Joomla or to a web
+     * server request at all, and a clean Joomla install never creates one.
+     * On shared hosting, the account's actual home directory and its
+     * public webroot are normally two different locations, so a
+     * legitimate shell ".profile" wouldn't even be reachable this way in
+     * the first place. Its presence directly in the webroot is a known
+     * technique for hiding a backdoor behind an filename that looks like
+     * routine account configuration rather than site content, and that
+     * many admins/scanners overlook precisely because it's a dotfile.
+     * Flagged purely on being present at the webroot root, independent of
+     * whatever its content turns out to be (which is also now scanned --
+     * see the 'profile' entry added to scanFileContent()'s text-like
+     * extensions -- for a more specific reason when it matches a known
+     * pattern).
+     */
+    public static function checkRootLevelDotfile(string $basename): ?string
+    {
+        if (strtolower($basename) !== '.profile') {
+            return null;
+        }
+
+        return 'A ".profile" file exists directly in the Joomla webroot. This is a Unix shell-startup dotfile that has no legitimate reason to be there — Joomla never creates one, and a real account ".profile" lives in the hosting account\'s home directory, not the public webroot. Commonly used to hide a backdoor behind an unassuming, easily-overlooked dotfile name.';
+    }
+
     /** Per-request cache for findPluginManifestElement() below, keyed by plugin folder absolute path. */
     private static array $pluginManifestElementCache = [];
 
@@ -2138,7 +2207,13 @@ class MuruguardHelper
     public static function scanFileContent(string $path, string $ext, array $sig, int $maxSize, array &$reasons): bool
     {
         if (!is_file($path) || @filesize($path) === false || @filesize($path) > $maxSize) return false;
-        $textLikeExts = ['php', 'phtml', 'php3', 'php4', 'php5', 'php7', 'phar', 'pht', 'js', 'html', 'htm', 'txt', 'css', 'xml', 'gif', 'png', 'jpg', 'jpeg'];
+        // 'profile' and 'htaccess' aren't real extensions -- PHP's
+        // pathinfo() treats everything after the leading dot in a bare
+        // dotfile name (.profile, .htaccess) as its "extension" since
+        // there's no second dot to split on. Included here so a .profile
+        // dropped as a disguised backdoor (see checkRootLevelDotfile())
+        // actually gets its content inspected, not silently skipped.
+        $textLikeExts = ['php', 'phtml', 'php3', 'php4', 'php5', 'php7', 'phar', 'pht', 'js', 'html', 'htm', 'txt', 'css', 'xml', 'gif', 'png', 'jpg', 'jpeg', 'profile', 'htaccess'];
         if (!in_array($ext, $textLikeExts, true) && $ext !== '') return false;
         $contents = @file_get_contents($path);
         if ($contents === false || $contents === '') return false;

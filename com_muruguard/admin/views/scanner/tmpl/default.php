@@ -1323,7 +1323,8 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
         <td class="px-4 py-3">
             <?php if ($showCheckbox): ?>
             <input type="checkbox" class="muru-file-chk w-4 h-4 rounded border-gray-300"
-                   name="targets[]" value="<?= htmlspecialchars($f['rel']) ?>">
+                   name="targets[]" value="<?= htmlspecialchars($f['rel']) ?>"
+                   data-confidence="<?= htmlspecialchars($f['confidence']) ?>">
             <?php endif; ?>
         </td>
         <td class="px-4 py-3">
@@ -1391,11 +1392,18 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
           onsubmit="return confirm('<?= Text::_('COM_MURUGUARD_CONFIRM_DELETE_FILES') ?>');"<?php endif; ?>>
         <div class="flex items-center justify-between mb-3">
             <?php if ($this->canDelete): ?>
-            <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
-                <input type="checkbox" class="w-4 h-4 rounded border-gray-300"
-                       onclick="document.querySelectorAll('#muru-files-form .muru-file-chk').forEach(c=>c.checked=this.checked)">
-                <?= Text::_('COM_MURUGUARD_SELECT_ALL') ?>
-            </label>
+            <div class="flex items-center gap-3">
+                <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                    <input type="checkbox" id="muru-files-select-all" class="w-4 h-4 rounded border-gray-300"
+                           onclick="document.querySelectorAll('#muru-files-form .muru-file-chk').forEach(c=>c.checked=this.checked)">
+                    <?= Text::_('COM_MURUGUARD_SELECT_ALL') ?>
+                </label>
+                <button type="button"
+                        class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-red-700 bg-red-50 hover:bg-red-100 border border-red-100 transition-colors"
+                        onclick="document.querySelectorAll('#muru-files-form .muru-file-chk').forEach(function(c){c.checked = c.getAttribute('data-confidence') === 'high';}); document.getElementById('muru-files-select-all').checked = false;">
+                    🔴 <?= Text::_('COM_MURUGUARD_SELECT_HIGH_ONLY') ?>
+                </button>
+            </div>
             <?php else: ?>
             <span></span>
             <?php endif; ?>

@@ -8,6 +8,16 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Unreleased]
 
+## [2.7.2] - 2026-08-03
+
+### Added
+
+- **Detects a `.profile` file dropped directly in the Joomla webroot.** `.profile` is a Unix shell-startup dotfile with no legitimate reason to exist there -- Joomla never creates one, and a real account `.profile` lives in the hosting account's home directory, not the public webroot -- making it an easy way to hide a backdoor behind a filename that looks like routine account configuration rather than site content. Flagged on presence alone, regardless of content. Also fixed the same underlying gap `.htaccess` had: `.profile`'s (and `.htaccess`'s) actual content is now scanned against the normal content signatures too, instead of being silently skipped -- both were falling through `scanFileContent()`'s text-file check because PHP's `pathinfo()` treats everything after a leading dot in a bare dotfile name as its "extension" ("profile"/"htaccess"), neither of which was in the scanned-extensions list.
+- **New known-malicious filename signatures**: `filefuns.php`, `elp.php`, and `*.php.json` (including stacked `*.php.json.json`) -- the latter confirmed against real backdoor samples using a double-extension trick to slip past filters that only block `.php`. These filename checks (along with the existing ones) now also run across `components/`, `modules/`, `plugins/`, `libraries/`, and `templates/`, not just upload folders -- malware doesn't respect that distinction.
+- **Detects a `.htaccess` rewriting a non-PHP extension to execute as PHP** (e.g. `<FilesMatch "\.json$"> SetHandler application/x-httpd-php </FilesMatch>`), confirmed against a real backdoor sample -- the technique that makes the `*.php.json` trick above actually work. Carefully scoped to not flag the ordinary, common `<FilesMatch "\.php$"> ... SetHandler application/x-httpd-php` directive.
+- **New webshell signature**: `"H3K | Tiny File Manager"` banner -- a full filesystem-access file-manager backdoor.
+- **"High threat only" quick-select** button next to "Select all" in Suspicious Files & Folders, to select every High-confidence row in one click without hand-picking through a long list.
+
 ## [2.7.1] - 2026-07-30
 
 ### Fixed
