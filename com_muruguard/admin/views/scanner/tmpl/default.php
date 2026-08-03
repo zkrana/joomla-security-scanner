@@ -754,6 +754,9 @@ if ($w !== null && $w['safe'] !== true):
                 <div>
                     <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">📋 <?= Text::_('COM_MURUGUARD_PROTECTION_LOG_TITLE') ?></h3>
                     <p class="text-xs text-gray-500 mt-1 max-w-xl"><?= Text::_('COM_MURUGUARD_PROTECTION_LOG_DESC') ?></p>
+                    <?php if ($this->attackLogArchiveCount > 0): ?>
+                        <p class="text-xs text-gray-400 mt-1 flex items-center gap-1">🗄 <?= Text::sprintf('COM_MURUGUARD_PROTECTION_LOG_ARCHIVE_NOTE', number_format($this->attackLogArchiveCount)) ?></p>
+                    <?php endif; ?>
                 </div>
                 <?php if ($this->canAdmin && !empty($this->attackLog)): ?>
                 <form action="<?= Route::_('index.php?option=com_muruguard&task=scanner.clearattacklog') ?>" method="post" onsubmit="return confirm('<?= Text::_('COM_MURUGUARD_PROTECTION_LOG_CLEAR_CONFIRM') ?>');">
@@ -1055,7 +1058,7 @@ foreach ($htaccessChecks as $c) { $htaccessByCategory[$c['category']][] = $c; }
         <?php endif; ?>
         <?php if ($this->componentVersion !== ''): ?>
             <span class="text-gray-300">·</span>
-            <span class="absolute -top-[6px] top-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-[#EF89EB] text-gray-200" title="<?= Text::_('COM_MURUGUARD_VERSION_BADGE_TITLE') ?>">
+            <span class="absolute -!top-[6px] !left-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-[#EF89EB] text-black" title="<?= Text::_('COM_MURUGUARD_VERSION_BADGE_TITLE') ?>">
                 🛡️ v<?= htmlspecialchars($this->componentVersion) ?>
             </span>
         <?php endif; ?>

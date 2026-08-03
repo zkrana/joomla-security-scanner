@@ -1,12 +1,24 @@
 # This folder stores this component's own security-relevant scan data --
-# attack-log.json, ip-list.json, login-attempts.json, geoip-cache.json,
-# false-positives.json -- meant to be read only by this extension's own
-# PHP code (via JPATH_ADMINISTRATOR), never served directly over HTTP.
-# index.html alone (still present, kept for defence in depth on servers
-# that ignore this file) only stops directory LISTING; it does nothing
-# to stop a direct request for a known filename. Denies everything here
-# unconditionally, both the modern (Apache 2.4+) and legacy (2.2) syntax
-# so this works regardless of which the host is still running.
+# attack-log.php, ip-list.php, login-attempts.php, geoip-cache.php,
+# false-positives.php, scan-history.php -- meant to be read only by this
+# extension's own PHP code (via JPATH_ADMINISTRATOR), never served
+# directly over HTTP. index.html alone (still present, kept for defence
+# in depth on servers that ignore this file) only stops directory
+# LISTING; it does nothing to stop a direct request for a known filename.
+# Denies everything here unconditionally, both the modern (Apache 2.4+)
+# and legacy (2.2) syntax so this works regardless of which the host is
+# still running.
+#
+# IMPORTANT: this .htaccess is Apache-only. nginx, Caddy/FrankenPHP,
+# LiteSpeed running in its nginx-compatible mode, and IIS all ignore it
+# completely, and on those a plain .json file here would have been
+# readable, unauthenticated, by anyone who requested it directly. The
+# *.php extension and the executable PHP stub every one of these files
+# starts with (see MuruguardHelper::dataFileStubPrefix()) is the real,
+# server-agnostic protection -- requesting any of them directly executes
+# that stub and returns a plain 403, on literally any server capable of
+# running Joomla at all. This .htaccess is defence in depth on top of
+# that, not the primary protection.
 <IfModule mod_authz_core.c>
     Require all denied
 </IfModule>

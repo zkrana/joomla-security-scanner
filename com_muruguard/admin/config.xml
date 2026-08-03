@@ -151,6 +151,19 @@
             label="COM_MURUGUARD_CONFIG_SHIELD_BLOCKED_COUNTRIES_LABEL"
             description="COM_MURUGUARD_CONFIG_SHIELD_BLOCKED_COUNTRIES_DESC"
         />
+        <field
+            name="shield_trusted_proxy_header"
+            type="list"
+            default=""
+            label="COM_MURUGUARD_CONFIG_SHIELD_PROXY_HEADER_LABEL"
+            description="COM_MURUGUARD_CONFIG_SHIELD_PROXY_HEADER_DESC"
+        >
+            <option value="">COM_MURUGUARD_CONFIG_SHIELD_PROXY_HEADER_NONE</option>
+            <option value="HTTP_CF_CONNECTING_IP">CF-Connecting-IP (Cloudflare)</option>
+            <option value="HTTP_X_FORWARDED_FOR">X-Forwarded-For</option>
+            <option value="HTTP_X_REAL_IP">X-Real-IP</option>
+            <option value="HTTP_TRUE_CLIENT_IP">True-Client-IP</option>
+        </field>
     </fieldset>
     <!-- Without this fieldset, System > Global Configuration > MuRu Guard
          never shows a Permissions tab at all, no matter what access.xml

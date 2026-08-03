@@ -289,7 +289,9 @@ class MuruguardModelScanner extends BaseDatabaseModel
      */
     private function scanHistoryFilePath(): string
     {
-        return JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/scan-history.json';
+        $new = JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/scan-history.php';
+        MuruguardHelper::migrateLegacyDataFile(JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/scan-history.json', $new);
+        return $new;
     }
 
     /** Null means the scheduled check has never run on this site. For the Settings panel's "Last run" indicator. */
@@ -301,7 +303,7 @@ class MuruguardModelScanner extends BaseDatabaseModel
         $contents = @file_get_contents($path);
         if ($contents === false) return null;
 
-        $decoded = json_decode($contents, true);
+        $decoded = json_decode(MuruguardHelper::stripDataFileStub($contents), true);
         return is_array($decoded) && isset($decoded['saved_at']) ? (int) $decoded['saved_at'] : null;
     }
 
@@ -314,7 +316,7 @@ class MuruguardModelScanner extends BaseDatabaseModel
         $contents = @file_get_contents($path);
         if ($contents === false) return null;
 
-        $decoded = json_decode($contents, true);
+        $decoded = json_decode(MuruguardHelper::stripDataFileStub($contents), true);
         if (!is_array($decoded) || !isset($decoded['keys']) || !is_array($decoded['keys'])) return null;
         return $decoded['keys'];
     }
@@ -322,7 +324,7 @@ class MuruguardModelScanner extends BaseDatabaseModel
     private function saveLastScanKeys(array $keys): void
     {
         $path = $this->scanHistoryFilePath();
-        @file_put_contents($path, json_encode(['keys' => $keys, 'saved_at' => time()]));
+        @file_put_contents($path, MuruguardHelper::dataFileStubPrefix() . json_encode(['keys' => $keys, 'saved_at' => time()]));
     }
 
     /**

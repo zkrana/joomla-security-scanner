@@ -47,6 +47,7 @@ class MuruguardViewScanner extends HtmlView
     public $shieldBlockedCountries = '';
     public array $ipList = [];
     public array $falsePositives = [];
+    public int $attackLogArchiveCount = 0;
     public string $componentVersion = '';
     public string $activePanel = 'dashboard';
 
@@ -111,6 +112,7 @@ class MuruguardViewScanner extends HtmlView
         $this->shieldWindow          = (int) $cfgParams->get('shield_bruteforce_window', 15);
         $this->shieldPluginActive    = $model->isShieldPluginActive();
         $this->attackLog             = MuruguardHelper::getAttackLog();
+        $this->attackLogArchiveCount = MuruguardHelper::getAttackLogArchiveCount();
         $this->shieldBlockUserAgents = (bool) $cfgParams->get('shield_block_useragents', 0);
         $this->shieldBlockCountries  = (bool) $cfgParams->get('shield_block_countries', 0);
         $this->shieldBlockedCountries = (string) $cfgParams->get('shield_blocked_countries', '');

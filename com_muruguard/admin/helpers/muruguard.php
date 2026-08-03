@@ -584,6 +584,68 @@ class MuruguardHelper
     }
 
     /**
+     * Every data file this component owns (attack log, login attempts,
+     * false positives, IP list, geoip cache, scan history) is stored
+     * under helpers/data/ starting with this exact PHP stub. Requesting
+     * one of these files directly over HTTP executes the stub and gets a
+     * plain-text 403 -- nothing after it is ever reached. This is the
+     * only protection that's actually server-agnostic: the .htaccess
+     * that used to be this folder's sole protection is Apache-only (with
+     * mod_authz_core/mod_access_compat enabled and AllowOverride honoured
+     * for this path) and is silently ignored by nginx, Caddy/FrankenPHP,
+     * LiteSpeed running in its nginx-compatible mode, and IIS -- on any
+     * of those, the old *.json files were readable, unauthenticated, by
+     * anyone who knew (or guessed) the filename, leaking attacker IPs,
+     * failed-login usernames, every visitor IP ever geolocated, and the
+     * manual IP allow/block list. A .php file, in contrast, is executed
+     * by definition on every server capable of running Joomla at all --
+     * there is no server config this depends on getting right.
+     */
+    public static function dataFileStubPrefix(): string
+    {
+        return "<?php http_response_code(403); header('Content-Type: text/plain; charset=utf-8'); exit(\"Forbidden\\n\");\n?>\n";
+    }
+
+    /**
+     * Strips the leading PHP stub (see dataFileStubPrefix()) so the real
+     * payload after it can be decoded. A file with no recognizable stub
+     * (nothing written yet, or unexpected content) is returned unchanged
+     * rather than mangled.
+     */
+    public static function stripDataFileStub(string $contents): string
+    {
+        if (strpos($contents, '<?php') !== 0) return $contents;
+        $end = strpos($contents, '?>');
+        if ($end === false) return $contents;
+        return ltrim(substr($contents, $end + 2), "\r\n");
+    }
+
+    /**
+     * One-time upgrade migration: com_muruguard versions before this fix
+     * stored this same data as a plain, unprotected *.json file at
+     * $legacyPath. If that file still exists and the new stub-protected
+     * $newPath doesn't yet, its content is carried over (stub-prefixed)
+     * and the legacy file is deleted outright -- not just abandoned in
+     * place, since an abandoned copy would still be the exact same
+     * unauthenticated leak this fix exists to close. Safe to call on
+     * every read/write; it's a fast no-op once the legacy file is gone.
+     * Never throws -- a migration hiccup (e.g. unreadable/unwritable
+     * legacy file) just means the new file starts empty rather than
+     * losing the write that triggered this call.
+     */
+    public static function migrateLegacyDataFile(string $legacyPath, string $newPath): void
+    {
+        if (!is_file($legacyPath)) return;
+        if (!is_file($newPath)) {
+            $contents = @file_get_contents($legacyPath);
+            if ($contents !== false && trim($contents) !== '') {
+                @file_put_contents($newPath, self::dataFileStubPrefix() . $contents);
+            }
+        }
+        @unlink($legacyPath);
+    }
+
+    /**
      * Deliberately the same JSON-file-under-this-component's-own-data-
      * folder pattern as scan-history.json (see MuruguardModelScanner::
      * scanHistoryFilePath() for the full reasoning) -- and here it also
@@ -598,32 +660,99 @@ class MuruguardHelper
      */
     private static function attackLogFilePath(): string
     {
-        return JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/attack-log.json';
+        $new = JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/attack-log.php';
+        self::migrateLegacyDataFile(JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/attack-log.json', $new);
+        return $new;
     }
 
-    /** Newest first, capped at 500 entries so the file stays small and fast to read regardless of traffic volume. */
+    private static function attackLogArchiveFilePath(): string
+    {
+        return JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/attack-log-archive.php';
+    }
+
+    /**
+     * Appends entries evicted from the live 500-entry ring buffer here
+     * instead of discarding them outright. Without this, an attacker who
+     * knows (or guesses) how this log works could erase all trace of
+     * their own intrusion by simply sending ~500 more requests afterward
+     * -- ageing their own attack entries out of the only copy that ever
+     * existed, a handful of cheap requests to destroy the exact evidence
+     * this log exists to preserve. Capped at a much higher ceiling
+     * (20,000, oldest-evicted-for-real beyond that) so this can't grow
+     * completely unbounded under a truly sustained flood, but raises the
+     * cost of "erase the evidence" by 40x over the live log alone. Same
+     * stub-protected format and flock()-guarded write as every other data
+     * file here; called with the live log's own lock already released, so
+     * this never holds two file locks at once.
+     */
+    private static function archiveAttackLogEntries(array $evicted): void
+    {
+        if (empty($evicted)) return;
+
+        $path = self::attackLogArchiveFilePath();
+        $fh = @fopen($path, 'c+');
+        if ($fh === false) return;
+
+        if (@flock($fh, LOCK_EX)) {
+            $size = filesize($path) ?: 0;
+            $contents = $size > 0 ? self::stripDataFileStub(fread($fh, $size)) : '';
+            $archive = json_decode($contents, true);
+            if (!is_array($archive)) $archive = [];
+
+            array_push($archive, ...$evicted);
+            if (count($archive) > 20000) {
+                $archive = array_slice($archive, -20000);
+            }
+
+            ftruncate($fh, 0);
+            rewind($fh);
+            fwrite($fh, self::dataFileStubPrefix() . json_encode($archive));
+            fflush($fh);
+            flock($fh, LOCK_UN);
+        }
+        fclose($fh);
+    }
+
+    /** Total count of entries preserved in the archive -- surfaced in the Protection Log UI so evicted entries are visibly retained, not silently gone. */
+    public static function getAttackLogArchiveCount(): int
+    {
+        $path = self::attackLogArchiveFilePath();
+        if (!is_file($path)) return 0;
+        $contents = @file_get_contents($path);
+        if ($contents === false) return 0;
+        $decoded = json_decode(self::stripDataFileStub($contents), true);
+        return is_array($decoded) ? count($decoded) : 0;
+    }
+
+    /** Newest first, capped at 500 entries so the live file stays small and fast to read regardless of traffic volume -- anything evicted past that is preserved in the archive (see archiveAttackLogEntries()), never just dropped. */
     public static function recordAttackLogEntry(array $entry): void
     {
         $path = self::attackLogFilePath();
         $fh = @fopen($path, 'c+');
         if ($fh === false) return;
 
+        $evicted = [];
         if (@flock($fh, LOCK_EX)) {
             $size = filesize($path) ?: 0;
-            $contents = $size > 0 ? fread($fh, $size) : '';
-            $log = json_decode((string) $contents, true);
+            $contents = $size > 0 ? self::stripDataFileStub(fread($fh, $size)) : '';
+            $log = json_decode($contents, true);
             if (!is_array($log)) $log = [];
 
             array_unshift($log, $entry);
-            $log = array_slice($log, 0, 500);
+            if (count($log) > 500) {
+                $evicted = array_slice($log, 500);
+                $log = array_slice($log, 0, 500);
+            }
 
             ftruncate($fh, 0);
             rewind($fh);
-            fwrite($fh, json_encode($log));
+            fwrite($fh, self::dataFileStubPrefix() . json_encode($log));
             fflush($fh);
             flock($fh, LOCK_UN);
         }
         fclose($fh);
+
+        self::archiveAttackLogEntries($evicted);
     }
 
     public static function getAttackLog(): array
@@ -632,18 +761,20 @@ class MuruguardHelper
         if (!is_file($path)) return [];
         $contents = @file_get_contents($path);
         if ($contents === false) return [];
-        $decoded = json_decode($contents, true);
+        $decoded = json_decode(self::stripDataFileStub($contents), true);
         return is_array($decoded) ? $decoded : [];
     }
 
     public static function clearAttackLog(): void
     {
-        @file_put_contents(self::attackLogFilePath(), json_encode([]));
+        @file_put_contents(self::attackLogFilePath(), self::dataFileStubPrefix() . json_encode([]));
     }
 
     private static function loginAttemptsFilePath(): string
     {
-        return JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/login-attempts.json';
+        $new = JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/login-attempts.php';
+        self::migrateLegacyDataFile(JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/login-attempts.json', $new);
+        return $new;
     }
 
     /**
@@ -660,8 +791,8 @@ class MuruguardHelper
 
         if (@flock($fh, LOCK_EX)) {
             $size = filesize($path) ?: 0;
-            $contents = $size > 0 ? fread($fh, $size) : '';
-            $attempts = json_decode((string) $contents, true);
+            $contents = $size > 0 ? self::stripDataFileStub(fread($fh, $size)) : '';
+            $attempts = json_decode($contents, true);
             if (!is_array($attempts)) $attempts = [];
 
             $cutoff = time() - 86400;
@@ -670,7 +801,7 @@ class MuruguardHelper
 
             ftruncate($fh, 0);
             rewind($fh);
-            fwrite($fh, json_encode($attempts));
+            fwrite($fh, self::dataFileStubPrefix() . json_encode($attempts));
             fflush($fh);
             flock($fh, LOCK_UN);
         }
@@ -683,7 +814,7 @@ class MuruguardHelper
         if (!is_file($path)) return [];
         $contents = @file_get_contents($path);
         if ($contents === false) return [];
-        $decoded = json_decode($contents, true);
+        $decoded = json_decode(self::stripDataFileStub($contents), true);
         return is_array($decoded) ? $decoded : [];
     }
 
@@ -721,7 +852,9 @@ class MuruguardHelper
 
     private static function falsePositivesFilePath(): string
     {
-        return JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/false-positives.json';
+        $new = JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/false-positives.php';
+        self::migrateLegacyDataFile(JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/false-positives.json', $new);
+        return $new;
     }
 
     /** Deterministic fingerprint of a finding's reasons -- order-independent, so the same set of matched reasons in a different order still counts as the same review. */
@@ -738,7 +871,7 @@ class MuruguardHelper
         if (!is_file($path)) return [];
         $contents = @file_get_contents($path);
         if ($contents === false) return [];
-        $decoded = json_decode($contents, true);
+        $decoded = json_decode(self::stripDataFileStub($contents), true);
         return is_array($decoded) ? $decoded : [];
     }
 
@@ -793,7 +926,7 @@ class MuruguardHelper
 
         if (@flock($fh, LOCK_EX)) {
             $size = filesize($path) ?: 0;
-            $contents = $size > 0 ? fread($fh, $size) : '';
+            $contents = $size > 0 ? self::stripDataFileStub(fread($fh, $size)) : '';
             $list = json_decode((string) $contents, true);
             if (!is_array($list)) $list = [];
 
@@ -807,7 +940,7 @@ class MuruguardHelper
 
             ftruncate($fh, 0);
             rewind($fh);
-            fwrite($fh, json_encode($list));
+            fwrite($fh, self::dataFileStubPrefix() . json_encode($list));
             fflush($fh);
             flock($fh, LOCK_UN);
         }
@@ -824,7 +957,7 @@ class MuruguardHelper
 
         if (@flock($fh, LOCK_EX)) {
             $size = filesize($path) ?: 0;
-            $contents = $size > 0 ? fread($fh, $size) : '';
+            $contents = $size > 0 ? self::stripDataFileStub(fread($fh, $size)) : '';
             $list = json_decode((string) $contents, true);
             if (!is_array($list)) $list = [];
 
@@ -832,7 +965,7 @@ class MuruguardHelper
 
             ftruncate($fh, 0);
             rewind($fh);
-            fwrite($fh, json_encode($list));
+            fwrite($fh, self::dataFileStubPrefix() . json_encode($list));
             fflush($fh);
             flock($fh, LOCK_UN);
         }
@@ -853,7 +986,9 @@ class MuruguardHelper
 
     private static function ipListFilePath(): string
     {
-        return JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/ip-list.json';
+        $new = JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/ip-list.php';
+        self::migrateLegacyDataFile(JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/ip-list.json', $new);
+        return $new;
     }
 
     public static function getIpList(): array
@@ -862,7 +997,7 @@ class MuruguardHelper
         if (!is_file($path)) return [];
         $contents = @file_get_contents($path);
         if ($contents === false) return [];
-        $decoded = json_decode($contents, true);
+        $decoded = json_decode(self::stripDataFileStub($contents), true);
         return is_array($decoded) ? $decoded : [];
     }
 
@@ -904,7 +1039,7 @@ class MuruguardHelper
 
         if (@flock($fh, LOCK_EX)) {
             $size = filesize($path) ?: 0;
-            $contents = $size > 0 ? fread($fh, $size) : '';
+            $contents = $size > 0 ? self::stripDataFileStub(fread($fh, $size)) : '';
             $list = json_decode((string) $contents, true);
             if (!is_array($list)) $list = [];
 
@@ -912,7 +1047,7 @@ class MuruguardHelper
 
             ftruncate($fh, 0);
             rewind($fh);
-            fwrite($fh, json_encode($list));
+            fwrite($fh, self::dataFileStubPrefix() . json_encode($list));
             fflush($fh);
             flock($fh, LOCK_UN);
         }
@@ -929,7 +1064,7 @@ class MuruguardHelper
 
         if (@flock($fh, LOCK_EX)) {
             $size = filesize($path) ?: 0;
-            $contents = $size > 0 ? fread($fh, $size) : '';
+            $contents = $size > 0 ? self::stripDataFileStub(fread($fh, $size)) : '';
             $list = json_decode((string) $contents, true);
             if (!is_array($list)) $list = [];
 
@@ -937,7 +1072,7 @@ class MuruguardHelper
 
             ftruncate($fh, 0);
             rewind($fh);
-            fwrite($fh, json_encode($list));
+            fwrite($fh, self::dataFileStubPrefix() . json_encode($list));
             fflush($fh);
             flock($fh, LOCK_UN);
         }
@@ -959,6 +1094,42 @@ class MuruguardHelper
         if ($prefix === 0) return true;
         $mask = -1 << (32 - $prefix);
         return ($ipLong & $mask) === ($subnetLong & $mask);
+    }
+
+    /**
+     * Resolves the IP address every check in the shield plugin should key
+     * on. By default (empty $trustedHeader, off unless an admin
+     * explicitly opts in from Settings) this is always plain REMOTE_ADDR
+     * -- the safe default. Behind a proxy/CDN/load balancer that was
+     * never configured here, REMOTE_ADDR is the proxy's own IP for every
+     * single visitor, which turns IP-keyed brute-force blocking into a
+     * site-wide outage: a handful of failed logins from anyone behind
+     * that shared edge IP locks out every other visitor sharing it too.
+     * $trustedHeader (an $_SERVER key, e.g. "HTTP_CF_CONNECTING_IP") is
+     * only ever honoured when the admin has explicitly selected it --
+     * trusting a client-supplied header by default would let any visitor
+     * spoof their own IP outright. A comma-separated value (the shape
+     * X-Forwarded-For chains take: client, proxy1, proxy2, ...) uses the
+     * first entry, and the result must parse as a syntactically valid IP
+     * or this silently falls back to REMOTE_ADDR rather than trust
+     * garbage input.
+     */
+    public static function resolveClientIp($serverInput, string $trustedHeader): string
+    {
+        $remoteAddr = (string) $serverInput->get('REMOTE_ADDR', '', 'string');
+
+        if ($trustedHeader === '') {
+            return $remoteAddr;
+        }
+
+        $headerValue = (string) $serverInput->get($trustedHeader, '', 'string');
+        if ($headerValue === '') {
+            return $remoteAddr;
+        }
+
+        $candidate = trim(explode(',', $headerValue)[0]);
+
+        return filter_var($candidate, FILTER_VALIDATE_IP) !== false ? $candidate : $remoteAddr;
     }
 
     /**
@@ -999,7 +1170,9 @@ class MuruguardHelper
 
     private static function geoipCacheFilePath(): string
     {
-        return JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/geoip-cache.json';
+        $new = JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/geoip-cache.php';
+        self::migrateLegacyDataFile(JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/geoip-cache.json', $new);
+        return $new;
     }
 
     /** Returns a 2-letter ISO country code, or null if unknown/lookup failed. */
@@ -1014,7 +1187,7 @@ class MuruguardHelper
         $cachePath = self::geoipCacheFilePath();
         $cache = [];
         if (is_file($cachePath)) {
-            $decoded = json_decode((string) @file_get_contents($cachePath), true);
+            $decoded = json_decode(self::stripDataFileStub((string) @file_get_contents($cachePath)), true);
             if (is_array($decoded)) $cache = $decoded;
         }
 
@@ -1028,7 +1201,7 @@ class MuruguardHelper
         if ($fh !== false) {
             if (@flock($fh, LOCK_EX)) {
                 $size = filesize($cachePath) ?: 0;
-                $contents = $size > 0 ? fread($fh, $size) : '';
+                $contents = $size > 0 ? self::stripDataFileStub(fread($fh, $size)) : '';
                 $freshCache = json_decode((string) $contents, true);
                 if (!is_array($freshCache)) $freshCache = [];
 
@@ -1042,7 +1215,7 @@ class MuruguardHelper
 
                 ftruncate($fh, 0);
                 rewind($fh);
-                fwrite($fh, json_encode($freshCache));
+                fwrite($fh, self::dataFileStubPrefix() . json_encode($freshCache));
                 fflush($fh);
                 flock($fh, LOCK_UN);
             }
@@ -1563,6 +1736,23 @@ class MuruguardHelper
         // file regardless of location) still catches an actual malicious
         // payload dropped/injected here.
         if (stripos($relPath, 'libraries/vendor/') === 0 || stripos($relPath, '/libraries/vendor/') !== false) {
+            return null;
+        }
+
+        // components/com_jce/editor/libraries/views/plugin/index.php is a
+        // real, legitimate JCE editor view layout -- the HTML wrapper for
+        // the editor's plugin dialog windows -- confirmed byte-identical
+        // in structure (real markup, JCE's own `defined('JPATH_PLATFORM')
+        // or die` guard rather than Joomla's `_JEXEC` stub convention)
+        // across many real installs. isStandardJoomlaStub() correctly
+        // doesn't recognize JPATH_PLATFORM as Joomla's blank-stub guard,
+        // so this real file's real markup looked structurally identical
+        // to a webshell disguise. Exempted from this STRUCTURAL check
+        // only -- the ordinary content-signature scan (scanFileContent(),
+        // which runs on every file regardless of location) still runs on
+        // it, so an actual backdoor dropped/injected at this exact path
+        // is still caught.
+        if (strcasecmp($relPath, 'components/com_jce/editor/libraries/views/plugin/index.php') === 0) {
             return null;
         }
 

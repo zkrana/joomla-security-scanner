@@ -62,7 +62,10 @@ class plgSystemMuruguardshield extends CMSPlugin
             $params = ComponentHelper::getParams('com_muruguard');
             if (!$params->get('shield_enabled', 0)) return;
 
-            $ip = (string) Factory::getApplication()->input->server->get('REMOTE_ADDR', '', 'string');
+            $ip = \MuruguardHelper::resolveClientIp(
+                Factory::getApplication()->input->server,
+                (string) $params->get('shield_trusted_proxy_header', '')
+            );
             if ($ip === '') return;
 
             $username = '';
@@ -116,7 +119,7 @@ class plgSystemMuruguardshield extends CMSPlugin
 
         $app   = Factory::getApplication();
         $input = $app->input;
-        $ip    = (string) $input->server->get('REMOTE_ADDR', '', 'string');
+        $ip    = \MuruguardHelper::resolveClientIp($input->server, (string) $params->get('shield_trusted_proxy_header', ''));
 
         // Manual IP allow/block list -- checked FIRST, ahead of every
         // other check below, including brute-force. An explicit "allow"
@@ -170,16 +173,23 @@ class plgSystemMuruguardshield extends CMSPlugin
             }
         }
 
-        // Request-pattern AND country checks below are skipped for
-        // already-authenticated, non-guest users. A genuine
-        // unauthenticated RCE/webshell attacker is by definition not
-        // logged in -- exempting real admin sessions avoids the
-        // actually-dangerous failure mode here, which is an admin's own
+        // Request-pattern AND country checks below never actively BLOCK a
+        // user who genuinely has backend admin access -- core.login.admin
+        // is the exact same permission Joomla itself uses to decide who
+        // is even allowed to log into the administrator, deliberately
+        // narrower than "any authenticated session": Joomla ships
+        // frontend user registration on by default, so a self-registered
+        // "Registered" account has NO admin access and gets full
+        // protection, identical to a guest. A genuine admin's own
         // legitimate action (or their own IP resolving to a blocked
-        // country while travelling/on a VPN) tripping a false block and
-        // locking THEM out of their own site.
+        // country while travelling/on a VPN) still never trips a false
+        // block and locks them out of their own site -- but unlike
+        // blocking, LOGGING is never skipped for them: an admin-exempt
+        // match is still recorded (marked not-blocked), so this exemption
+        // can't become a silent blind spot for an attacker who happens to
+        // hold a low-privilege authenticated account.
         $user = $app->getIdentity();
-        if ($user && !$user->guest) return;
+        $isAdminExempt = (bool) ($user && !$user->guest && $user->authorise('core.login.admin'));
 
         // Country block -- independent of, and checked before, pattern
         // matching. lookupCountryForIp() fails open (returns null, never
@@ -190,11 +200,12 @@ class plgSystemMuruguardshield extends CMSPlugin
             if ($blockedCountries !== '') {
                 $country = \MuruguardHelper::lookupCountryForIp($ip);
                 if (\MuruguardHelper::isCountryBlocked($country, $blockedCountries)) {
+                    $blocked = !$isAdminExempt;
                     \MuruguardHelper::recordAttackLogEntry([
                         'type'       => 'country',
                         'ip'         => $ip,
                         'time'       => time(),
-                        'blocked'    => true,
+                        'blocked'    => $blocked,
                         'rule'       => 'country_block',
                         'severity'   => 'medium',
                         'why'        => "IP blocked: resolved to country {$country}, which is on the blocked-countries list.",
@@ -202,8 +213,10 @@ class plgSystemMuruguardshield extends CMSPlugin
                         'uri'        => mb_substr((string) $input->server->get('REQUEST_URI', '', 'string'), 0, 300),
                         'user_agent' => mb_substr((string) $input->server->get('HTTP_USER_AGENT', '', 'string'), 0, 200),
                     ]);
-                    $this->rejectRequest();
-                    return;
+                    if ($blocked) {
+                        $this->rejectRequest();
+                        return;
+                    }
                 }
             }
         }
@@ -222,9 +235,9 @@ class plgSystemMuruguardshield extends CMSPlugin
         // false-positive-prone) risk than an actual code-execution
         // payload in a query parameter, so an admin who wants one
         // shouldn't be forced to accept the other.
-        $shouldBlock = $match['rule'] === 'known_scanner_user_agent'
+        $shouldBlock = !$isAdminExempt && ($match['rule'] === 'known_scanner_user_agent'
             ? (bool) $params->get('shield_block_useragents', 0)
-            : ($match['block_eligible'] && (bool) $params->get('shield_block_patterns', 0));
+            : ($match['block_eligible'] && (bool) $params->get('shield_block_patterns', 0)));
 
         \MuruguardHelper::recordAttackLogEntry([
             'type'       => 'request',
