@@ -8,7 +8,7 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Unreleased]
 
-## [2.8.0] - 2026-08-07
+## [2.8.0] - 2026-08-04
 
 Five issues reported against 2.7.1, four of them genuine security findings. Thank you to `@degiosa` and `@PhilETaylor` for the reports.
 
