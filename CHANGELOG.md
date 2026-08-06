@@ -18,13 +18,16 @@ MuRu Guard v2.8.1 Free. Brings MuRu Shield Hardening down from Pro into the free
 - **Settings renamed to "MuRu Settings"** throughout the admin sidebar and panel heading, to read less like a generic Joomla settings screen.
 - **New "Pro" tab in Settings** — an always-visible card describing what MuRu Guard Pro adds (Smart AI Assistant, Fleet Dashboard, Instant Alerts, priority support), with a link to the Pro product page and a direct contact option. Not a locked/upgrade flow — this is the free tier, there's nothing to unlock in-app.
 - **New known-malicious filename signature**: `kill.gif` / `kill.png` — a recognized attacker calling-card filename, flagged on the exact bare filename alone regardless of content.
+- **Pro promo banner in Support** — a card pointing at the Pro product page and a direct contact option, matching the new Settings → Pro tab.
 
 ### Changed
 
 - **"Protection Mode" renamed to "Site Protection"** (settings tab, section title, and status labels) — the old name didn't make it obvious this feature actively blocks attacks against the whole site, not just a passive mode toggle.
+- **Re-scan toolbar restyled** to match the color-coded button treatment already used on Pro (Re-scan in indigo, .htaccess Hardening in emerald), and the disabled "AI Integration (Soon)" button is now a real link to the Pro product page with a "PRO" badge, alongside a new "Security Report" button (also Pro, badged the same way).
 
 ### Fixed
 
+- **The admin submenu (Dashboard / MuRu Settings / Support) could vanish after every update, only to reappear after a full uninstall+reinstall.** Root cause: a bare `return;` used as an early-exit inside the install script's ACL-defaults step was exiting the *entire* `postflight()` method, not just that step -- and on any update (not a fresh install), the ACL rules already exist from the original install, so that early-exit branch was hit every single time, silently skipping the code that (re)creates the submenu entirely. Fixed by moving the ACL step into its own method so its early returns can only ever exit themselves. Also hardened the submenu-creation logic itself: it now recalculates the admin menu's internal tree structure on every run (not just when a brand-new item was created), and correctly recovers if Joomla's own installer ever leaves a duplicate top-level menu row behind on a reinstall.
 - **Re-scan toolbar wrapped onto two rows** on narrower admin layouts. The action buttons now stay on one row; only the informational text (last-scanned time, cron/version badges) truncates or scrolls if space is tight.
 - **Image-polyglot detection hardened**: the check for a PHP open tag hidden inside a file with an image extension now scans the entire file instead of only a head+tail window, closing a gap where a large image with PHP appended past the tail window could have slipped past undetected.
 

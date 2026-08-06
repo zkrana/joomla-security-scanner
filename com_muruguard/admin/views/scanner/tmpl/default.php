@@ -1026,6 +1026,24 @@ if ($w !== null && $w['safe'] !== true):
         </button>
     </div>
 
+    <div class="rounded-xl shadow-sm p-6 mb-5 flex flex-wrap items-center justify-between gap-4"
+         style="background:linear-gradient(135deg,#eef2ff 0%,#f5f3ff 55%,#fdf2f8 100%); border:1px solid #e5e7eb;">
+        <div>
+            <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2 mb-1">⚡ <?= Text::_('COM_MURUGUARD_PRO_PROMO_TITLE') ?></h3>
+            <p class="text-xs text-gray-600 max-w-xl"><?= Text::_('COM_MURUGUARD_PRO_PROMO_DESC') ?></p>
+        </div>
+        <div class="flex items-center gap-2 flex-shrink-0">
+            <a href="https://lyzerslab.com/joomla-products/muru-guard-security-scanner" target="_blank" rel="noopener"
+               class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm">
+                ⭐ <?= Text::_('COM_MURUGUARD_PRO_PROMO_UPGRADE_BTN') ?>
+            </a>
+            <a href="mailto:zkranao@gmail.com?subject=MuRu%20Guard%20Pro" target="_blank" rel="noopener"
+               class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors shadow-sm">
+                ✉️ <?= Text::_('COM_MURUGUARD_PRO_PROMO_CONTACT_BTN') ?>
+            </a>
+        </div>
+    </div>
+
     <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-5">
         <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2 mb-2">☕ <?= Text::_('COM_MURUGUARD_SUPPORT_FUND_TITLE') ?></h3>
         <p class="text-xs text-gray-500 mb-4 max-w-xl"><?= Text::_('COM_MURUGUARD_SUPPORT_FUND_DESC') ?></p>
@@ -1224,36 +1242,47 @@ foreach ($htaccessChecks as $c) { $htaccessByCategory[$c['category']][] = $c; }
             <?= HTMLHelper::_('form.token') ?>
             <button type="submit"
                     class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-gray-300
-                           rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50
-                           transition-colors shadow-sm">
+                           rounded-lg text-sm font-semibold text-gray-700 bg-white hover:bg-gray-50
+                           transition-colors shadow-sm hover:shadow">
                 ⚙ <?= Text::_('COM_MURUGUARD_CHANGE_SCAN_AREAS') ?>
             </button>
         </form>
         <form action="<?= Route::_($rescanUrl) ?>" method="post" id="muruguard-rescan-form" style="margin:0">
             <?= HTMLHelper::_('form.token') ?>
             <button type="submit"
-                    class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-gray-300
-                           rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50
-                           transition-colors shadow-sm">
+                    class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-indigo-200
+                           rounded-lg text-sm font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100
+                           transition-colors shadow-sm hover:shadow">
                 🔄 <?= Text::_('COM_MURUGUARD_RESCAN_NOW') ?>
             </button>
         </form>
-        <button type="button" disabled
-                title="<?= Text::_('COM_MURUGUARD_AI_INTEGRATION_TITLE') ?>"
-                class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-dashed border-gray-200
-                       rounded-lg text-sm font-medium text-gray-400 bg-gray-50 cursor-not-allowed">
+        <a href="https://lyzerslab.com/joomla-products/muru-guard-security-scanner"
+           target="_blank" rel="noopener"
+           title="<?= Text::_('COM_MURUGUARD_AI_INTEGRATION_TITLE') ?>"
+           class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-violet-200
+                  rounded-lg text-sm font-semibold text-violet-700 bg-violet-50 hover:bg-violet-100
+                  transition-colors shadow-sm hover:shadow">
             🤖 <?= Text::_('COM_MURUGUARD_AI_INTEGRATION') ?>
-            <span class="inline-flex items-center px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-500 text-[10px] font-bold"><?= Text::_('COM_MURUGUARD_SOON_BADGE') ?></span>
-        </button>
+            <span class="inline-flex items-center px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-bold">PRO</span>
+        </a>
         <button type="button" id="muru-open-htaccess-modal"
-                class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-gray-300
-                       rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50
-                       transition-colors shadow-sm">
+                class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-emerald-200
+                       rounded-lg text-sm font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100
+                       transition-colors shadow-sm hover:shadow">
             🛡 <?= Text::_('COM_MURUGUARD_TAB_HTACCESS') ?>
             <?php if ($htaccessCriticalMissing > 0): ?>
                 <span class="inline-flex items-center justify-center min-w-4 h-4 px-1 bg-amber-500 text-white text-[10px] font-bold rounded-full"><?= $htaccessCriticalMissing ?></span>
             <?php endif; ?>
         </button>
+        <a href="https://lyzerslab.com/joomla-products/muru-guard-security-scanner"
+           target="_blank" rel="noopener"
+           title="<?= Text::_('COM_MURUGUARD_REPORT_BTN') ?>"
+           class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-sky-200
+                  rounded-lg text-sm font-semibold text-sky-700 bg-sky-50 hover:bg-sky-100
+                  transition-colors shadow-sm hover:shadow">
+            📄 <?= Text::_('COM_MURUGUARD_REPORT_BTN') ?>
+            <span class="inline-flex items-center px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-bold">PRO</span>
+        </a>
     </div>
 </div>
 
