@@ -165,23 +165,45 @@ class MuruguardHardeningHelper
      */
     public static function selfTestBasicAuth(string $testUrl, string $username, string $password): array
     {
-        $unauthStatus = self::probeHttpStatus($testUrl, null, null);
-        if ($unauthStatus === null) {
+        $unauth = self::probeHttpStatus($testUrl, null, null);
+        if ($unauth === null) {
             return ['ok' => false, 'reason' => 'Could not reach the site from itself to verify (outbound HTTP may be disabled on this host). Refusing to activate rather than risk an unverified lock-out.'];
         }
-        if ($unauthStatus !== 401) {
-            return ['ok' => false, 'reason' => "An unauthenticated request should have been rejected with 401 but got {$unauthStatus} instead -- .htaccess isn't enforcing Basic Auth here. This almost always means one of: (1) the site runs on Nginx or another server that doesn't read .htaccess at all -- this feature only works on Apache or LiteSpeed in Apache-compatible mode; (2) the host has \"AllowOverride None\" (or excludes AuthConfig) for administrator/, so .htaccess is being ignored entirely; (3) the mod_auth_basic Apache module isn't enabled. Check with your host which of these applies -- nothing was changed."];
+        if ($unauth['status'] !== 401) {
+            // Naming the actual web server (from its own response header,
+            // when it sends one) turns "here are 3 possibilities, ask your
+            // host" into a near-certain answer for the most common case --
+            // Nginx/LiteSpeed-non-Apache-mode never reads .htaccess at
+            // all, so seeing that in the Server header is close to
+            // conclusive on its own.
+            $serverNote = '';
+            if ($unauth['server'] !== null) {
+                $server = $unauth['server'];
+                if (stripos($server, 'nginx') !== false) {
+                    $serverNote = " Your server identifies itself as \"{$server}\" -- Nginx does not read .htaccess files at all, which is almost certainly why this didn't take effect. This feature requires Apache (or LiteSpeed running in Apache-compatible mode).";
+                } elseif (stripos($server, 'litespeed') !== false) {
+                    $serverNote = " Your server identifies itself as \"{$server}\" -- LiteSpeed only reads .htaccess when running in Apache-compatible mode; check with your host whether that's enabled.";
+                } else {
+                    $serverNote = " Your server identifies itself as \"{$server}\".";
+                }
+            }
+            if ($unauth['status'] >= 300 && $unauth['status'] < 400) {
+                $locationNote = $unauth['location'] !== null ? " (to {$unauth['location']})" : '';
+                return ['ok' => false, 'reason' => "The unauthenticated verification request was redirected ({$unauth['status']}{$locationNote}) instead of being rejected with 401 -- something (a caching layer, a security plugin, or a forced host/protocol redirect) is intercepting the request before .htaccess's Basic Auth gets a chance to run.{$serverNote} Nothing was changed."];
+            }
+            return ['ok' => false, 'reason' => "An unauthenticated request should have been rejected with 401 but got {$unauth['status']} instead -- .htaccess isn't enforcing Basic Auth here.{$serverNote} This almost always means one of: (1) the site runs on Nginx or another server that doesn't read .htaccess at all -- this feature only works on Apache or LiteSpeed in Apache-compatible mode; (2) the host has \"AllowOverride None\" (or excludes AuthConfig) for administrator/, so .htaccess is being ignored entirely; (3) the mod_auth_basic Apache module isn't enabled. Check with your host which of these applies -- nothing was changed."];
         }
 
-        $authStatus = self::probeHttpStatus($testUrl, $username, $password);
-        if ($authStatus === null || $authStatus === 401) {
+        $auth = self::probeHttpStatus($testUrl, $username, $password);
+        if ($auth === null || $auth['status'] === 401) {
             return ['ok' => false, 'reason' => 'The correct new credentials were still rejected. Refusing to activate to avoid locking you out.'];
         }
 
         return ['ok' => true, 'reason' => ''];
     }
 
-    private static function probeHttpStatus(string $url, ?string $username, ?string $password): ?int
+    /** @return array{status:int,server:?string,location:?string}|null */
+    private static function probeHttpStatus(string $url, ?string $username, ?string $password): ?array
     {
         $headers = "Connection: close\r\n";
         if ($username !== null) {
@@ -204,10 +226,20 @@ class MuruguardHardeningHelper
         ]);
         $result = @file_get_contents($url, false, $context);
         if ($result === false || !isset($http_response_header)) return null;
+        $status = null;
+        $server = null;
+        $location = null;
         foreach ($http_response_header as $line) {
-            if (preg_match('#^HTTP/\S+\s+(\d{3})#', $line, $m)) return (int) $m[1];
+            if ($status === null && preg_match('#^HTTP/\S+\s+(\d{3})#', $line, $m)) {
+                $status = (int) $m[1];
+            } elseif (preg_match('#^Server:\s*(.+)$#i', $line, $m)) {
+                $server = trim($m[1]);
+            } elseif (preg_match('#^Location:\s*(.+)$#i', $line, $m)) {
+                $location = trim($m[1]);
+            }
         }
-        return null;
+        if ($status === null) return null;
+        return ['status' => $status, 'server' => $server, 'location' => $location];
     }
 
     /**
