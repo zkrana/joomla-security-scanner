@@ -8,6 +8,12 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [2.8.2] - 2026-08-06
+
+### Fixed
+
+- **Backend Access (MuRu Shield Hardening) never actually worked on Nginx.** `.htaccess` is an Apache-only mechanism -- on Nginx (or any Apache host with `AllowOverride None` or a missing `mod_auth_basic`), the `.htaccess` block Backend Access writes was silently ignored, so activation always failed with "an unauthenticated request should have been rejected with 401 but got 200 instead," no matter how many times you tried. `plg_muruguardshield` (bump to 1.2.1) now enforces the same Basic Auth gate at the PHP layer, checked on every request regardless of web server, reading the exact same credentials the component already writes -- Backend Access now activates and works identically on Apache, Nginx, and LiteSpeed, as long as the Shield plugin is installed and enabled.
+
 ## [2.8.1] - 2026-08-06
 
 MuRu Guard v2.8.1 Free. Brings MuRu Shield Hardening down from Pro into the free tier, alongside a couple of general scanner and UI improvements.
