@@ -423,6 +423,17 @@ class MuruguardModelScanner extends BaseDatabaseModel
                 'backend_auth_username'   => $username,
                 'backend_auth_activated'  => time(),
             ]);
+        } elseif (!$this->isShieldPluginActive()) {
+            // The single most common reason the self-test fails on a non-
+            // Apache host: plg_system_muruguardshield is what actually
+            // enforces this at the PHP layer there (see its
+            // checkBasicAuthGate()) -- .htaccess-only enforcement only
+            // ever works on Apache. If it's not installed/enabled, no
+            // amount of retrying will help, so say so explicitly instead
+            // of leaving the admin to guess between three generic causes.
+            $result['reason'] = 'The MuRu Guard Shield plugin (System > Plugins > "System - MuRu Guard Shield") is not installed or enabled. '
+                . 'On any server other than Apache, this plugin is what actually enforces Backend Access -- install/enable it, then try again. '
+                . 'Original error: ' . $result['reason'];
         }
         return $result;
     }
@@ -458,6 +469,13 @@ class MuruguardModelScanner extends BaseDatabaseModel
         $result = \MuruguardHardeningHelper::activateEmergencyMode($this->root, JPATH_ADMINISTRATOR, $testUrl, $username, $password);
         if ($result['ok']) {
             $this->saveHardeningParams(['emergency_mode_enabled' => 1, 'emergency_mode_activated' => time()]);
+        } elseif (!$this->isShieldPluginActive()) {
+            // Same reasoning as activateBackendAuth() above -- on any
+            // non-Apache host, plg_system_muruguardshield's
+            // checkBasicAuthGate() is what actually enforces this.
+            $result['reason'] = 'The MuRu Guard Shield plugin (System > Plugins > "System - MuRu Guard Shield") is not installed or enabled. '
+                . 'On any server other than Apache, this plugin is what actually enforces this. '
+                . 'Original error: ' . $result['reason'];
         }
         return $result;
     }

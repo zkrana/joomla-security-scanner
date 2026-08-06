@@ -8,6 +8,12 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [2.8.3] - 2026-08-06
+
+### Fixed
+
+- **Backend Access's activation error now says explicitly when the Shield plugin isn't the reason.** If the self-test still fails after upgrading to 2.8.2 and `plg_muruguardshield` isn't installed/enabled, the error now leads with that directly ("On any server other than Apache, this plugin is what actually enforces Backend Access -- install/enable it, then try again") instead of only ever showing the generic Apache/Nginx troubleshooting text, which looked identical whether or not the 2.8.2 fix was even present yet.
+
 ## [2.8.2] - 2026-08-06
 
 ### Fixed
