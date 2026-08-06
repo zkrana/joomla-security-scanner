@@ -16,6 +16,7 @@ use Joomla\CMS\Factory;
 use Joomla\CMS\MVC\Controller\BaseController;
 
 require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/muruguard.php';
+require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/hardening.php';
 require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/controllers/scanner.php';
 
 $task = Factory::getApplication()->input->getCmd('task');

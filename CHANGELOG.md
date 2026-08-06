@@ -6,7 +6,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and thi
 
 Each release on GitHub pulls its description directly from this file — see `scripts/release.sh`, which refuses to cut a release without a matching entry here.
 
-## [Unreleased]
+## [Released]
+
+## [2.8.1] - 2026-08-06
+
+MuRu Guard v2.8.1 Free. Brings MuRu Shield Hardening down from Pro into the free tier, alongside a couple of general scanner and UI improvements.
+
+### Added
+
+- **MuRu Shield Hardening, now free**: Backend Access (an HTTP Basic Auth gate in front of `/administrator`, verified with a real test request before it's ever treated as active, with automatic rollback on any failure) and Emergency Mode (extends the same protection to the whole site). Lives in Settings → Site Protection, below the existing IP Access List.
+- **Settings renamed to "MuRu Settings"** throughout the admin sidebar and panel heading, to read less like a generic Joomla settings screen.
+- **New "Pro" tab in Settings** — an always-visible card describing what MuRu Guard Pro adds (Smart AI Assistant, Fleet Dashboard, Instant Alerts, priority support), with a link to the Pro product page and a direct contact option. Not a locked/upgrade flow — this is the free tier, there's nothing to unlock in-app.
+- **New known-malicious filename signature**: `kill.gif` / `kill.png` — a recognized attacker calling-card filename, flagged on the exact bare filename alone regardless of content.
+
+### Changed
+
+- **"Protection Mode" renamed to "Site Protection"** (settings tab, section title, and status labels) — the old name didn't make it obvious this feature actively blocks attacks against the whole site, not just a passive mode toggle.
+
+### Fixed
+
+- **Re-scan toolbar wrapped onto two rows** on narrower admin layouts. The action buttons now stay on one row; only the informational text (last-scanned time, cron/version badges) truncates or scrolls if space is tight.
+- **Image-polyglot detection hardened**: the check for a PHP open tag hidden inside a file with an image extension now scans the entire file instead of only a head+tail window, closing a gap where a large image with PHP appended past the tail window could have slipped past undetected.
 
 ## [2.8.0] - 2026-08-04
 

@@ -391,6 +391,83 @@ class MuruguardModelScanner extends BaseDatabaseModel
         $table->store();
     }
 
+    private function saveHardeningParams(array $set): void
+    {
+        $table = new \Joomla\CMS\Table\Extension($this->getDatabase());
+        if (!$table->load(['element' => 'com_muruguard', 'type' => 'component'])) return;
+        $params = json_decode((string) $table->params, true);
+        if (!is_array($params)) $params = [];
+        foreach ($set as $key => $value) {
+            $params[$key] = $value;
+        }
+        $table->params = json_encode($params);
+        $table->store();
+    }
+
+    /**
+     * MuRu Shield Hardening: activates the /administrator HTTP Basic
+     * Auth gate. Only ever persists username + a bcrypt hash + an
+     * activation timestamp -- never the plaintext password, which is
+     * returned to the caller exactly once so it can be shown to the
+     * admin, and is not retrievable again afterward (matching every
+     * other secret in this codebase -- see maskLicenseKey()'s docblock
+     * for the same "never echo a secret back" discipline).
+     */
+    public function activateBackendAuth(string $username, string $password): array
+    {
+        $testUrl = \Joomla\CMS\Uri\Uri::root() . 'administrator/index.php';
+        $result = \MuruguardHardeningHelper::activateBackendAuth(JPATH_ADMINISTRATOR, $testUrl, $username, $password);
+        if ($result['ok']) {
+            $this->saveHardeningParams([
+                'backend_auth_enabled'    => 1,
+                'backend_auth_username'   => $username,
+                'backend_auth_activated'  => time(),
+            ]);
+        }
+        return $result;
+    }
+
+    public function deactivateBackendAuth(): void
+    {
+        \MuruguardHardeningHelper::deactivateBackendAuth(JPATH_ADMINISTRATOR);
+        // Emergency Mode reuses backend auth's .htpasswd -- it cannot be
+        // left active pointing at a file that just got deleted.
+        \MuruguardHardeningHelper::deactivateEmergencyMode($this->root);
+        $this->saveHardeningParams([
+            'backend_auth_enabled'   => 0,
+            'backend_auth_username'  => '',
+            'backend_auth_activated' => 0,
+            'emergency_mode_enabled' => 0,
+        ]);
+    }
+
+    public function activateEmergencyMode(string $username, string $password): array
+    {
+        // The plaintext password is never persisted once backend auth is
+        // active (see activateBackendAuth()'s docblock) -- Emergency Mode
+        // reuses those same credentials rather than minting new ones, so
+        // the admin re-supplies the password here and it's checked
+        // against the already-active .htpasswd BEFORE anything is
+        // written, refusing outright rather than writing an Emergency
+        // Mode block self-tested with a password that turns out wrong.
+        if (!\MuruguardHardeningHelper::verifyBackendPassword(JPATH_ADMINISTRATOR, $username, $password)) {
+            return ['ok' => false, 'reason' => 'That username/password doesn\'t match your currently-active backend access credentials.'];
+        }
+
+        $testUrl = \Joomla\CMS\Uri\Uri::root();
+        $result = \MuruguardHardeningHelper::activateEmergencyMode($this->root, JPATH_ADMINISTRATOR, $testUrl, $username, $password);
+        if ($result['ok']) {
+            $this->saveHardeningParams(['emergency_mode_enabled' => 1, 'emergency_mode_activated' => time()]);
+        }
+        return $result;
+    }
+
+    public function deactivateEmergencyMode(): void
+    {
+        \MuruguardHardeningHelper::deactivateEmergencyMode($this->root);
+        $this->saveHardeningParams(['emergency_mode_enabled' => 0, 'emergency_mode_activated' => 0]);
+    }
+
     /**
      * True only if plg_system_muruguardshield is both installed AND
      * enabled -- the Settings panel uses this to warn when the shield

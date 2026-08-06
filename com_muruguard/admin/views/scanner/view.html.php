@@ -48,6 +48,11 @@ class MuruguardViewScanner extends HtmlView
     public array $ipList = [];
     public array $falsePositives = [];
     public int $attackLogArchiveCount = 0;
+    public bool $backendAuthEnabled = false;
+    public string $backendAuthUsername = '';
+    public int $backendAuthActivated = 0;
+    public bool $emergencyModeEnabled = false;
+    public int $emergencyModeActivated = 0;
     public string $componentVersion = '';
     public string $activePanel = 'dashboard';
 
@@ -118,6 +123,12 @@ class MuruguardViewScanner extends HtmlView
         $this->shieldBlockedCountries = (string) $cfgParams->get('shield_blocked_countries', '');
         $this->ipList                = MuruguardHelper::getIpList();
         $this->falsePositives        = MuruguardHelper::getFalsePositives();
+
+        $this->backendAuthEnabled     = (bool) $cfgParams->get('backend_auth_enabled', 0);
+        $this->backendAuthUsername    = (string) $cfgParams->get('backend_auth_username', '');
+        $this->backendAuthActivated   = (int) $cfgParams->get('backend_auth_activated', 0);
+        $this->emergencyModeEnabled   = (bool) $cfgParams->get('emergency_mode_enabled', 0);
+        $this->emergencyModeActivated = (int) $cfgParams->get('emergency_mode_activated', 0);
 
         // Restore cached scan results
         $cachedAt = (int) $session->get('muruguard.filefindings_time', 0);

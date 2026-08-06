@@ -77,7 +77,7 @@ jobs:
 
       - name: Upload release to the Lyzerslab dashboard
         env:
-          DASHBOARD_URL: https://www.lyzerslab.com
+          DASHBOARD_URL: https://lyzerslab.com
           DASHBOARD_PRODUCT_ID: cmruqkeub00008s5frl2g9feh
           DASHBOARD_RELEASE_TOKEN: ${{ secrets.DASHBOARD_RELEASE_TOKEN }}
         run: |

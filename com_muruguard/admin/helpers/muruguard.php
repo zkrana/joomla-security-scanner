@@ -126,6 +126,12 @@ class MuruguardHelper
                 // execute as PHP anyway (see checkMaliciousHtaccessHandler()).
                 // No legitimate file is ever named this way -- always malicious.
                 '/\.php(?:\.json)+$/i',
+                // "kill.gif"/"kill.png" -- a recognized attacker calling-card
+                // filename, dropped as a marker/flag file (sometimes empty,
+                // sometimes a tiny webshell) rather than a real image. Flagged
+                // on the exact bare filename alone regardless of content --
+                // no legitimate site names a file this way.
+                '/^kill\.(gif|png)$/i',
             ],
 
             'ROOT_SUSPICIOUS_FILENAME_REGEXES' => [
@@ -2440,9 +2446,18 @@ class MuruguardHelper
                 $reasons[] = "Content signature: {$sigName} ({$tag}) — {$def['why']} Matched code: {$preview}";
             }
         }
-        if ($isImageExt && preg_match($sig['PHP_OPEN_TAG_RE'], $scanText, $m, PREG_OFFSET_CAPTURE)) {
+        // The PHP-open-tag check gets its own full-file pass instead of
+        // sharing $scanText's narrow head+tail window above. A literal
+        // "<?php" (or "<?=" followed by an identifier) is specific enough
+        // -- 6+ exact bytes in a row -- that scanning it against the
+        // entire file has effectively zero false-positive risk from
+        // random binary collisions, unlike the broader CONTENT_SIGNATURES
+        // patterns. Without this, a real image bigger than the 8KB tail
+        // window with PHP appended further in (a valid, working image AND
+        // a valid, working webshell at once) could slip past undetected.
+        if ($isImageExt && preg_match($sig['PHP_OPEN_TAG_RE'], $contents, $m, PREG_OFFSET_CAPTURE)) {
             $flagged = true;
-            $preview = self::previewMatch($scanText, $m);
+            $preview = self::previewMatch($contents, $m);
             $reasons[] = "Content signature: php_tag_in_image_file (polyglot shell disguised with an image extension) — Matched code: {$preview}";
         }
 

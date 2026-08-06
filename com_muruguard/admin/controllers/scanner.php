@@ -333,13 +333,13 @@ public function scan()
 
         if ($alertEmail !== '' && !filter_var($alertEmail, FILTER_VALIDATE_EMAIL)) {
             $app->enqueueMessage(Text::sprintf('COM_MURUGUARD_SETTINGS_INVALID_EMAIL', htmlspecialchars($alertEmail)), 'error');
-            $this->setRedirect('index.php?option=com_muruguard');
+            $this->setRedirect($this->settingsRedirectUrl());
             return;
         }
 
         if ($cronEnabled && $cronToken === '') {
             $app->enqueueMessage(Text::_('COM_MURUGUARD_SETTINGS_NEEDS_TOKEN'), 'error');
-            $this->setRedirect('index.php?option=com_muruguard');
+            $this->setRedirect($this->settingsRedirectUrl());
             return;
         }
 
@@ -348,7 +348,26 @@ public function scan()
         $model->saveScheduledSettings($cronEnabled, $cronToken, $alertEmail);
 
         $app->enqueueMessage(Text::_('COM_MURUGUARD_SETTINGS_SAVED_MSG'), 'message');
-        $this->setRedirect('index.php?option=com_muruguard');
+        $this->setRedirect($this->settingsRedirectUrl());
+    }
+
+    /**
+     * Every Settings-saving action redirects here instead of a bare
+     * 'index.php?option=com_muruguard' -- that used to drop the admin
+     * back on the Dashboard panel entirely, and even when it did include
+     * view_panel=settings, the settings sub-tab itself always reset to
+     * whichever one is hardcoded "active" in the markup (Protection)
+     * regardless of which tab the save actually came from. settings_tab
+     * is filled in client-side right before submit (see the generic
+     * form-submit listener in default.php) with whichever tab was open
+     * at the time.
+     */
+    private function settingsRedirectUrl(): string
+    {
+        $tab = Factory::getApplication()->input->getCmd('settings_tab', '');
+        $validTabs = ['protection', 'scheduled', 'guide'];
+        $tab = in_array($tab, $validTabs, true) ? $tab : 'protection';
+        return 'index.php?option=com_muruguard&view_panel=settings&settings_tab=' . $tab;
     }
 
     /**
@@ -391,7 +410,117 @@ public function scan()
         );
 
         $app->enqueueMessage(Text::_('COM_MURUGUARD_SETTINGS_SAVED_MSG'), 'message');
-        $this->setRedirect('index.php?option=com_muruguard');
+        $this->setRedirect($this->settingsRedirectUrl());
+    }
+
+    /**
+     * MuRu Shield Hardening: activates the /administrator HTTP Basic
+     * Auth gate. The password itself is never round-tripped back from
+     * the server -- the "Generate securely" button fills the form
+     * fields client-side, so the browser (and the admin looking at the
+     * screen) already has it before this ever submits; the model
+     * self-tests with real outbound requests and rolls back
+     * automatically on any failure (see MuruguardHardeningHelper).
+     */
+    public function activatebackendauth()
+    {
+        Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
+        \MuruguardHelper::requireAdminAccess();
+
+        $app = Factory::getApplication();
+        $username = trim($app->input->getString('backend_auth_username', ''));
+        $password = (string) $app->input->get('backend_auth_password', '', 'raw');
+        $repeat   = (string) $app->input->get('backend_auth_password_repeat', '', 'raw');
+
+        if ($username === '' || $password === '') {
+            $app->enqueueMessage(Text::_('COM_MURUGUARD_HARDENING_MISSING_FIELDS_MSG'), 'error');
+            $this->setRedirect($this->settingsRedirectUrl());
+            return;
+        }
+        if (strlen($password) < 8) {
+            $app->enqueueMessage(Text::_('COM_MURUGUARD_HARDENING_PASSWORD_TOO_SHORT_MSG'), 'error');
+            $this->setRedirect($this->settingsRedirectUrl());
+            return;
+        }
+        if ($password !== $repeat) {
+            $app->enqueueMessage(Text::_('COM_MURUGUARD_HARDENING_PASSWORD_MISMATCH_MSG'), 'error');
+            $this->setRedirect($this->settingsRedirectUrl());
+            return;
+        }
+
+        @ini_set('memory_limit', '256M');
+
+        /** @var MuruguardModelScanner $model */
+        $model = $this->getModel('Scanner');
+        $result = $model->activateBackendAuth($username, $password);
+
+        if ($result['ok']) {
+            $app->enqueueMessage(Text::_('COM_MURUGUARD_HARDENING_ACTIVATED_MSG'), 'message');
+        } else {
+            $app->enqueueMessage(Text::sprintf('COM_MURUGUARD_HARDENING_FAILED_MSG', $result['reason']), 'error');
+        }
+        $this->setRedirect($this->settingsRedirectUrl());
+    }
+
+    public function deactivatebackendauth()
+    {
+        Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
+        \MuruguardHelper::requireAdminAccess();
+
+        /** @var MuruguardModelScanner $model */
+        $model = $this->getModel('Scanner');
+        $model->deactivateBackendAuth();
+
+        Factory::getApplication()->enqueueMessage(Text::_('COM_MURUGUARD_HARDENING_DEACTIVATED_MSG'), 'message');
+        $this->setRedirect($this->settingsRedirectUrl());
+    }
+
+    /**
+     * Extends the SAME backend credentials to the whole site. Requires
+     * re-typing the current backend password (never persisted in
+     * plaintext -- see activateBackendAuth()'s docblock) so the model
+     * can confirm it's actually correct before writing anything.
+     */
+    public function activateemergencymode()
+    {
+        Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
+        \MuruguardHelper::requireAdminAccess();
+
+        $app = Factory::getApplication();
+        $username = trim($app->input->getString('emergency_username', ''));
+        $password = (string) $app->input->get('emergency_password', '', 'raw');
+
+        if ($username === '' || $password === '') {
+            $app->enqueueMessage(Text::_('COM_MURUGUARD_HARDENING_MISSING_FIELDS_MSG'), 'error');
+            $this->setRedirect($this->settingsRedirectUrl());
+            return;
+        }
+
+        @ini_set('memory_limit', '256M');
+
+        /** @var MuruguardModelScanner $model */
+        $model = $this->getModel('Scanner');
+        $result = $model->activateEmergencyMode($username, $password);
+
+        if ($result['ok']) {
+            $app->enqueueMessage(Text::_('COM_MURUGUARD_EMERGENCY_ACTIVATED_MSG'), 'message');
+        } else {
+            $app->enqueueMessage(Text::sprintf('COM_MURUGUARD_HARDENING_FAILED_MSG', $result['reason']), 'error');
+        }
+        $this->setRedirect($this->settingsRedirectUrl());
+    }
+
+    public function deactivateemergencymode()
+    {
+        Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
+        \MuruguardHelper::requireAdminAccess();
+
+        /** @var MuruguardModelScanner $model */
+        $model = $this->getModel('Scanner');
+        $model->deactivateEmergencyMode();
+
+        Factory::getApplication()->enqueueMessage(Text::_('COM_MURUGUARD_EMERGENCY_DEACTIVATED_MSG'), 'message');
+        $this->setRedirect($this->settingsRedirectUrl());
     }
 
     /**

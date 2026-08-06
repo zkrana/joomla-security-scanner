@@ -365,9 +365,40 @@ if ($w !== null && $w['safe'] !== true):
         <button type="button" class="muru-settings-tab flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors" data-settings-tab="scheduled">
             ⏰ <?= Text::_('COM_MURUGUARD_SETTINGS_TAB_SCHEDULED') ?>
         </button>
+        <button type="button" class="muru-settings-tab flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors" data-settings-tab="pro">
+            ⚡ <?= Text::_('COM_MURUGUARD_SETTINGS_TAB_PRO') ?>
+        </button>
         <button type="button" class="muru-settings-tab flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors" data-settings-tab="guide">
             📖 <?= Text::_('COM_MURUGUARD_SETTINGS_TAB_GUIDE') ?>
         </button>
+    </div>
+
+    <!-- Pro upsell -- MuRu Guard Pro isn't a license-gated feature here
+         (this is the free tier, there's nothing to unlock in-app), so
+         this tab is just an always-visible promo card pointing at the
+         dashboard + a direct contact option, not a locked/upgrade flow. -->
+    <div class="muru-settings-tabpanel hidden" data-settings-panel="pro">
+        <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-8 text-center">
+            <div class="text-4xl mb-3">⚡</div>
+            <h3 class="text-base font-bold text-gray-800 mb-2"><?= Text::_('COM_MURUGUARD_PRO_PROMO_TITLE') ?></h3>
+            <p class="text-sm text-gray-500 max-w-lg mx-auto mb-5"><?= Text::_('COM_MURUGUARD_PRO_PROMO_DESC') ?></p>
+            <ul class="text-sm text-gray-600 max-w-md mx-auto text-left mb-6 space-y-2">
+                <li>🤖 <?= Text::_('COM_MURUGUARD_PRO_PROMO_FEATURE_AI') ?></li>
+                <li>🚩 <?= Text::_('COM_MURUGUARD_PRO_PROMO_FEATURE_FLEET') ?></li>
+                <li>🔔 <?= Text::_('COM_MURUGUARD_PRO_PROMO_FEATURE_ALERTS') ?></li>
+                <li>🎫 <?= Text::_('COM_MURUGUARD_PRO_PROMO_FEATURE_SUPPORT') ?></li>
+            </ul>
+            <div class="flex items-center justify-center gap-3 flex-wrap">
+                <a href="https://lyzerslab.com/joomla-products/muru-guard-security-scanner" target="_blank" rel="noopener"
+                   class="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm">
+                    ⭐ <?= Text::_('COM_MURUGUARD_PRO_PROMO_UPGRADE_BTN') ?>
+                </a>
+                <a href="mailto:zkranao@gmail.com?subject=MuRu%20Guard%20Pro" target="_blank" rel="noopener"
+                   class="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-lg text-sm font-semibold text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors shadow-sm">
+                    ✉️ <?= Text::_('COM_MURUGUARD_PRO_PROMO_CONTACT_BTN') ?>
+                </a>
+            </div>
+        </div>
     </div>
 
     <div class="muru-settings-tabpanel hidden" data-settings-panel="scheduled">
@@ -695,6 +726,131 @@ if ($w !== null && $w['safe'] !== true):
                     ➕ <?= Text::_('COM_MURUGUARD_IPLIST_ADD_BTN') ?>
                 </button>
             </form>
+            <?php endif; ?>
+        </div>
+
+        <!-- MuRu Shield Hardening: Backend Access (server-level .htaccess
+             HTTP Basic Auth in front of /administrator) + Emergency Mode.
+             Distinct from Protection Mode above -- this operates at the
+             web-server layer, before Joomla even bootstraps, not PHP. -->
+        <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-5">
+            <div class="mb-4">
+                <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">🔒 <?= Text::_('COM_MURUGUARD_HARDENING_TITLE') ?></h3>
+                <p class="text-xs text-gray-500 mt-1 max-w-xl"><?= Text::_('COM_MURUGUARD_HARDENING_DESC') ?></p>
+            </div>
+
+            <?php if (!$this->canAdmin): ?>
+            <div class="flex items-center gap-2 text-xs text-gray-500">
+                <span class="text-base">🔒</span>
+                <span><?= Text::_('COM_MURUGUARD_LOCKED_EDIT_MENU') ?></span>
+            </div>
+            <?php else: ?>
+
+            <?php if ($this->backendAuthEnabled): ?>
+            <div class="flex items-center gap-3 bg-emerald-50 border border-emerald-100 rounded-xl p-3 mb-4">
+                <span class="text-2xl">✅</span>
+                <div class="text-xs text-emerald-800">
+                    <div class="font-bold"><?= Text::_('COM_MURUGUARD_HARDENING_ACTIVE_LABEL') ?></div>
+                    <div><?= Text::sprintf('COM_MURUGUARD_HARDENING_ACTIVE_DETAIL', htmlspecialchars($this->backendAuthUsername), $this->backendAuthActivated > 0 ? date('Y-m-d H:i:s', $this->backendAuthActivated) : '—') ?></div>
+                </div>
+            </div>
+            <form action="<?= Route::_('index.php?option=com_muruguard&task=scanner.deactivatebackendauth') ?>" method="post"
+                  onsubmit="return confirm('<?= Text::_('COM_MURUGUARD_HARDENING_DEACTIVATE_CONFIRM') ?>');" class="mb-5">
+                <?= HTMLHelper::_('form.token') ?>
+                <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 border border-red-200 rounded-lg text-sm font-semibold text-red-700 bg-red-50 hover:bg-red-100 transition-colors">
+                    🚫 <?= Text::_('COM_MURUGUARD_HARDENING_DEACTIVATE_BTN') ?>
+                </button>
+            </form>
+            <?php else: ?>
+            <div class="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 mb-4">
+                <span class="text-base">⚠️</span>
+                <span><?= Text::_('COM_MURUGUARD_HARDENING_WRITABLE_WARNING') ?></span>
+            </div>
+            <form action="<?= Route::_('index.php?option=com_muruguard&task=scanner.activatebackendauth') ?>" method="post" id="muru-backendauth-form"
+                  onsubmit="return confirm('<?= Text::_('COM_MURUGUARD_HARDENING_ACTIVATE_CONFIRM') ?>');">
+                <?= HTMLHelper::_('form.token') ?>
+                <div class="grid sm:grid-cols-2 gap-4 mb-3">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-600 mb-1.5" for="muru-ba-username"><?= Text::_('COM_MURUGUARD_HARDENING_USERNAME_LABEL') ?></label>
+                        <input type="text" id="muru-ba-username" name="backend_auth_username" autocomplete="off" required
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
+                    </div>
+                    <div></div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-600 mb-1.5" for="muru-ba-password"><?= Text::_('COM_MURUGUARD_HARDENING_PASSWORD_LABEL') ?></label>
+                        <input type="text" id="muru-ba-password" name="backend_auth_password" autocomplete="off" required minlength="8"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-600 mb-1.5" for="muru-ba-password-repeat"><?= Text::_('COM_MURUGUARD_HARDENING_PASSWORD_REPEAT_LABEL') ?></label>
+                        <input type="text" id="muru-ba-password-repeat" name="backend_auth_password_repeat" autocomplete="off" required minlength="8"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 mb-4">
+                    <button type="button" id="muru-ba-generate" class="inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 rounded-lg text-xs font-semibold text-gray-600 bg-gray-50 hover:bg-gray-100 transition-colors">
+                        🎲 <?= Text::_('COM_MURUGUARD_HARDENING_GENERATE_BTN') ?>
+                    </button>
+                    <span class="text-xs text-gray-400"><?= Text::_('COM_MURUGUARD_HARDENING_GENERATE_HINT') ?></span>
+                </div>
+                <p class="text-xs text-gray-500 mb-4"><?= Text::_('COM_MURUGUARD_HARDENING_TIP') ?></p>
+                <button type="submit" class="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm">
+                    🔒 <?= Text::_('COM_MURUGUARD_HARDENING_ACTIVATE_BTN') ?>
+                </button>
+            </form>
+            <?php endif; ?>
+
+            <!-- Emergency Mode -->
+            <div class="mt-6 pt-5 border-t border-gray-100">
+                <h4 class="text-sm font-bold text-gray-800 flex items-center gap-2 mb-1">🚨 <?= Text::_('COM_MURUGUARD_EMERGENCY_TITLE') ?></h4>
+                <p class="text-xs text-gray-500 mb-3 max-w-xl"><?= Text::_('COM_MURUGUARD_EMERGENCY_DESC') ?></p>
+
+                <?php if (!$this->backendAuthEnabled): ?>
+                <div class="flex items-center gap-2 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
+                    <span class="text-base">ℹ️</span>
+                    <span><?= Text::_('COM_MURUGUARD_EMERGENCY_NEEDS_BACKEND_MSG') ?></span>
+                </div>
+                <?php elseif ($this->emergencyModeEnabled): ?>
+                <div class="flex items-center gap-3 bg-red-50 border border-red-200 rounded-xl p-3 mb-4">
+                    <span class="text-2xl">🚨</span>
+                    <div class="text-xs text-red-800">
+                        <div class="font-bold"><?= Text::_('COM_MURUGUARD_EMERGENCY_ACTIVE_LABEL') ?></div>
+                        <div><?= Text::sprintf('COM_MURUGUARD_EMERGENCY_ACTIVE_DETAIL', $this->emergencyModeActivated > 0 ? date('Y-m-d H:i:s', $this->emergencyModeActivated) : '—') ?></div>
+                    </div>
+                </div>
+                <form action="<?= Route::_('index.php?option=com_muruguard&task=scanner.deactivateemergencymode') ?>" method="post"
+                      onsubmit="return confirm('<?= Text::_('COM_MURUGUARD_EMERGENCY_DEACTIVATE_CONFIRM') ?>');">
+                    <?= HTMLHelper::_('form.token') ?>
+                    <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors shadow-sm">
+                        ✅ <?= Text::_('COM_MURUGUARD_EMERGENCY_DEACTIVATE_BTN') ?>
+                    </button>
+                </form>
+                <?php else: ?>
+                <div class="flex items-center gap-2 text-xs text-red-700 bg-red-50 border border-red-100 rounded-xl px-3 py-2 mb-3">
+                    <span class="text-base">⚠️</span>
+                    <span><?= Text::_('COM_MURUGUARD_EMERGENCY_WARNING') ?></span>
+                </div>
+                <form action="<?= Route::_('index.php?option=com_muruguard&task=scanner.activateemergencymode') ?>" method="post"
+                      onsubmit="return confirm('<?= Text::_('COM_MURUGUARD_EMERGENCY_ACTIVATE_CONFIRM') ?>');">
+                    <?= HTMLHelper::_('form.token') ?>
+                    <div class="grid sm:grid-cols-2 gap-4 mb-3 max-w-lg">
+                        <div>
+                            <label class="block text-xs font-bold text-gray-600 mb-1.5" for="muru-em-username"><?= Text::_('COM_MURUGUARD_HARDENING_USERNAME_LABEL') ?></label>
+                            <input type="text" id="muru-em-username" name="emergency_username" autocomplete="off" required
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-600 mb-1.5" for="muru-em-password"><?= Text::_('COM_MURUGUARD_EMERGENCY_PASSWORD_LABEL') ?></label>
+                            <input type="password" id="muru-em-password" name="emergency_password" autocomplete="off" required
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400">
+                        </div>
+                    </div>
+                    <button type="submit" class="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg text-sm font-bold text-white bg-red-600 hover:bg-red-700 transition-colors shadow-sm">
+                        🚨 <?= Text::_('COM_MURUGUARD_EMERGENCY_ACTIVATE_BTN') ?>
+                    </button>
+                </form>
+                <?php endif; ?>
+            </div>
             <?php endif; ?>
         </div>
 
@@ -1042,9 +1198,9 @@ foreach ($htaccessChecks as $c) { $htaccessByCategory[$c['category']][] = $c; }
 ?>
 
 <!-- Re-scan bar -->
-<div class="anim-in flex flex-wrap items-center justify-between gap-3
-            bg-white border border-gray-200 rounded-xl px-5 py-3 mb-6 shadow-sm">
-    <div class="flex items-center gap-2 text-sm text-gray-600">
+<div class="anim-in flex flex-nowrap items-center justify-between gap-3
+            bg-white border border-gray-200 rounded-xl px-5 py-3 mb-6 shadow-sm overflow-x-auto">
+    <div class="flex items-center gap-2 text-sm text-gray-600 min-w-0 flex-shrink truncate">
         <span class="text-lg">🕐</span>
         <?= Text::_('COM_MURUGUARD_LAST_SCANNED_LABEL') ?>
         <span class="font-bold text-gray-900"><?= date('Y-m-d H:i:s', $this->scanStartedAt) ?></span>
@@ -1063,7 +1219,7 @@ foreach ($htaccessChecks as $c) { $htaccessByCategory[$c['category']][] = $c; }
             </span>
         <?php endif; ?>
     </div>
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-2 flex-shrink-0">
         <form action="index.php?option=com_muruguard&task=scanner.reset" method="post" style="margin:0">
             <?= HTMLHelper::_('form.token') ?>
             <button type="submit"
