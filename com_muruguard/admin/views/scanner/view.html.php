@@ -55,6 +55,7 @@ class MuruguardViewScanner extends HtmlView
     public int $emergencyModeActivated = 0;
     public string $componentVersion = '';
     public string $activePanel = 'dashboard';
+    public string $activeSettingsTab = 'protection';
 
     public function display($tpl = null)
     {
@@ -170,6 +171,11 @@ class MuruguardViewScanner extends HtmlView
         // separate templates for no real benefit.
         $requestedPanel = $app->input->getCmd('view_panel', 'dashboard');
         $this->activePanel = in_array($requestedPanel, ['dashboard', 'settings', 'support'], true) ? $requestedPanel : 'dashboard';
+
+        $requestedSettingsTab = $app->input->getCmd('settings_tab', '');
+        $this->activeSettingsTab = in_array($requestedSettingsTab, ['protection', 'iplist', 'scheduled', 'pro', 'guide'], true)
+            ? $requestedSettingsTab
+            : 'protection';
 
         $this->addToolbar();
         $this->addSubmenu();

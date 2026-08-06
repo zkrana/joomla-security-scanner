@@ -362,6 +362,12 @@ if ($w !== null && $w['safe'] !== true):
                 <span class="inline-flex items-center justify-center w-2 h-2 rounded-full bg-emerald-500"></span>
             <?php endif; ?>
         </button>
+        <button type="button" class="muru-settings-tab flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors" data-settings-tab="iplist">
+            🚧 <?= Text::_('COM_MURUGUARD_SETTINGS_TAB_IPLIST') ?>
+            <?php if (!empty($this->ipList)): ?>
+                <span class="inline-flex items-center justify-center min-w-4 h-4 px-1 bg-gray-200 text-gray-600 text-[10px] font-bold rounded-full"><?= count($this->ipList) ?></span>
+            <?php endif; ?>
+        </button>
         <button type="button" class="muru-settings-tab flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors" data-settings-tab="scheduled">
             ⏰ <?= Text::_('COM_MURUGUARD_SETTINGS_TAB_SCHEDULED') ?>
         </button>
@@ -398,6 +404,92 @@ if ($w !== null && $w['safe'] !== true):
                     ✉️ <?= Text::_('COM_MURUGUARD_PRO_PROMO_CONTACT_BTN') ?>
                 </a>
             </div>
+        </div>
+    </div>
+
+    <!-- IP Access List -- pulled out of Site Protection into its own tab:
+         a manual allow/block list is general access-control configuration,
+         not part of the active pattern/bruteforce/country blocking that
+         tab now focuses on exclusively. -->
+    <div class="muru-settings-tabpanel hidden" data-settings-panel="iplist">
+        <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-5">
+            <div class="mb-4">
+                <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">🚧 <?= Text::_('COM_MURUGUARD_IPLIST_TITLE') ?></h3>
+                <p class="text-xs text-gray-500 mt-1 max-w-xl"><?= Text::_('COM_MURUGUARD_IPLIST_DESC') ?></p>
+            </div>
+
+            <?php if (empty($this->ipList)): ?>
+                <div class="flex items-center gap-3 text-gray-500 bg-gray-50 rounded-xl p-[10px] mb-4 text-xs">
+                    <span class="text-lg">ℹ️</span>
+                    <span><?= Text::_('COM_MURUGUARD_IPLIST_EMPTY') ?></span>
+                </div>
+            <?php else: ?>
+                <div class="tbl-wrap rounded-xl border border-gray-100 overflow-hidden mb-4">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="bg-gray-50 border-b border-gray-100">
+                                <th class="px-4 py-2.5 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_('COM_MURUGUARD_IPLIST_COL_VALUE') ?></th>
+                                <th class="px-4 py-2.5 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_('COM_MURUGUARD_IPLIST_COL_MODE') ?></th>
+                                <th class="px-4 py-2.5 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_('COM_MURUGUARD_IPLIST_COL_NOTE') ?></th>
+                                <th class="px-4 py-2.5 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_('COM_MURUGUARD_IPLIST_COL_ADDED') ?></th>
+                                <th class="w-10 px-4 py-2.5"></th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-50">
+                        <?php foreach ($this->ipList as $entry): ?>
+                            <tr class="hover:bg-gray-50/60 transition-colors">
+                                <td class="px-4 py-2.5 font-mono text-xs text-gray-700"><?= htmlspecialchars($entry['value'] ?? '') ?></td>
+                                <td class="px-4 py-2.5">
+                                    <?php if (($entry['mode'] ?? '') === 'allow'): ?>
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-bold">✓ <?= Text::_('COM_MURUGUARD_IPLIST_MODE_ALLOW') ?></span>
+                                    <?php else: ?>
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-bold">🚫 <?= Text::_('COM_MURUGUARD_IPLIST_MODE_BLOCK') ?></span>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="px-4 py-2.5 text-xs text-gray-500"><?= htmlspecialchars($entry['note'] ?? '') ?></td>
+                                <td class="px-4 py-2.5 text-xs text-gray-400"><?= isset($entry['addedAt']) ? date('Y-m-d H:i', (int) $entry['addedAt']) : '' ?></td>
+                                <td class="px-4 py-2.5">
+                                    <?php if ($this->canAdmin): ?>
+                                    <form action="<?= Route::_('index.php?option=com_muruguard&task=scanner.removeipentry') ?>" method="post"
+                                          onsubmit="return confirm('<?= Text::_('COM_MURUGUARD_IPLIST_REMOVE_CONFIRM') ?>');">
+                                        <?= HTMLHelper::_('form.token') ?>
+                                        <input type="hidden" name="ip_id" value="<?= htmlspecialchars($entry['id'] ?? '') ?>">
+                                        <button type="submit" class="text-gray-400 hover:text-red-600 transition-colors" title="<?= Text::_('COM_MURUGUARD_IPLIST_REMOVE_BTN') ?>">🗑</button>
+                                    </form>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
+
+            <?php if ($this->canAdmin): ?>
+            <form action="<?= Route::_('index.php?option=com_muruguard&task=scanner.addipentry') ?>" method="post" class="flex flex-wrap items-end gap-3">
+                <?= HTMLHelper::_('form.token') ?>
+                <div class="flex-1 min-w-[180px]">
+                    <label class="block text-xs font-bold text-gray-600 mb-1.5" for="muru-ip-value"><?= Text::_('COM_MURUGUARD_IPLIST_ADD_VALUE_LABEL') ?></label>
+                    <input type="text" id="muru-ip-value" name="ip_value" placeholder="203.0.113.5 or 203.0.113.0/24" required
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1.5" for="muru-ip-mode"><?= Text::_('COM_MURUGUARD_IPLIST_ADD_MODE_LABEL') ?></label>
+                    <select id="muru-ip-mode" name="ip_mode" class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
+                        <option value="block"><?= Text::_('COM_MURUGUARD_IPLIST_MODE_BLOCK') ?></option>
+                        <option value="allow"><?= Text::_('COM_MURUGUARD_IPLIST_MODE_ALLOW') ?></option>
+                    </select>
+                </div>
+                <div class="flex-1 min-w-[160px]">
+                    <label class="block text-xs font-bold text-gray-600 mb-1.5" for="muru-ip-note"><?= Text::_('COM_MURUGUARD_IPLIST_ADD_NOTE_LABEL') ?></label>
+                    <input type="text" id="muru-ip-note" name="ip_note" maxlength="200"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
+                </div>
+                <button type="submit" class="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm">
+                    ➕ <?= Text::_('COM_MURUGUARD_IPLIST_ADD_BTN') ?>
+                </button>
+            </form>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -647,87 +739,6 @@ if ($w !== null && $w['safe'] !== true):
             </div>
         </form>
         <?php endif; ?>
-
-        <!-- IP Access List -->
-        <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-5">
-            <div class="mb-4">
-                <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">🚧 <?= Text::_('COM_MURUGUARD_IPLIST_TITLE') ?></h3>
-                <p class="text-xs text-gray-500 mt-1 max-w-xl"><?= Text::_('COM_MURUGUARD_IPLIST_DESC') ?></p>
-            </div>
-
-            <?php if (empty($this->ipList)): ?>
-                <div class="flex items-center gap-3 text-gray-500 bg-gray-50 rounded-xl p-[10px] mb-4 text-xs">
-                    <span class="text-lg">ℹ️</span>
-                    <span><?= Text::_('COM_MURUGUARD_IPLIST_EMPTY') ?></span>
-                </div>
-            <?php else: ?>
-                <div class="tbl-wrap rounded-xl border border-gray-100 overflow-hidden mb-4">
-                    <table class="w-full text-sm">
-                        <thead>
-                            <tr class="bg-gray-50 border-b border-gray-100">
-                                <th class="px-4 py-2.5 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_('COM_MURUGUARD_IPLIST_COL_VALUE') ?></th>
-                                <th class="px-4 py-2.5 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_('COM_MURUGUARD_IPLIST_COL_MODE') ?></th>
-                                <th class="px-4 py-2.5 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_('COM_MURUGUARD_IPLIST_COL_NOTE') ?></th>
-                                <th class="px-4 py-2.5 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_('COM_MURUGUARD_IPLIST_COL_ADDED') ?></th>
-                                <th class="w-10 px-4 py-2.5"></th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-gray-50">
-                        <?php foreach ($this->ipList as $entry): ?>
-                            <tr class="hover:bg-gray-50/60 transition-colors">
-                                <td class="px-4 py-2.5 font-mono text-xs text-gray-700"><?= htmlspecialchars($entry['value'] ?? '') ?></td>
-                                <td class="px-4 py-2.5">
-                                    <?php if (($entry['mode'] ?? '') === 'allow'): ?>
-                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-bold">✓ <?= Text::_('COM_MURUGUARD_IPLIST_MODE_ALLOW') ?></span>
-                                    <?php else: ?>
-                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-bold">🚫 <?= Text::_('COM_MURUGUARD_IPLIST_MODE_BLOCK') ?></span>
-                                    <?php endif; ?>
-                                </td>
-                                <td class="px-4 py-2.5 text-xs text-gray-500"><?= htmlspecialchars($entry['note'] ?? '') ?></td>
-                                <td class="px-4 py-2.5 text-xs text-gray-400"><?= isset($entry['addedAt']) ? date('Y-m-d H:i', (int) $entry['addedAt']) : '' ?></td>
-                                <td class="px-4 py-2.5">
-                                    <?php if ($this->canAdmin): ?>
-                                    <form action="<?= Route::_('index.php?option=com_muruguard&task=scanner.removeipentry') ?>" method="post"
-                                          onsubmit="return confirm('<?= Text::_('COM_MURUGUARD_IPLIST_REMOVE_CONFIRM') ?>');">
-                                        <?= HTMLHelper::_('form.token') ?>
-                                        <input type="hidden" name="ip_id" value="<?= htmlspecialchars($entry['id'] ?? '') ?>">
-                                        <button type="submit" class="text-gray-400 hover:text-red-600 transition-colors" title="<?= Text::_('COM_MURUGUARD_IPLIST_REMOVE_BTN') ?>">🗑</button>
-                                    </form>
-                                    <?php endif; ?>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-            <?php endif; ?>
-
-            <?php if ($this->canAdmin): ?>
-            <form action="<?= Route::_('index.php?option=com_muruguard&task=scanner.addipentry') ?>" method="post" class="flex flex-wrap items-end gap-3">
-                <?= HTMLHelper::_('form.token') ?>
-                <div class="flex-1 min-w-[180px]">
-                    <label class="block text-xs font-bold text-gray-600 mb-1.5" for="muru-ip-value"><?= Text::_('COM_MURUGUARD_IPLIST_ADD_VALUE_LABEL') ?></label>
-                    <input type="text" id="muru-ip-value" name="ip_value" placeholder="203.0.113.5 or 203.0.113.0/24" required
-                           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
-                </div>
-                <div>
-                    <label class="block text-xs font-bold text-gray-600 mb-1.5" for="muru-ip-mode"><?= Text::_('COM_MURUGUARD_IPLIST_ADD_MODE_LABEL') ?></label>
-                    <select id="muru-ip-mode" name="ip_mode" class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
-                        <option value="block"><?= Text::_('COM_MURUGUARD_IPLIST_MODE_BLOCK') ?></option>
-                        <option value="allow"><?= Text::_('COM_MURUGUARD_IPLIST_MODE_ALLOW') ?></option>
-                    </select>
-                </div>
-                <div class="flex-1 min-w-[160px]">
-                    <label class="block text-xs font-bold text-gray-600 mb-1.5" for="muru-ip-note"><?= Text::_('COM_MURUGUARD_IPLIST_ADD_NOTE_LABEL') ?></label>
-                    <input type="text" id="muru-ip-note" name="ip_note" maxlength="200"
-                           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
-                </div>
-                <button type="submit" class="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm">
-                    ➕ <?= Text::_('COM_MURUGUARD_IPLIST_ADD_BTN') ?>
-                </button>
-            </form>
-            <?php endif; ?>
-        </div>
 
         <!-- MuRu Shield Hardening: Backend Access (server-level .htaccess
              HTTP Basic Auth in front of /administrator) + Emergency Mode.
@@ -2172,20 +2183,50 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
     if (initialPanel === 'settings') { openSettings(); }
     else if (initialPanel === 'support') { openSupport(); }
 
-    // ── Settings sub-tabs (Scheduled Scanning / Setup Guide) ─────
+    // ── Settings sub-tabs (Site Protection / IP Access List / Scheduled
+    //    Scanning / Pro / Setup Guide) ──────────────────────────────
     var settingsTabs   = document.querySelectorAll('.muru-settings-tab');
     var settingsPanels = document.querySelectorAll('.muru-settings-tabpanel');
+    function activateSettingsTab(id) {
+        settingsTabs.forEach(function (st) { st.classList.toggle('active', st.getAttribute('data-settings-tab') === id); });
+        settingsPanels.forEach(function (p) {
+            var on = p.getAttribute('data-settings-panel') === id;
+            p.classList.toggle('active', on);
+            p.classList.toggle('hidden', !on);
+        });
+    }
     settingsTabs.forEach(function (t) {
-        t.addEventListener('click', function () {
-            var id = t.getAttribute('data-settings-tab');
-            settingsTabs.forEach(function (st) { st.classList.toggle('active', st === t); });
-            settingsPanels.forEach(function (p) {
-                var on = p.getAttribute('data-settings-panel') === id;
-                p.classList.toggle('active', on);
-                p.classList.toggle('hidden', !on);
-            });
+        t.addEventListener('click', function () { activateSettingsTab(t.getAttribute('data-settings-tab')); });
+    });
+
+    // Every Settings sub-tab's Save/Add/Remove button is a real form
+    // POST + redirect (not AJAX), which would otherwise always land back
+    // on whichever tab is hardcoded "active" in the markup regardless of
+    // which one the action actually came from. Each such form gets a
+    // hidden settings_tab field, filled in right before it submits with
+    // whichever tab is CURRENTLY active -- the corresponding controller
+    // action reads it and carries it through the redirect (see
+    // settingsRedirectUrl() in the controller), and the
+    // initialSettingsTab restore below picks it back up on the reload.
+    document.querySelectorAll('#muru-settings-panel form').forEach(function (form) {
+        form.addEventListener('submit', function () {
+            var activeTabBtn = document.querySelector('.muru-settings-tab.active');
+            var activeId = activeTabBtn ? activeTabBtn.getAttribute('data-settings-tab') : 'protection';
+            var hidden = form.querySelector('input[name="settings_tab"]');
+            if (!hidden) {
+                hidden = document.createElement('input');
+                hidden.type = 'hidden';
+                hidden.name = 'settings_tab';
+                form.appendChild(hidden);
+            }
+            hidden.value = activeId;
         });
     });
+
+    var initialSettingsTab = <?= json_encode($this->activeSettingsTab) ?>;
+    if (initialSettingsTab && initialSettingsTab !== 'protection') {
+        activateSettingsTab(initialSettingsTab);
+    }
 
     // Live-updates the webcron URL preview as the token field changes,
     // and fills in a fresh random token on Generate -- purely client-side

@@ -365,7 +365,7 @@ public function scan()
     private function settingsRedirectUrl(): string
     {
         $tab = Factory::getApplication()->input->getCmd('settings_tab', '');
-        $validTabs = ['protection', 'scheduled', 'guide'];
+        $validTabs = ['protection', 'iplist', 'scheduled', 'guide'];
         $tab = in_array($tab, $validTabs, true) ? $tab : 'protection';
         return 'index.php?option=com_muruguard&view_panel=settings&settings_tab=' . $tab;
     }
@@ -548,7 +548,7 @@ public function scan()
             $app->enqueueMessage(htmlspecialchars($result['error']), 'error');
         }
 
-        $this->setRedirect('index.php?option=com_muruguard');
+        $this->setRedirect($this->settingsRedirectUrl());
     }
 
     /** Removes one entry from the manual IP Access List. */
@@ -563,7 +563,7 @@ public function scan()
         }
 
         Factory::getApplication()->enqueueMessage(Text::_('COM_MURUGUARD_IPLIST_REMOVED_MSG'), 'message');
-        $this->setRedirect('index.php?option=com_muruguard');
+        $this->setRedirect($this->settingsRedirectUrl());
     }
 
     /**

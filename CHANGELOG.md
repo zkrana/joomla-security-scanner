@@ -8,6 +8,17 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [2.8.4] - 2026-08-06
+
+### Changed
+
+- **IP Access List moved out of Site Protection into its own Settings tab**, with an entry-count badge. Settings → Site Protection now holds only the active-blocking feature (pattern/brute-force/country blocking, Backend Access, Emergency Mode); the manual allow/block list is general access-control configuration, not part of that.
+- **Settings sub-tabs now remember which one you were on** after saving/adding/removing something in them (Site Protection, IP Access List, Scheduled Scanning, Guide) -- previously every save always bounced back to the Site Protection tab regardless of where the action came from.
+
+### Fixed
+
+- **Adding or removing an IP Access List entry redirected to the main Dashboard panel instead of back to Settings.**
+
 ## [2.8.3] - 2026-08-06
 
 ### Fixed
