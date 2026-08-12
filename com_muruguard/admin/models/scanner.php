@@ -770,16 +770,22 @@ class MuruguardModelScanner extends BaseDatabaseModel
                     continue;
                 }
 
-                // Unrecognized directory -- flagged, but a folder made up
-                // ENTIRELY of static assets (fonts/images/css/...) is a
+                // Unrecognized directory -- flagged, unless it's made up
+                // ENTIRELY of static assets (fonts/images/css/...), a
                 // common, legitimate custom template/page-builder asset
-                // folder, not a malware staging area, so it's worded and
-                // scored differently than one that actually contains code.
-                // Confirmed real false positive: a top-level /fonts folder
-                // holding nothing but webfont files was flagged High,
-                // identically to an actual dropped-shell folder, purely
-                // because the reason text contained the word "unrecognized"
-                // (see recordFinding()'s keyword-based auto-escalation).
+                // folder, not a malware staging area. Confirmed real false
+                // positive, twice: first a top-level /fonts folder was
+                // flagged High identically to a dropped-shell folder
+                // purely because the reason text contained the word
+                // "unrecognized"; downgrading it to Medium instead of
+                // removing the flag entirely was STILL reported back as a
+                // false positive needing individual per-file dismissal.
+                // An asset-only folder now gets the exact same treatment
+                // as a known extension's own data folder just above: no
+                // structural flag at all, but every file inside is still
+                // fully content-scanned, so an actual payload disguised
+                // with one of these extensions (a script-bearing .svg or
+                // .html, for instance) is still caught on its own merits.
                 $this->seenAbs[$p] = true;
                 $innerFiles = [];
                 $hasNonAssetContent = false;
@@ -790,17 +796,31 @@ class MuruguardModelScanner extends BaseDatabaseModel
                     if (!in_array($innerExt, $sig['ICONFONT_ALLOWED_EXTENSIONS'], true)) $hasNonAssetContent = true;
                 });
 
-                $dirReason = $hasNonAssetContent
-                    ? 'Unrecognized directory directly in the Joomla webroot — not part of a standard install.'
-                    : 'Custom folder directly in the Joomla webroot containing only static assets (fonts/styles/images) — not part of a standard install, but not executable code either. Confirm this is something you (or your template/page builder) intentionally added.';
+                if (!$hasNonAssetContent) {
+                    foreach ($innerFiles as $innerPath) {
+                        if (isset($this->seenAbs[$innerPath])) continue;
+                        $this->seenAbs[$innerPath] = true;
+                        $innerExt = strtolower(pathinfo($innerPath, PATHINFO_EXTENSION));
+                        $innerReasons = [];
+                        MuruguardHelper::scanFileContent($innerPath, $innerExt, $sig, $maxSize, $innerReasons);
+                        if (!empty($innerReasons)) {
+                            $innerRel = ltrim(str_replace($this->root, '', $innerPath), '/');
+                            $innerFp = MuruguardHelper::fingerprintReasons($innerReasons);
+                            if (!MuruguardHelper::isFalsePositive($falsePositives, 'file', $innerRel, $innerFp)) {
+                                MuruguardHelper::recordFinding($this->fileFindings, $innerPath, $this->root, $innerReasons, false);
+                            }
+                        }
+                    }
+                    continue;
+                }
+
+                $dirReason = 'Unrecognized directory directly in the Joomla webroot — not part of a standard install.';
                 $dirFp = MuruguardHelper::fingerprintReasons([$dirReason]);
                 if (!MuruguardHelper::isFalsePositive($falsePositives, 'file', $it, $dirFp)) {
                     MuruguardHelper::recordFinding($this->fileFindings, $p, $this->root, $dirReason, true);
                 }
 
-                $innerReasonText = $hasNonAssetContent
-                    ? 'Inside an unrecognized top-level webroot directory.'
-                    : 'Inside a static-assets-only custom folder in the webroot.';
+                $innerReasonText = 'Inside an unrecognized top-level webroot directory.';
                 $innerFp = MuruguardHelper::fingerprintReasons([$innerReasonText]);
                 foreach ($innerFiles as $innerPath) {
                     if (isset($this->seenAbs[$innerPath])) continue;

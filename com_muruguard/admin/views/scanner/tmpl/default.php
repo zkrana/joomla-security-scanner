@@ -1236,15 +1236,6 @@ foreach ($htaccessChecks as $c) { $htaccessByCategory[$c['category']][] = $c; }
                 🔄 <?= Text::_('COM_MURUGUARD_RESCAN_NOW') ?>
             </button>
         </form>
-        <a href="https://lyzerslab.com/joomla-products/muru-guard-security-scanner"
-           target="_blank" rel="noopener"
-           title="<?= Text::_('COM_MURUGUARD_AI_INTEGRATION_TITLE') ?>"
-           class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-violet-200
-                  rounded-lg text-sm font-semibold text-violet-700 bg-violet-50 hover:bg-violet-100
-                  transition-colors shadow-sm hover:shadow">
-            🤖 <?= Text::_('COM_MURUGUARD_AI_INTEGRATION') ?>
-            <span class="inline-flex items-center px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-bold">PRO</span>
-        </a>
         <button type="button" id="muru-open-htaccess-modal"
                 class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-emerald-200
                        rounded-lg text-sm font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100
@@ -1254,15 +1245,6 @@ foreach ($htaccessChecks as $c) { $htaccessByCategory[$c['category']][] = $c; }
                 <span class="inline-flex items-center justify-center min-w-4 h-4 px-1 bg-amber-500 text-white text-[10px] font-bold rounded-full"><?= $htaccessCriticalMissing ?></span>
             <?php endif; ?>
         </button>
-        <a href="https://lyzerslab.com/joomla-products/muru-guard-security-scanner"
-           target="_blank" rel="noopener"
-           title="<?= Text::_('COM_MURUGUARD_REPORT_BTN') ?>"
-           class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-sky-200
-                  rounded-lg text-sm font-semibold text-sky-700 bg-sky-50 hover:bg-sky-100
-                  transition-colors shadow-sm hover:shadow">
-            📄 <?= Text::_('COM_MURUGUARD_REPORT_BTN') ?>
-            <span class="inline-flex items-center px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-bold">PRO</span>
-        </a>
     </div>
 </div>
 

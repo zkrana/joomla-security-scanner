@@ -8,6 +8,17 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [2.8.7] - 2026-08-12
+
+### Changed
+
+* **Removed the "AI Integration" and "Security Report" toolbar buttons.** Both were Pro-only links out to the marketing site with a static "PRO" badge -- not a working feature on Free, so they were just clutter. `.htaccess Hardening` (a real Free feature) stays.
+
+### Fixed
+
+* **Static-assets-only custom webroot folders (e.g. a template's `/fonts` folder) still showed up as a Medium-confidence finding**, requiring an individual "Mark as False Positive" click per file even though the underlying content is provably inert. Now given the same treatment as a known extension's own companion data folder: no structural flag at all, but every file inside is still fully content-scanned, so an actual payload disguised with one of these extensions is still caught.
+* **AV/hosting-scanner false positives on this scanner's own `admin/helpers/muruguard.php`** (Huorong via VirusTotal, SiteGround Site Scanner -- reported on the Pro release's GitHub issue thread, but Free carried the same unsplit literals). `gsocket_indicator`, `webshell_generic`, and `phpkoru_encoder` all still contained their trigger brand names as one contiguous literal string on Free (Pro already had `gsocket_indicator`/`phpkoru_encoder` split from an earlier, unrelated cleanup). Split into concatenated fragments, same technique already used elsewhere in this file -- detection behaviour is unchanged, only the on-disk byte sequence differs. Also caught and fixed several explanatory code comments that had reintroduced the exact same literal strings while documenting the fix.
+
 ## [2.8.6] - 2026-08-12
 
 ### Added
