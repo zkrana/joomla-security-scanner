@@ -19,6 +19,14 @@ Everything on this page is **free and always will be** — full scanning, cleanu
 
 **[Create a free account and get MuRu Guard Pro →](https://lyzerslab.com/joomla-products/muru-guard-security-scanner)**
 
+**🔜 Coming soon to Pro** — in active development, not available yet:
+
+| | |
+|---|---|
+| 🧬 **File Integrity Monitoring** | Baseline-hash every file once, then flag any byte-level change since -- catches a payload hidden inside an already-trusted file, independent of signature matching |
+| 🧱 **Active Web Application Firewall** | Blocks SQLi/XSS/LFI/RCE request patterns and known-CVE exploit strings before they reach Joomla, instead of only logging the attempt |
+| 📡 **Fleet bulk actions** | Trigger a remote re-scan or push a hardening config change across every licensed site from the Fleet Dashboard, instead of logging into each site's admin individually |
+
 ---
 
 A Joomla extension that detects and helps remove malware left behind by the **SP Page Builder `uploadCustomIcon` unauthenticated RCE vulnerability** (versions prior to 6.6.2). It also checks the **JCE editor component (`com_jce`)**, which has been reported as a secondary infection vector on sites compromised through SPPB.

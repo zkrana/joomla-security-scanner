@@ -8,7 +8,7 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
-## [2.9.0] - 2026-08-12
+## [3.0.0] - 2026-08-12
 
 ### Added
 
