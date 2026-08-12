@@ -105,6 +105,73 @@ public function scan()
     }
 
     /**
+     * AJAX/JSON chunk endpoint backing the "Run a Scan" progress bar (see
+     * the scanner-form JS in tmpl/default.php). Each call does at most
+     * CHUNK_TIME_BUDGET_SECONDS of work and returns -- the JS keeps calling
+     * this until it reports done, at which point the results are already
+     * sitting in the session exactly as if scan() above had produced them,
+     * and the page does a normal reload to show them. This is what makes a
+     * large site's scan safe regardless of the host's execution-time
+     * limit: no single request here can run long enough to hit it.
+     *
+     * Same CSRF/token handling as every other action in this controller --
+     * checkToken()'s default 'post' mode is correct because the token
+     * travels as a normal POST field, same as a form submit.
+     */
+    public function scanchunk()
+    {
+        $app = Factory::getApplication();
+
+        if (!Session::checkToken()) {
+            $this->sendChunkJson(['error' => Text::_('JINVALID_TOKEN')], 403);
+            return;
+        }
+
+        $input = $app->input;
+        $reset = $input->post->getBool('reset', false);
+
+        // Same area-selection persistence scan() does, only on the call
+        // that actually starts a fresh run -- follow-up chunk calls for
+        // the same run don't resubmit the picker, they just keep going.
+        if ($reset && $input->post->get('areas_submitted', 0, 'int') === 1) {
+            $areas = $input->post->get('scan_areas', [], 'array');
+            $areas = array_values(array_map('strval', $areas));
+            $app->getSession()->set('muruguard.scan_areas', $areas);
+        }
+
+        /** @var MuruguardModelScanner $model */
+        $model = $this->getModel('Scanner');
+
+        try {
+            $status = $model->runScanChunk($reset);
+        } catch (\Throwable $e) {
+            $this->sendChunkJson(['error' => $e->getMessage()], 500);
+            return;
+        }
+
+        $status['currentAreaLabel'] = $status['currentArea'] !== null
+            ? \MuruguardHelper::getChunkAreaLabel($status['currentArea'])
+            : null;
+        $status['truncatedLabels'] = array_map(
+            [\MuruguardHelper::class, 'getChunkAreaLabel'],
+            $status['truncated']
+        );
+
+        $this->sendChunkJson($status, 200);
+    }
+
+    /** Small shared JSON-response helper -- Joomla's own JResponseJson isn't autoloaded in every version this component supports, so this stays a plain, dependency-free echo. */
+    private function sendChunkJson(array $data, int $statusCode): void
+    {
+        $app = Factory::getApplication();
+        $app->setHeader('status', $statusCode, true);
+        $app->setHeader('Content-Type', 'application/json; charset=utf-8', true);
+        $app->sendHeaders();
+        echo json_encode($data);
+        $app->close();
+    }
+
+    /**
      * Clears the cached scan result so the directory picker (scan gate)
      * reappears, keeping the previous selection pre-ticked.
      */

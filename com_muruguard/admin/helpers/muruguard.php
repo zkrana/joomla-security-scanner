@@ -626,6 +626,28 @@ class MuruguardHelper
     }
 
     /**
+     * Human label for one chunked-scan progress-bar item -- $key is either
+     * a SCAN_CONFIG directory key (looked up from getScanAreas() so the
+     * label always matches what's shown on the directory-picker checkbox)
+     * or one of MuruguardModelScanner's two synthetic chunk-queue keys.
+     */
+    public static function getChunkAreaLabel(string $key): string
+    {
+        if ($key === '__webroot_core__') {
+            return Text::_('COM_MURUGUARD_CHUNK_WEBROOT_CORE_LABEL');
+        }
+        if ($key === '__database__') {
+            return Text::_('COM_MURUGUARD_AREA_DATABASE');
+        }
+        foreach (self::getScanAreas() as $group) {
+            foreach ($group['areas'] as $areaKey => $label) {
+                if ($areaKey === $key) return $label;
+            }
+        }
+        return $key;
+    }
+
+    /**
      * Checks a LIVE incoming request against REQUEST_SIGNATURES. Called by
      * the companion plg_system_muruguardshield plugin on every page load
      * -- NOT by the component's own file-content scan, which never sees

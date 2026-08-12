@@ -14,6 +14,18 @@ use Joomla\CMS\Language\Text;
 
 require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/muruguard.php';
 
+/**
+ * Internal control-flow signal only -- thrown from inside scanFilesystem()'s
+ * walkDir() callback when a chunked scan's wall-clock deadline is reached
+ * mid-directory, caught one level up around that single area's walk so the
+ * area is marked truncated and the next chunk request can move on to the
+ * next area instead of the whole HTTP request running past a host's
+ * execution-time limit. Never escapes scanFilesystem() itself.
+ */
+class MuruguardScanChunkTimeout extends \RuntimeException
+{
+}
+
 class MuruguardModelScanner extends BaseDatabaseModel
 {
     protected string $root;
@@ -26,6 +38,12 @@ class MuruguardModelScanner extends BaseDatabaseModel
     protected ?array $registeredTemplatesCache = null;
     protected ?array $registeredPluginsCache = null;
     protected ?array $registeredComponentsCache = null;
+    // Areas whose walk was cut off by a chunk deadline mid-directory rather
+    // than finishing naturally -- see MuruguardScanChunkTimeout. Surfaced by
+    // runScanChunk() so a pathologically large single folder is reported
+    // honestly as "scanned up to the time budget" instead of silently
+    // passing as complete.
+    protected array $truncatedAreas = [];
 
     public function __construct($config = [])
     {
@@ -327,6 +345,156 @@ class MuruguardModelScanner extends BaseDatabaseModel
         @file_put_contents($path, MuruguardHelper::dataFileStubPrefix() . json_encode(['keys' => $keys, 'saved_at' => time()]));
     }
 
+    // ------------------------------------------------------------------
+    // Chunked / resumable scanning
+    //
+    // A single "Run a Scan" click used to run the entire filesystem+DB
+    // scan inside one HTTP request -- fine for a small site, but a large
+    // one (many extensions, big vendor/media trees) could genuinely
+    // outrun a host's max_execution_time before finishing, which surfaced
+    // to the admin as a bare "500 - Whoops" with no results at all. Each
+    // call to runScanChunk() below instead does AS MUCH work as fits in a
+    // fixed wall-clock budget (one SCAN_CONFIG directory at a time, plus
+    // the webroot/core-entry checks and the DB scan as their own single
+    // items), persists progress to a small data file, and returns
+    // immediately -- the scanner.php view's JS then calls it again, and
+    // again, until it reports done. No single request can ever run longer
+    // than the budget, regardless of how large the site is.
+    // ------------------------------------------------------------------
+
+    /** Wall-clock budget per HTTP request/chunk call -- comfortably inside even a conservative host's default execution-time limit. */
+    private const CHUNK_TIME_BUDGET_SECONDS = 20;
+    public const CHUNK_WEBROOT_CORE_KEY = '__webroot_core__';
+    public const CHUNK_DATABASE_KEY = '__database__';
+
+    /** Ordered list of chunk-queue items, respecting the user's current area selection -- same selection getFileFindings()/runScan() already honour. */
+    private function buildChunkQueue(): array
+    {
+        $sig = MuruguardHelper::getSignatures();
+        $queue = [];
+        foreach (array_keys($sig['SCAN_CONFIG']) as $relDir) {
+            if ($this->isAreaSelected($relDir)) $queue[] = $relDir;
+        }
+        if ($this->isAreaSelected('webroot') || $this->isAreaSelected('core_entry')) {
+            $queue[] = self::CHUNK_WEBROOT_CORE_KEY;
+        }
+        if ($this->isAreaSelected('database')) {
+            $queue[] = self::CHUNK_DATABASE_KEY;
+        }
+        return $queue;
+    }
+
+    /**
+     * Deliberately the same stub-protected data-file technique as
+     * scanHistoryFilePath() (see that method's own comment for why this
+     * is never session-only or component-params) -- a chunked scan of a
+     * genuinely huge site can span several minutes across many chunk
+     * calls, longer than it's safe to assume a session survives, and
+     * Global Configuration saves would otherwise be able to wipe it.
+     */
+    private function scanProgressFilePath(): string
+    {
+        return JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/scan-progress.php';
+    }
+
+    private function loadScanProgress(): ?array
+    {
+        $path = $this->scanProgressFilePath();
+        if (!is_file($path)) return null;
+        $contents = @file_get_contents($path);
+        if ($contents === false) return null;
+        $decoded = json_decode(MuruguardHelper::stripDataFileStub($contents), true);
+        return is_array($decoded) ? $decoded : null;
+    }
+
+    private function saveScanProgress(array $progress): void
+    {
+        @file_put_contents($this->scanProgressFilePath(), MuruguardHelper::dataFileStubPrefix() . json_encode($progress));
+    }
+
+    /**
+     * Runs one chunk's worth of work (bounded by CHUNK_TIME_BUDGET_SECONDS)
+     * and returns progress for the calling AJAX loop.
+     *
+     * @param bool $reset Start a brand-new scan, abandoning any in-progress
+     *   chunked scan -- passed true only by the very first call of a fresh
+     *   "Run a Scan" click; every follow-up call from the same run passes
+     *   false so it continues the existing queue instead of restarting it.
+     * @return array{done:bool,completedCount:int,totalCount:int,currentArea:?string,truncated:list<string>}
+     */
+    public function runScanChunk(bool $reset = false): array
+    {
+        $progress = $reset ? null : $this->loadScanProgress();
+
+        if ($progress === null || !empty($progress['done'])) {
+            $queue = $this->buildChunkQueue();
+            $progress = [
+                'queue'      => $queue,
+                'completed'  => [],
+                'findings'   => [],
+                'dbFindings' => $this->dbFindings,
+                'truncated'  => [],
+                'totalItems' => count($queue),
+                'startedAt'  => time(),
+                'updatedAt'  => time(),
+                'done'       => false,
+            ];
+        }
+
+        $deadline = microtime(true) + self::CHUNK_TIME_BUDGET_SECONDS;
+
+        while (!empty($progress['queue']) && microtime(true) < $deadline) {
+            $item = array_shift($progress['queue']);
+
+            if ($item === self::CHUNK_DATABASE_KEY) {
+                $this->scanDatabase();
+                foreach ($this->dbFindings as $category => $rows) {
+                    $progress['dbFindings'][$category] = $rows;
+                }
+            } elseif ($item === self::CHUNK_WEBROOT_CORE_KEY) {
+                $this->fileFindings = [];
+                $this->truncatedAreas = [];
+                $this->scanFilesystem([], true, $deadline);
+                $progress['findings'] = array_merge($progress['findings'], $this->fileFindings);
+                $progress['truncated'] = array_merge($progress['truncated'], array_keys($this->truncatedAreas));
+            } else {
+                $this->fileFindings = [];
+                $this->truncatedAreas = [];
+                $this->scanFilesystem([$item], false, $deadline);
+                $progress['findings'] = array_merge($progress['findings'], $this->fileFindings);
+                $progress['truncated'] = array_merge($progress['truncated'], array_keys($this->truncatedAreas));
+            }
+
+            $progress['completed'][] = $item;
+        }
+
+        $progress['updatedAt'] = time();
+        $progress['done'] = empty($progress['queue']);
+
+        if ($progress['done']) {
+            // Publish through the exact same session keys the unchunked
+            // runScan()/getFileFindings() path already uses, so the results
+            // view renders identically regardless of which path produced
+            // them -- chunking only changes HOW the scan runs, never the
+            // shape of its output.
+            $session = Factory::getApplication()->getSession();
+            $session->set('muruguard.filefindings', $progress['findings']);
+            $session->set('muruguard.filefindings_time', time());
+            $this->fileFindings = $progress['findings'];
+            $this->dbFindings   = $progress['dbFindings'];
+        }
+
+        $this->saveScanProgress($progress);
+
+        return [
+            'done'           => $progress['done'],
+            'completedCount' => count($progress['completed']),
+            'totalCount'     => $progress['totalItems'],
+            'currentArea'    => $progress['done'] ? null : ($progress['queue'][0] ?? null),
+            'truncated'      => array_values(array_unique($progress['truncated'])),
+        ];
+    }
+
     /**
      * Persists the 3 scheduled-scanning settings into this component's
      * own extension params -- the same storage Global Configuration reads
@@ -532,7 +700,23 @@ class MuruguardModelScanner extends BaseDatabaseModel
     // Filesystem scan
     // ------------------------------------------------------------------
 
-    public function scanFilesystem(): void
+    /**
+     * @param ?array $onlyDirs Restricts the SCAN_CONFIG directory walk to
+     *   just these relative-dir keys (e.g. ['media']) -- null (default)
+     *   walks every selected SCAN_CONFIG dir, same as before this param
+     *   existed. Pass [] to skip the directory walk entirely while still
+     *   running the webroot/core-entry checks below, if $includeWebrootCore.
+     * @param bool $includeWebrootCore Whether to run the shallow webroot
+     *   scan and core-entry-point checks in this call. Defaults true (full
+     *   scan, unchanged behaviour); a per-directory chunk call passes false
+     *   so those cheap-but-redundant checks only run once per chunked scan,
+     *   not once per chunk.
+     * @param ?float $deadline Wall-clock microtime(true) cutoff. When set,
+     *   a directory walk that's still running past it is cut short (see
+     *   MuruguardScanChunkTimeout) instead of letting one huge folder blow
+     *   through an entire chunked-scan HTTP request's time budget.
+     */
+    public function scanFilesystem(?array $onlyDirs = null, bool $includeWebrootCore = true, ?float $deadline = null): void
     {
         $sig = MuruguardHelper::getSignatures();
         $params = ComponentHelper::getParams('com_muruguard');
@@ -564,11 +748,23 @@ class MuruguardModelScanner extends BaseDatabaseModel
         $falsePositives = MuruguardHelper::getFalsePositiveLookup();
 
         foreach ($sig['SCAN_CONFIG'] as $relDir => $mode) {
+            if ($onlyDirs !== null && !in_array($relDir, $onlyDirs, true)) continue;
             if (!$this->isAreaSelected($relDir)) continue;
+            if ($deadline !== null && microtime(true) > $deadline) {
+                // Budget already spent before even starting this area (only
+                // reachable when $onlyDirs covers more than one area) --
+                // leave it for the next chunk rather than starting it.
+                $this->truncatedAreas[$relDir] = true;
+                break;
+            }
             $dir = $this->root . '/' . $relDir;
             if (!is_dir($dir)) continue;
 
-            MuruguardHelper::walkDir($dir, function (string $path, bool $isDir) use ($sig, $mode, $maxSize, $isIgnored, $selfBackupPattern, $registeredTemplates, $registeredPlugins, $registeredComponents, $falsePositives) {
+            try {
+                MuruguardHelper::walkDir($dir, function (string $path, bool $isDir) use ($sig, $mode, $maxSize, $isIgnored, $selfBackupPattern, $registeredTemplates, $registeredPlugins, $registeredComponents, $falsePositives, $deadline) {
+                if ($deadline !== null && microtime(true) > $deadline) {
+                    throw new MuruguardScanChunkTimeout();
+                }
                 foreach ($sig['SAFE_COMPONENT_PATHS'] as $safeFrag) {
                     if (stripos($path, $safeFrag) !== false) return;
                 }
@@ -748,11 +944,20 @@ class MuruguardModelScanner extends BaseDatabaseModel
                         MuruguardHelper::recordFinding($this->fileFindings, $path, $this->root, $reasons, $isDir);
                     }
                 }
-            });
+                });
+            } catch (MuruguardScanChunkTimeout $e) {
+                // Whatever this area's walk found before hitting the
+                // deadline is already recorded in $this->fileFindings above
+                // -- kept as a partial result rather than discarded, with
+                // the area marked truncated so runScanChunk() can report it
+                // honestly instead of implying a complete scan.
+                $this->truncatedAreas[$relDir] = true;
+                break;
+            }
         }
 
         // Shallow webroot scan
-        $rootItems = $this->isAreaSelected('webroot') ? (@scandir($this->root) ?: []) : [];
+        $rootItems = ($includeWebrootCore && $this->isAreaSelected('webroot')) ? (@scandir($this->root) ?: []) : [];
         foreach ($rootItems as $it) {
             if ($it === '.' || $it === '..') continue;
             $p = $this->root . '/' . $it;
@@ -905,7 +1110,7 @@ class MuruguardModelScanner extends BaseDatabaseModel
         $joomlaVersion = MuruguardHelper::getInstalledJoomlaVersion($this->root);
         $checksumManifest = MuruguardHelper::getCoreChecksumManifest();
 
-        $coreEntries = $this->isAreaSelected('core_entry') ? $sig['CORE_ENTRY_POINTS'] : [];
+        $coreEntries = ($includeWebrootCore && $this->isAreaSelected('core_entry')) ? $sig['CORE_ENTRY_POINTS'] : [];
         foreach ($coreEntries as $relEntry) {
             $absEntry = $this->root . '/' . $relEntry;
             if (!is_file($absEntry)) continue;
@@ -935,7 +1140,7 @@ class MuruguardModelScanner extends BaseDatabaseModel
         // web.config.txt) -- none of these paths are reached by any other
         // scan pass above, so there's no risk of a second recordFinding()
         // call on the same file silently overwriting an earlier finding.
-        if ($this->isAreaSelected('core_entry') && $joomlaVersion !== null && isset($checksumManifest[$joomlaVersion])) {
+        if ($includeWebrootCore && $this->isAreaSelected('core_entry') && $joomlaVersion !== null && isset($checksumManifest[$joomlaVersion])) {
             $staticCoreFiles = ['includes/framework.php', 'robots.txt.dist', 'htaccess.txt', 'web.config.txt'];
             foreach ($staticCoreFiles as $relEntry) {
                 $absEntry = $this->root . '/' . $relEntry;

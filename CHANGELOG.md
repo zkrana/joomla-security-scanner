@@ -8,6 +8,12 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [2.9.0] - 2026-08-12
+
+### Added
+
+* **Chunked, resumable scanning.** A "Run a Scan" click no longer runs the entire filesystem+database scan inside one blocking HTTP request. Instead, the scan is broken into small pieces (one directory area, the webroot/core-entry checks, or the database scan at a time), each bounded to a fixed wall-clock budget server-side, driven by a progress-bar loop in the browser. No single request can ever run long enough to hit a host's execution-time limit, regardless of how large the site is -- this is the direct fix for scans that could previously come back as a bare "500 - Whoops" on a large filesystem with no results at all. Progress is persisted to disk between calls, so it survives even if a single very large folder takes several chunk calls to get through. If a folder is so large that even its own chunk call runs out of budget partway through, that area is reported as scanned-up-to-the-time-budget rather than silently passing as complete. Falls back to the previous one-request behaviour automatically if JavaScript/fetch isn't available.
+
 ## [2.8.9] - 2026-08-12
 
 ### Fixed
