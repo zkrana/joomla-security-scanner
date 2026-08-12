@@ -2355,6 +2355,82 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
     document.addEventListener('keydown', function (e) {
         if (e.key === 'Escape') muruCloseCodeModal();
     });
+
+    /**
+     * Drives the chunked-scan AJAX loop: calls scanner.scanchunk repeatedly
+     * (each call bounded to a fixed time budget server-side), showing REAL
+     * progress -- how many of the site's scan areas are done so far --
+     * rather than the rotating placeholder messages muruguardShowOverlay()
+     * uses for the no-JS fallback path. Navigates to the results page once
+     * done, same destination a normal form submit would have landed on.
+     * Declared inside this IIFE (not at the top level, alongside
+     * muruguardShowOverlay()) specifically so it can call closeScanModal(),
+     * which is itself scoped in here -- calling it from an outer-scope
+     * function throws "closeScanModal is not defined" regardless of call
+     * order, since JS closures resolve by where a function is DEFINED, not
+     * by where it's called from.
+     */
+    function muruRunChunkedScan(sourceForm) {
+        closeScanModal();
+
+        var overlay  = document.getElementById('muruguard-overlay');
+        var statusEl = document.getElementById('muruguard-loading-status');
+        overlay.classList.add('muruguard-show');
+        statusEl.textContent = <?= json_encode(Text::_('COM_MURUGUARD_OVERLAY_STARTING')) ?>;
+
+        var chunkUrl   = <?= json_encode(Route::_('index.php?option=com_muruguard&task=scanner.scanchunk', false)) ?>;
+        var resultsUrl = <?= json_encode(Route::_('index.php?option=com_muruguard', false)) ?>;
+        var isFirstCall = true;
+
+        function step() {
+            var fd = new FormData(sourceForm);
+            if (isFirstCall) {
+                fd.set('reset', '1');
+            } else {
+                // Only the very first call of a run should re-persist the
+                // area picker / start a fresh queue -- every call after
+                // that must continue the SAME in-progress queue, so it
+                // deliberately leaves these out rather than resubmitting
+                // them.
+                fd.delete('areas_submitted');
+                fd.delete('scan_areas[]');
+                fd.set('reset', '');
+            }
+            isFirstCall = false;
+
+            fetch(chunkUrl, { method: 'POST', body: fd, credentials: 'same-origin' })
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    if (data.error) { muruChunkScanFailed(data.error); return; }
+
+                    if (data.done) {
+                        if (data.truncatedLabels && data.truncatedLabels.length) {
+                            window.alert(
+                                <?= json_encode(Text::_('COM_MURUGUARD_CHUNK_TRUNCATED_ALERT')) ?> +
+                                '\n\n' + data.truncatedLabels.join(', ')
+                            );
+                        }
+                        window.location.href = resultsUrl;
+                        return;
+                    }
+
+                    statusEl.textContent = <?= json_encode(Text::_('COM_MURUGUARD_CHUNK_PROGRESS_PREFIX')) ?> +
+                        ' ' + data.completedCount + ' / ' + data.totalCount +
+                        (data.currentAreaLabel ? ' — ' + data.currentAreaLabel : '');
+
+                    step();
+                })
+                .catch(function () { muruChunkScanFailed(''); });
+        }
+
+        step();
+    }
+
+    function muruChunkScanFailed(detail) {
+        var overlay = document.getElementById('muruguard-overlay');
+        if (overlay) overlay.classList.remove('muruguard-show');
+        window.alert(<?= json_encode(Text::_('COM_MURUGUARD_CHUNK_SCAN_ERROR')) ?> + (detail ? ' (' + detail + ')' : ''));
+    }
 })();
 
 function muruOpenCodeModal(btn) {
@@ -2460,74 +2536,5 @@ function muruguardShowOverlay() {
             statusEl.style.opacity = '1';
         }, 200);
     }, 2200);
-}
-
-/**
- * Drives the chunked-scan AJAX loop: calls scanner.scanchunk repeatedly
- * (each call bounded to a fixed time budget server-side), showing REAL
- * progress -- how many of the site's scan areas are done so far -- rather
- * than the rotating placeholder messages muruguardShowOverlay() uses for
- * the no-JS fallback path. Navigates to the results page once done, same
- * destination a normal form submit would have landed on.
- */
-function muruRunChunkedScan(sourceForm) {
-    closeScanModal();
-
-    var overlay  = document.getElementById('muruguard-overlay');
-    var statusEl = document.getElementById('muruguard-loading-status');
-    overlay.classList.add('muruguard-show');
-    statusEl.textContent = <?= json_encode(Text::_('COM_MURUGUARD_OVERLAY_STARTING')) ?>;
-
-    var chunkUrl   = <?= json_encode(Route::_('index.php?option=com_muruguard&task=scanner.scanchunk', false)) ?>;
-    var resultsUrl = <?= json_encode(Route::_('index.php?option=com_muruguard', false)) ?>;
-    var isFirstCall = true;
-
-    function step() {
-        var fd = new FormData(sourceForm);
-        if (isFirstCall) {
-            fd.set('reset', '1');
-        } else {
-            // Only the very first call of a run should re-persist the area
-            // picker / start a fresh queue -- every call after that must
-            // continue the SAME in-progress queue, so it deliberately
-            // leaves these out rather than resubmitting them.
-            fd.delete('areas_submitted');
-            fd.delete('scan_areas[]');
-            fd.set('reset', '');
-        }
-        isFirstCall = false;
-
-        fetch(chunkUrl, { method: 'POST', body: fd, credentials: 'same-origin' })
-            .then(function (res) { return res.json(); })
-            .then(function (data) {
-                if (data.error) { muruChunkScanFailed(data.error); return; }
-
-                if (data.done) {
-                    if (data.truncatedLabels && data.truncatedLabels.length) {
-                        window.alert(
-                            <?= json_encode(Text::_('COM_MURUGUARD_CHUNK_TRUNCATED_ALERT')) ?> +
-                            '\n\n' + data.truncatedLabels.join(', ')
-                        );
-                    }
-                    window.location.href = resultsUrl;
-                    return;
-                }
-
-                statusEl.textContent = <?= json_encode(Text::_('COM_MURUGUARD_CHUNK_PROGRESS_PREFIX')) ?> +
-                    ' ' + data.completedCount + ' / ' + data.totalCount +
-                    (data.currentAreaLabel ? ' — ' + data.currentAreaLabel : '');
-
-                step();
-            })
-            .catch(function () { muruChunkScanFailed(''); });
-    }
-
-    step();
-}
-
-function muruChunkScanFailed(detail) {
-    var overlay = document.getElementById('muruguard-overlay');
-    if (overlay) overlay.classList.remove('muruguard-show');
-    window.alert(<?= json_encode(Text::_('COM_MURUGUARD_CHUNK_SCAN_ERROR')) ?> + (detail ? ' (' + detail + ')' : ''));
 }
 </script>

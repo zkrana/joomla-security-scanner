@@ -8,6 +8,12 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [3.0.1] - 2026-08-12
+
+### Fixed
+
+* **"Run a Scan" threw `closeScanModal is not defined` in the browser console and never started a scan.** The new chunked-scan JS (`muruRunChunkedScan()`) was declared in the page's outer script scope while `closeScanModal()` is scoped inside an IIFE elsewhere on the page -- calling it from outside that IIFE fails regardless of call order, since JS closures resolve by where a function is *defined*, not by where it's called from. Moved the chunked-scan functions inside the same IIFE so they share scope with it.
+
 ## [3.0.0] - 2026-08-12
 
 ### Added
