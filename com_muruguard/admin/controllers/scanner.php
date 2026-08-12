@@ -60,10 +60,17 @@ public function scan()
 
         // Large sites (many extensions, big vendor/ trees) can genuinely
         // take longer than a host's default max_execution_time to scan.
-        // Try to raise both -- @-suppressed because some hosts disable
-        // ini_set entirely, in which case this silently no-ops rather
-        // than fatal-ing on its own.
-        @set_time_limit(300);
+        // Try to raise both. ini_set() on a PHP_INI_SYSTEM-locked directive
+        // just returns false -- @ safely no-ops that. set_time_limit() is
+        // different and was a real, confirmed bug here: many shared hosts
+        // put it in disable_functions specifically to stop scripts
+        // overriding execution time, and calling a disabled function is an
+        // uncaught fatal Error ("Call to undefined function"), NOT a
+        // warning -- @ does nothing to stop that, so this was crashing the
+        // scan with a 500 on exactly the hosts it was meant to help.
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(300);
+        }
         @ini_set('memory_limit', '512M');
 
         // Persist the directory picker selection so both this scan and the

@@ -2892,6 +2892,68 @@ class MuruguardHelper
      *   checks: list<array{id:string,category:string,severity:string,label:string,present:bool,explanation:string,suggestion:string}>
      * }
      */
+
+    /**
+     * Shown on the pre-scan gate so an admin on a large site (many files,
+     * or a slow disk) can see whether this host will actually let a scan
+     * raise its own execution-time/memory limits BEFORE running one --
+     * not after it dies partway through with a generic "500 - Whoops"
+     * page (Joomla's error handler for an uncaught PHP fatal, which a
+     * timeout or memory-exhaustion always is; PHP itself gives no way to
+     * catch or gracefully degrade from either one mid-request). Probing
+     * here (ini_set + immediate re-read) is exactly what scanFilesystem()'s
+     * own controller action already does before a real scan -- this just
+     * surfaces the same result earlier, where it's actually useful.
+     */
+    public static function getServerLimitsInfo(): array
+    {
+        $wantedExecTime = 300;
+        $wantedMemory   = '512M';
+
+        $execBefore = (string) ini_get('max_execution_time');
+        // function_exists() first -- set_time_limit() in disable_functions
+        // (common on shared hosts) makes calling it an uncaught fatal
+        // Error, not a warning @ can suppress. Confirmed real: this exact
+        // gap in the scan controller's own equivalent call was the actual
+        // cause of a live "500 - Whoops" report.
+        if (function_exists('set_time_limit')) {
+            @set_time_limit($wantedExecTime);
+        }
+        $execAfter = (string) ini_get('max_execution_time');
+        // 0 means "unlimited" -- always fine regardless of what we asked for.
+        $execRaisable = $execAfter === '0' || (int) $execAfter >= $wantedExecTime;
+
+        $memBefore = (string) ini_get('memory_limit');
+        @ini_set('memory_limit', $wantedMemory);
+        $memAfter = (string) ini_get('memory_limit');
+        $memRaisable = $memAfter === '-1' || self::iniMemoryToBytes($memAfter) >= self::iniMemoryToBytes($wantedMemory);
+
+        return [
+            'execTimeBefore' => $execBefore,
+            'execTimeAfter'  => $execAfter,
+            'execRaisable'   => $execRaisable,
+            'memoryBefore'   => $memBefore,
+            'memoryAfter'    => $memAfter,
+            'memRaisable'    => $memRaisable,
+            'allGood'        => $execRaisable && $memRaisable,
+        ];
+    }
+
+    /** Parses a php.ini-style shorthand memory value ("512M", "1G", "128K", "0") into bytes. */
+    private static function iniMemoryToBytes(string $value): int
+    {
+        $value = trim($value);
+        if ($value === '' || $value === '-1') return PHP_INT_MAX; // -1 = unlimited
+        $unit = strtoupper(substr($value, -1));
+        $num  = (int) $value;
+        switch ($unit) {
+            case 'G': return $num * 1024 * 1024 * 1024;
+            case 'M': return $num * 1024 * 1024;
+            case 'K': return $num * 1024;
+            default:  return (int) $value;
+        }
+    }
+
     public static function getHtaccessSuggestions(string $root): array
     {
         $path = $root . '/.htaccess';

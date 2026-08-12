@@ -42,6 +42,7 @@ class MuruguardViewScanner extends HtmlView
     public $attackLog = [];
     public ?array $registeredTemplates = null;
     public array $htaccess = [];
+    public array $serverLimits = [];
     public $shieldBlockUserAgents = false;
     public $shieldBlockCountries = false;
     public $shieldBlockedCountries = '';
@@ -95,6 +96,9 @@ class MuruguardViewScanner extends HtmlView
         // a handful of regexes), so it's always available regardless of
         // whether a scan has been run yet.
         $this->htaccess = MuruguardHelper::getHtaccessSuggestions(JPATH_ROOT);
+        // Cheap (a couple ini_get/ini_set calls, no I/O) -- always computed
+        // rather than gated on scan state, so it's available regardless.
+        $this->serverLimits = MuruguardHelper::getServerLimitsInfo();
 
         // Directory-picker definitions + the user's last selection.
         $this->scanAreas     = MuruguardHelper::getScanAreas();

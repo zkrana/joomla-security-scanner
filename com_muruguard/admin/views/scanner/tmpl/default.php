@@ -1053,6 +1053,53 @@ if ($w !== null && $w['safe'] !== true):
     </div>
 </div>
 
+<!-- Persistent header -- version badge + newsletter banner. Deliberately
+     OUTSIDE #muru-main-content's scanned/not-scanned split below, so both
+     show up regardless of whether a scan has ever been run yet.
+     Confirmed real gap: a site that hadn't run its first scan saw neither
+     the version number nor the newsletter banner at all. -->
+<?php if ($this->componentVersion !== ''): ?>
+<div class="flex justify-end mb-3">
+    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-[#EF89EB] text-black" title="<?= Text::_('COM_MURUGUARD_VERSION_BADGE_TITLE') ?>">
+        🛡️ v<?= htmlspecialchars($this->componentVersion) ?>
+    </span>
+</div>
+<?php endif; ?>
+
+<?php if (!$this->newsletterBannerDismissed): ?>
+<!-- Newsletter opt-in banner -- optional, dismissible, never shown again
+     once dismissed or subscribed (see newsletter_banner_dismissed in
+     component params). Posts to the dashboard's public opt-in endpoint,
+     same table/flow as the main site's own newsletter signup. -->
+<div id="muru-newsletter-banner" class="anim-in flex flex-wrap items-center justify-between gap-3
+            bg-gradient-to-r from-indigo-50 to-violet-50 border border-indigo-200 rounded-xl px-5 py-3 mb-6 shadow-sm">
+    <div class="min-w-[220px]">
+        <p class="text-sm font-semibold text-gray-800">📬 <?= Text::_('COM_MURUGUARD_NEWSLETTER_TITLE') ?></p>
+        <p class="text-xs text-gray-500 mt-0.5"><?= Text::_('COM_MURUGUARD_NEWSLETTER_DESC') ?></p>
+    </div>
+    <div class="flex items-center gap-2 flex-wrap">
+        <form action="index.php?option=com_muruguard&task=scanner.subscribenewsletter" method="post" class="flex flex-wrap items-center gap-2" style="margin:0">
+            <?= HTMLHelper::_('form.token') ?>
+            <input type="text" name="newsletter_name" placeholder="<?= Text::_('COM_MURUGUARD_NEWSLETTER_NAME_PLACEHOLDER') ?>"
+                   class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-indigo-400 w-36">
+            <input type="email" name="newsletter_email" required placeholder="<?= Text::_('COM_MURUGUARD_NEWSLETTER_EMAIL_PLACEHOLDER') ?>"
+                   class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-indigo-400 w-52">
+            <button type="submit"
+                    class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-indigo-200
+                           rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700
+                           transition-colors shadow-sm hover:shadow whitespace-nowrap">
+                <?= Text::_('COM_MURUGUARD_NEWSLETTER_SUBSCRIBE_BTN') ?>
+            </button>
+        </form>
+        <form action="index.php?option=com_muruguard&task=scanner.dismissnewsletter" method="post" style="margin:0">
+            <?= HTMLHelper::_('form.token') ?>
+            <button type="submit" title="<?= Text::_('COM_MURUGUARD_NEWSLETTER_DISMISS') ?>" aria-label="<?= Text::_('COM_MURUGUARD_NEWSLETTER_DISMISS') ?>"
+                    class="text-gray-400 hover:text-gray-600 hover:bg-white/60 rounded-lg p-1.5 transition-colors">✕</button>
+        </form>
+    </div>
+</div>
+<?php endif; ?>
+
 <!-- Wrapper toggled off when the Settings panel is open -- see the
      #muru-settings-btn handler further down. Wraps BOTH the pre-scan
      gate and the post-scan results below, so Settings works regardless
@@ -1092,6 +1139,36 @@ $totalAreaCount = array_sum(array_map(fn($g) => count($g['areas']), $scanAreas))
             <?= Text::_('COM_MURUGUARD_HERO_DESC') ?>
         </p>
     </div>
+
+    <?php if (!empty($this->serverLimits) && !$this->serverLimits['allGood']): ?>
+    <!-- Server limits advisory -- shown BEFORE a scan is attempted so a
+         large site on a host that won't raise execution-time/memory
+         limits gets actionable instructions instead of only finding out
+         after the scan dies partway through with a generic 500 error. -->
+    <div class="w-full max-w-3xl bg-amber-50 border border-amber-200 rounded-xl p-5 text-left">
+        <p class="text-sm font-bold text-amber-800 flex items-center gap-2 mb-1">
+            ⚠️ <?= Text::_('COM_MURUGUARD_SERVER_LIMITS_TITLE') ?>
+        </p>
+        <p class="text-xs text-amber-700 leading-relaxed mb-3"><?= Text::_('COM_MURUGUARD_SERVER_LIMITS_DESC') ?></p>
+        <div class="flex flex-wrap gap-3 mb-3">
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold <?= $this->serverLimits['execRaisable'] ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-200 text-amber-800' ?>">
+                <?= Text::_('COM_MURUGUARD_SERVER_LIMITS_EXEC_LABEL') ?>:
+                <?= Text::sprintf('COM_MURUGUARD_SERVER_LIMITS_CURRENT', htmlspecialchars($this->serverLimits['execTimeAfter']) . 's') ?>
+                <?= $this->serverLimits['execRaisable'] ? '· ' . Text::_('COM_MURUGUARD_SERVER_LIMITS_OK_BADGE') : '· ' . Text::_('COM_MURUGUARD_SERVER_LIMITS_LOCKED_BADGE') ?>
+            </span>
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold <?= $this->serverLimits['memRaisable'] ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-200 text-amber-800' ?>">
+                <?= Text::_('COM_MURUGUARD_SERVER_LIMITS_MEMORY_LABEL') ?>:
+                <?= Text::sprintf('COM_MURUGUARD_SERVER_LIMITS_CURRENT', htmlspecialchars($this->serverLimits['memoryAfter'])) ?>
+                <?= $this->serverLimits['memRaisable'] ? '· ' . Text::_('COM_MURUGUARD_SERVER_LIMITS_OK_BADGE') : '· ' . Text::_('COM_MURUGUARD_SERVER_LIMITS_LOCKED_BADGE') ?>
+            </span>
+        </div>
+        <p class="text-xs font-bold text-amber-800 mb-1"><?= Text::_('COM_MURUGUARD_SERVER_LIMITS_FIX_TITLE') ?></p>
+        <p class="text-xs text-amber-700 leading-relaxed mb-2"><?= Text::_('COM_MURUGUARD_SERVER_LIMITS_FIX_HOST') ?></p>
+        <p class="text-xs text-amber-700 leading-relaxed mb-1"><?= Text::_('COM_MURUGUARD_SERVER_LIMITS_FIX_USERINI') ?></p>
+        <pre class="text-xs bg-white border border-amber-200 rounded-lg p-3 overflow-x-auto text-gray-700">max_execution_time = 300
+memory_limit = 512M</pre>
+    </div>
+    <?php endif; ?>
 
     <form action="<?= Route::_($scanUrl) ?>" method="post" id="muruguard-form" class="w-full max-w-3xl flex flex-col items-center gap-3">
         <?= HTMLHelper::_('form.token') ?>
@@ -1210,12 +1287,6 @@ foreach ($htaccessChecks as $c) { $htaccessByCategory[$c['category']][] = $c; }
                 ⏰ <?= Text::_('COM_MURUGUARD_CRON_ON_BADGE') ?>
             </button>
         <?php endif; ?>
-        <?php if ($this->componentVersion !== ''): ?>
-            <span class="text-gray-300">·</span>
-            <span class="absolute -!top-[6px] !left-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-[#EF89EB] text-black" title="<?= Text::_('COM_MURUGUARD_VERSION_BADGE_TITLE') ?>">
-                🛡️ v<?= htmlspecialchars($this->componentVersion) ?>
-            </span>
-        <?php endif; ?>
     </div>
     <div class="flex items-center gap-2 flex-shrink-0">
         <form action="index.php?option=com_muruguard&task=scanner.reset" method="post" style="margin:0">
@@ -1247,40 +1318,6 @@ foreach ($htaccessChecks as $c) { $htaccessByCategory[$c['category']][] = $c; }
         </button>
     </div>
 </div>
-
-<?php if (!$this->newsletterBannerDismissed): ?>
-<!-- Newsletter opt-in banner -- optional, dismissible, never shown again
-     once dismissed or subscribed (see newsletter_banner_dismissed in
-     component params). Posts to the dashboard's public opt-in endpoint,
-     same table/flow as the main site's own newsletter signup. -->
-<div id="muru-newsletter-banner" class="anim-in flex flex-wrap items-center justify-between gap-3
-            bg-gradient-to-r from-indigo-50 to-violet-50 border border-indigo-200 rounded-xl px-5 py-3 mb-6 shadow-sm">
-    <div class="min-w-[220px]">
-        <p class="text-sm font-semibold text-gray-800">📬 <?= Text::_('COM_MURUGUARD_NEWSLETTER_TITLE') ?></p>
-        <p class="text-xs text-gray-500 mt-0.5"><?= Text::_('COM_MURUGUARD_NEWSLETTER_DESC') ?></p>
-    </div>
-    <div class="flex items-center gap-2 flex-wrap">
-        <form action="index.php?option=com_muruguard&task=scanner.subscribenewsletter" method="post" class="flex flex-wrap items-center gap-2" style="margin:0">
-            <?= HTMLHelper::_('form.token') ?>
-            <input type="text" name="newsletter_name" placeholder="<?= Text::_('COM_MURUGUARD_NEWSLETTER_NAME_PLACEHOLDER') ?>"
-                   class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-indigo-400 w-36">
-            <input type="email" name="newsletter_email" required placeholder="<?= Text::_('COM_MURUGUARD_NEWSLETTER_EMAIL_PLACEHOLDER') ?>"
-                   class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-indigo-400 w-52">
-            <button type="submit"
-                    class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-indigo-200
-                           rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700
-                           transition-colors shadow-sm hover:shadow whitespace-nowrap">
-                <?= Text::_('COM_MURUGUARD_NEWSLETTER_SUBSCRIBE_BTN') ?>
-            </button>
-        </form>
-        <form action="index.php?option=com_muruguard&task=scanner.dismissnewsletter" method="post" style="margin:0">
-            <?= HTMLHelper::_('form.token') ?>
-            <button type="submit" title="<?= Text::_('COM_MURUGUARD_NEWSLETTER_DISMISS') ?>" aria-label="<?= Text::_('COM_MURUGUARD_NEWSLETTER_DISMISS') ?>"
-                    class="text-gray-400 hover:text-gray-600 hover:bg-white/60 rounded-lg p-1.5 transition-colors">✕</button>
-        </form>
-    </div>
-</div>
-<?php endif; ?>
 
 <!-- ══════════════════════════════════════════════════════════════
      .HTACCESS HARDENING MODAL -- opened by #muru-open-htaccess-modal

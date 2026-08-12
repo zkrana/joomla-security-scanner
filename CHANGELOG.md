@@ -8,6 +8,17 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [2.8.9] - 2026-08-12
+
+### Fixed
+
+* **Scanning could crash with a generic "500 - Whoops" error on hosts that disable `set_time_limit()`** (common on shared hosting specifically to stop scripts overriding execution time). The scan controller's own attempt to raise its execution-time limit called `set_time_limit()` unconditionally, `@`-suppressed on the assumption that would silence any failure -- but calling a function listed in `disable_functions` is an uncaught fatal `Error` ("Call to undefined function"), not a warning, and `@` does nothing to stop that. Now guarded with `function_exists()` first.
+* **The version badge and the new "Get security alerts & updates" banner only appeared after running at least one scan** -- both lived inside the post-scan results view, so a site that hadn't scanned yet saw neither. Moved both to a persistent header shown regardless of scan state.
+
+### Added
+
+* **Server-limits advisory on the pre-scan screen.** If the host won't let the scan raise its execution-time or memory limit (the same condition that caused the crash above), a warning now shows *before* running a scan -- current values, which one(s) are locked, and a `.user.ini` snippet to fix it -- instead of only finding out after the scan fails partway through.
+
 ## [2.8.8] - 2026-08-12
 
 ### Added
