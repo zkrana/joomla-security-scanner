@@ -629,6 +629,40 @@ public function scan()
         $this->setRedirect('index.php?option=com_muruguard');
     }
 
+    /** Submits the dashboard's "get security alerts & updates" banner. Edit access only -- same bar as changing any other Settings-adjacent option. */
+    public function subscribenewsletter()
+    {
+        Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
+        \MuruguardHelper::requireEditAccess();
+
+        $app   = Factory::getApplication();
+        $name  = $app->input->getString('newsletter_name', '');
+        $email = $app->input->getString('newsletter_email', '');
+
+        /** @var MuruguardModelScanner $model */
+        $model = $this->getModel('Scanner');
+        if ($model->subscribeToNewsletter($name, $email)) {
+            $app->enqueueMessage(Text::_('COM_MURUGUARD_NEWSLETTER_SUBSCRIBED_MSG'), 'message');
+        } else {
+            $app->enqueueMessage(Text::_('COM_MURUGUARD_NEWSLETTER_FAILED_MSG'), 'error');
+        }
+
+        $this->setRedirect('index.php?option=com_muruguard');
+    }
+
+    /** Dismisses the newsletter banner without subscribing -- never shown again on this site. */
+    public function dismissnewsletter()
+    {
+        Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
+        \MuruguardHelper::requireEditAccess();
+
+        /** @var MuruguardModelScanner $model */
+        $model = $this->getModel('Scanner');
+        $model->dismissNewsletterBanner();
+
+        $this->setRedirect('index.php?option=com_muruguard');
+    }
+
     /** Clears the Protection Log. Requires the same admin-level permission as changing settings, since it's destroying a security audit trail, not just tidying a scan result. */
     public function clearattacklog()
     {

@@ -1327,6 +1327,42 @@ class MuruguardHelper
         }
     }
 
+    private const NEWSLETTER_OPT_IN_URL = 'https://lyzerslab.com/api/optin';
+
+    /**
+     * Submits the "get security alerts & updates" dashboard banner's
+     * name/email to the same public opt-in endpoint the main site's own
+     * newsletter form posts to -- same NewsletterOptIn table, same admin
+     * notification/welcome-email flow, just tagged with a distinct
+     * 'source' so an admin reviewing subscribers can tell this one came
+     * from a Free install rather than the website. No auth needed: this
+     * is a server-side PHP call, not a browser request, so there's no
+     * CORS concern, and the endpoint itself is already public/unauthenticated.
+     */
+    public static function submitNewsletterOptIn(string $name, string $email): bool
+    {
+        $email = trim($email);
+        if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) return false;
+
+        $payload = json_encode(['name' => trim($name), 'email' => $email, 'source' => 'muruguard-free']);
+        try {
+            $context = stream_context_create(['http' => [
+                'method'        => 'POST',
+                'header'        => "Content-Type: application/json\r\n",
+                'content'       => $payload,
+                'timeout'       => 5,
+                'ignore_errors' => true,
+            ]]);
+            $response = @file_get_contents(self::NEWSLETTER_OPT_IN_URL, false, $context);
+            if ($response === false) return false;
+
+            $data = json_decode($response, true);
+            return is_array($data) && !empty($data['success']);
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
     /** $blockedCountriesCsv is a comma-separated list of 2-letter ISO codes from the Settings panel, e.g. "CN,RU,KP". */
     public static function isCountryBlocked(?string $countryCode, string $blockedCountriesCsv): bool
     {

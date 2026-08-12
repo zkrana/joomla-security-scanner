@@ -56,6 +56,7 @@ class MuruguardViewScanner extends HtmlView
     public string $componentVersion = '';
     public string $activePanel = 'dashboard';
     public string $activeSettingsTab = 'protection';
+    public bool $newsletterBannerDismissed = false;
 
     public function display($tpl = null)
     {
@@ -124,6 +125,10 @@ class MuruguardViewScanner extends HtmlView
         $this->shieldBlockedCountries = (string) $cfgParams->get('shield_blocked_countries', '');
         $this->ipList                = MuruguardHelper::getIpList();
         $this->falsePositives        = MuruguardHelper::getFalsePositives();
+        // Covers both an explicit dismissal and a successful subscription
+        // (subscribeToNewsletter() sets this same flag on success) --
+        // either way, the banner has nothing left to ask this site for.
+        $this->newsletterBannerDismissed = (bool) $cfgParams->get('newsletter_banner_dismissed', 0);
 
         $this->backendAuthEnabled     = (bool) $cfgParams->get('backend_auth_enabled', 0);
         $this->backendAuthUsername    = (string) $cfgParams->get('backend_auth_username', '');

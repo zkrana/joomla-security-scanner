@@ -8,6 +8,12 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [2.8.8] - 2026-08-12
+
+### Added
+
+* **Optional "Get security alerts & updates" banner on the dashboard.** Dismissible, asks only for name (optional) and email, and never shows again once dismissed or subscribed. Submits to the same subscriber list the main Lyzerslab site's own newsletter form uses (tagged with a distinct source so they're identifiable), so Free users can opt in to hear about new threats and updates without needing an account or license key -- Free has neither.
+
 ## [2.8.7] - 2026-08-12
 
 ### Changed

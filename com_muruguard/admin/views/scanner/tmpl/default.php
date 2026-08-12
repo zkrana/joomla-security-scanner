@@ -1248,6 +1248,40 @@ foreach ($htaccessChecks as $c) { $htaccessByCategory[$c['category']][] = $c; }
     </div>
 </div>
 
+<?php if (!$this->newsletterBannerDismissed): ?>
+<!-- Newsletter opt-in banner -- optional, dismissible, never shown again
+     once dismissed or subscribed (see newsletter_banner_dismissed in
+     component params). Posts to the dashboard's public opt-in endpoint,
+     same table/flow as the main site's own newsletter signup. -->
+<div id="muru-newsletter-banner" class="anim-in flex flex-wrap items-center justify-between gap-3
+            bg-gradient-to-r from-indigo-50 to-violet-50 border border-indigo-200 rounded-xl px-5 py-3 mb-6 shadow-sm">
+    <div class="min-w-[220px]">
+        <p class="text-sm font-semibold text-gray-800">📬 <?= Text::_('COM_MURUGUARD_NEWSLETTER_TITLE') ?></p>
+        <p class="text-xs text-gray-500 mt-0.5"><?= Text::_('COM_MURUGUARD_NEWSLETTER_DESC') ?></p>
+    </div>
+    <div class="flex items-center gap-2 flex-wrap">
+        <form action="index.php?option=com_muruguard&task=scanner.subscribenewsletter" method="post" class="flex flex-wrap items-center gap-2" style="margin:0">
+            <?= HTMLHelper::_('form.token') ?>
+            <input type="text" name="newsletter_name" placeholder="<?= Text::_('COM_MURUGUARD_NEWSLETTER_NAME_PLACEHOLDER') ?>"
+                   class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-indigo-400 w-36">
+            <input type="email" name="newsletter_email" required placeholder="<?= Text::_('COM_MURUGUARD_NEWSLETTER_EMAIL_PLACEHOLDER') ?>"
+                   class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-indigo-400 w-52">
+            <button type="submit"
+                    class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-indigo-200
+                           rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700
+                           transition-colors shadow-sm hover:shadow whitespace-nowrap">
+                <?= Text::_('COM_MURUGUARD_NEWSLETTER_SUBSCRIBE_BTN') ?>
+            </button>
+        </form>
+        <form action="index.php?option=com_muruguard&task=scanner.dismissnewsletter" method="post" style="margin:0">
+            <?= HTMLHelper::_('form.token') ?>
+            <button type="submit" title="<?= Text::_('COM_MURUGUARD_NEWSLETTER_DISMISS') ?>" aria-label="<?= Text::_('COM_MURUGUARD_NEWSLETTER_DISMISS') ?>"
+                    class="text-gray-400 hover:text-gray-600 hover:bg-white/60 rounded-lg p-1.5 transition-colors">✕</button>
+        </form>
+    </div>
+</div>
+<?php endif; ?>
+
 <!-- ══════════════════════════════════════════════════════════════
      .HTACCESS HARDENING MODAL -- opened by #muru-open-htaccess-modal
      above. Read-only advisory; never writes to .htaccess itself.
