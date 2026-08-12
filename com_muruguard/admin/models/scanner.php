@@ -736,16 +736,74 @@ class MuruguardModelScanner extends BaseDatabaseModel
             if ($isIgnored($it)) continue;
 
             if (is_dir($p)) {
-                if (!in_array(strtolower($it), array_map('strtolower', $sig['KNOWN_ROOT_DIRS']), true)) {
+                if (in_array(strtolower($it), array_map('strtolower', $sig['KNOWN_ROOT_DIRS']), true)) {
+                    continue;
+                }
+
+                if (MuruguardHelper::isKnownExtensionDataFolder($it, $sig, $registeredComponents)) {
+                    // Recognized companion data folder of an installed
+                    // extension (e.g. ConvertForms' own convertforms_<alias>
+                    // custom-code folders) -- not itself suspicious, but
+                    // still content-scanned file by file so malware planted
+                    // here later doesn't get a free pass just because the
+                    // folder name matches a known convention.
                     $this->seenAbs[$p] = true;
-                    MuruguardHelper::recordFinding($this->fileFindings, $p, $this->root,
-                        'Unrecognized directory directly in the Joomla webroot — not part of a standard install.', true);
-                    MuruguardHelper::walkDir($p, function (string $innerPath, bool $innerIsDir) {
+                    MuruguardHelper::walkDir($p, function (string $innerPath, bool $innerIsDir) use ($sig, $maxSize, $falsePositives) {
                         if ($innerIsDir || isset($this->seenAbs[$innerPath])) return;
                         $this->seenAbs[$innerPath] = true;
-                        MuruguardHelper::recordFinding($this->fileFindings, $innerPath, $this->root,
-                            'Inside an unrecognized top-level webroot directory.', false);
+                        $innerExt = strtolower(pathinfo($innerPath, PATHINFO_EXTENSION));
+                        $innerReasons = [];
+                        MuruguardHelper::scanFileContent($innerPath, $innerExt, $sig, $maxSize, $innerReasons);
+                        if (!empty($innerReasons)) {
+                            $innerRel = ltrim(str_replace($this->root, '', $innerPath), '/');
+                            $innerFp = MuruguardHelper::fingerprintReasons($innerReasons);
+                            if (!MuruguardHelper::isFalsePositive($falsePositives, 'file', $innerRel, $innerFp)) {
+                                MuruguardHelper::recordFinding($this->fileFindings, $innerPath, $this->root, $innerReasons, false);
+                            }
+                        }
                     });
+                    continue;
+                }
+
+                // Unrecognized directory -- flagged, but a folder made up
+                // ENTIRELY of static assets (fonts/images/css/...) is a
+                // common, legitimate custom template/page-builder asset
+                // folder, not a malware staging area, so it's worded and
+                // scored differently than one that actually contains code.
+                // Confirmed real false positive: a top-level /fonts folder
+                // holding nothing but webfont files was flagged High,
+                // identically to an actual dropped-shell folder, purely
+                // because the reason text contained the word "unrecognized"
+                // (see recordFinding()'s keyword-based auto-escalation).
+                $this->seenAbs[$p] = true;
+                $innerFiles = [];
+                $hasNonAssetContent = false;
+                MuruguardHelper::walkDir($p, function (string $innerPath, bool $innerIsDir) use (&$innerFiles, &$hasNonAssetContent, $sig) {
+                    if ($innerIsDir) return;
+                    $innerFiles[] = $innerPath;
+                    $innerExt = strtolower(pathinfo($innerPath, PATHINFO_EXTENSION));
+                    if (!in_array($innerExt, $sig['ICONFONT_ALLOWED_EXTENSIONS'], true)) $hasNonAssetContent = true;
+                });
+
+                $dirReason = $hasNonAssetContent
+                    ? 'Unrecognized directory directly in the Joomla webroot — not part of a standard install.'
+                    : 'Custom folder directly in the Joomla webroot containing only static assets (fonts/styles/images) — not part of a standard install, but not executable code either. Confirm this is something you (or your template/page builder) intentionally added.';
+                $dirFp = MuruguardHelper::fingerprintReasons([$dirReason]);
+                if (!MuruguardHelper::isFalsePositive($falsePositives, 'file', $it, $dirFp)) {
+                    MuruguardHelper::recordFinding($this->fileFindings, $p, $this->root, $dirReason, true);
+                }
+
+                $innerReasonText = $hasNonAssetContent
+                    ? 'Inside an unrecognized top-level webroot directory.'
+                    : 'Inside a static-assets-only custom folder in the webroot.';
+                $innerFp = MuruguardHelper::fingerprintReasons([$innerReasonText]);
+                foreach ($innerFiles as $innerPath) {
+                    if (isset($this->seenAbs[$innerPath])) continue;
+                    $this->seenAbs[$innerPath] = true;
+                    $innerRel = ltrim(str_replace($this->root, '', $innerPath), '/');
+                    if (!MuruguardHelper::isFalsePositive($falsePositives, 'file', $innerRel, $innerFp)) {
+                        MuruguardHelper::recordFinding($this->fileFindings, $innerPath, $this->root, $innerReasonText, false);
+                    }
                 }
                 continue;
             }
@@ -785,7 +843,10 @@ class MuruguardModelScanner extends BaseDatabaseModel
 
             if ($flaggedRoot) {
                 $this->seenAbs[$p] = true;
-                MuruguardHelper::recordFinding($this->fileFindings, $p, $this->root, $reasonsRoot, false);
+                $rootFp = MuruguardHelper::fingerprintReasons($reasonsRoot);
+                if (!MuruguardHelper::isFalsePositive($falsePositives, 'file', $relCheck, $rootFp)) {
+                    MuruguardHelper::recordFinding($this->fileFindings, $p, $this->root, $reasonsRoot, false);
+                }
             }
         }
 

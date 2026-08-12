@@ -174,7 +174,15 @@ class MuruguardHelper
                     'severity' => 'high', 'why' => 'Runs attacker-supplied request data as an OS shell command via shell_exec() — direct remote command execution.'],
                 'xss_report_payload' => ['re' => '/xss\.report|_hu_inject/i',
                     'severity' => 'high', 'why' => 'Matches the known xss.report / _hu_inject marker used by the Helix Ultimate mega-menu XSS campaign tied to this SPPB compromise.'],
-                'webshell_generic'   => ['re' => '/FilesMan|c99shell|r57shell|WSO\s*Web\s*Shell|H3K\s*\|\s*Tiny\s*File\s*Manager/i',
+                // \b word boundaries matter here -- without them this matched
+                // "FilesMan" as a bare substring of the completely ordinary
+                // identifier "filesManager" (confirmed false positive: a
+                // legitimate Joomla GDPR component's own Controller classes,
+                // which just declare a local $filesManager variable). The
+                // real webshell banner is always a standalone token, never
+                // glued to more letters like "...ager", so boundaries lose
+                // no real detection.
+                'webshell_generic'   => ['re' => '/\bFilesMan\b|\bc99shell\b|\br57shell\b|\bWSO\s*Web\s*Shell\b|\bH3K\s*\|\s*Tiny\s*File\s*Manager\b/i',
                     'severity' => 'high', 'why' => 'Matches the signature banner of a well-known, widely-distributed PHP webshell kit -- including "H3K | Tiny File Manager", a full filesystem-access file-manager backdoor commonly dropped to give an attacker browse/edit/upload/delete access to the entire site through a browser.'],
                 'self_replicating_dropper' => ['re' => '/glob\s*\(.{0,40}GLOB_ONLYDIR.{0,200}?file_put_contents\s*\(.{0,400}?md5\s*\(\s*\$\w+\s*\)\s*==\s*md5\s*\(\s*file_get_contents/is',
                     'severity' => 'high', 'why' => 'Walks directories and rewrites files only when their content differs from a reference copy — a self-replicating/self-healing dropper pattern, not something legitimate code does.'],
@@ -266,13 +274,24 @@ class MuruguardHelper
 
             'NON_PHP_EXTS_THAT_MUST_STAY_CLEAN' => ['png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'svg', 'bmp'],
             // <?php is 5 literal bytes -- vanishingly unlikely to occur by
-            // chance in binary image data. The <?= short tag is only 3
+            // chance in binary image data. The <?= short tag is only 2-3
             // bytes, which DOES turn up by pure random chance in the
-            // megabytes of high-entropy compressed pixel data a large
-            // photo can contain -- so it's required to be followed by a
-            // plausible PHP token (optionally preceded by whitespace), not
-            // matched bare, to avoid flagging ordinary large photos.
-            'PHP_OPEN_TAG_RE' => '/<\?php|<\?=\s*[\$A-Za-z_(]/i',
+            // megabytes of high-entropy compressed pixel data (and
+            // frequently text-heavy EXIF/XMP/IPTC metadata blocks, which
+            // legitimately contain lots of free-form ASCII) a real photo
+            // can contain. Confirmed as a real false-positive source: a
+            // genuinely valid, openable image was flagged High confidence
+            // purely from this. Real polyglot webshells reliably use the
+            // universally-supported <?php form anyway (short_open_tag has
+            // been unreliable/off-by-default across PHP versions for long
+            // enough that no serious attacker depends on <?= alone) --
+            // and any payload meaningful enough to actually do something
+            // malicious after a real <?= tag would still trip one of the
+            // more specific CONTENT_SIGNATURES checks (eval, base64_decode,
+            // $_GET/$_POST, system(), ...) running over this same window
+            // regardless. Sole usage site is the image-polyglot check
+            // below -- narrowing this doesn't weaken anything else.
+            'PHP_OPEN_TAG_RE' => '/<\?php/i',
 
             'CORE_ENTRY_POINTS' => ['index.php', 'administrator/index.php', 'api/index.php', 'includes/app.php'],
 
@@ -280,6 +299,11 @@ class MuruguardHelper
                 'index.php', 'configuration.php', 'htaccess.txt', 'web.config.txt', 'robots.txt.dist',
                 'robots.txt', 'LICENSE.txt', 'README.txt', 'joomla.xml', 'htaccess.bak',
                 'php.ini', 'php.ini.bak', '.user.ini', '.htaccess', '.htaccess.bak', 'sitemap.xml', 'sitemap.xml.gz',
+                // macOS Finder's own metadata file -- shows up in the webroot
+                // any time the site was managed (FTP/rsync/drag-drop) from a
+                // Mac at any point. Confirmed real false positive: 100%
+                // binary metadata, never executed, ubiquitous on real sites.
+                '.DS_Store',
             ],
 
             'KNOWN_SAFE_RELATIVE_FILES' => [
@@ -392,6 +416,26 @@ class MuruguardHelper
                 'administrator', 'api', 'bin', 'cache', 'cli', 'components', 'includes',
                 'language', 'layouts', 'libraries', 'media', 'modules', 'plugins',
                 'templates', 'tmp', 'images', 'files', 'node_modules', '.well-known', 'logs',
+            ],
+
+            // A small number of popular extensions plant their OWN top-
+            // level webroot folders (outside modules/plugins/components/)
+            // for user-authored custom code by design -- ConvertForms'
+            // "Custom Code" action, for example, writes a
+            // convertforms_<FormAlias>/ folder with before_form.php /
+            // after_sub.php hooks directly at the webroot. Confirmed real
+            // false positive: flagged "Unrecognized directory" High on a
+            // live site that genuinely uses this ConvertForms feature.
+            // Naming alone is never trusted for this -- see
+            // isKnownExtensionDataFolder(), which also requires the owning
+            // component to actually be installed, so a dropped shell folder
+            // can't dodge detection just by copying the name on a site that
+            // doesn't even have the extension. The folder's own contents
+            // still get a full content-signature scan either way (see the
+            // "Shallow webroot scan" section of scanner.php) -- this only
+            // exempts the structural "unrecognized directory" flag.
+            'KNOWN_EXTENSION_DATA_FOLDERS' => [
+                '/^convertforms_/i' => 'com_convertforms',
             ],
 
             'PROTECTED_TOP_DIRS' => [
@@ -1490,6 +1534,24 @@ class MuruguardHelper
      * cross-referenced instead against manifest_cache (see
      * $registeredComponents / getRegisteredComponents()).
      */
+
+    /**
+     * See KNOWN_EXTENSION_DATA_FOLDERS above for why this exists and what
+     * it does and doesn't trust. $dirName is just the folder's own name
+     * (e.g. "convertforms_OnlinePay"), not a full path -- this only ever
+     * applies to folders sitting directly in the webroot.
+     */
+    public static function isKnownExtensionDataFolder(string $dirName, array $sig, ?array $registeredComponents): bool
+    {
+        if ($registeredComponents === null) return false;
+        foreach ($sig['KNOWN_EXTENSION_DATA_FOLDERS'] as $pattern => $component) {
+            if (preg_match($pattern, $dirName) && array_key_exists(strtolower($component), $registeredComponents)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public static function checkJunkExtensionFolder(string $relPath, array $sig, ?array $registeredPlugins = null, ?array $registeredComponents = null, ?string $absPath = null): ?string
     {
         $relPath = ltrim(str_replace('\\', '/', $relPath), '/');

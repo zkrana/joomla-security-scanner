@@ -173,7 +173,7 @@ class MuruguardViewScanner extends HtmlView
         $this->activePanel = in_array($requestedPanel, ['dashboard', 'settings', 'support'], true) ? $requestedPanel : 'dashboard';
 
         $requestedSettingsTab = $app->input->getCmd('settings_tab', '');
-        $this->activeSettingsTab = in_array($requestedSettingsTab, ['protection', 'iplist', 'scheduled', 'pro', 'guide'], true)
+        $this->activeSettingsTab = in_array($requestedSettingsTab, ['protection', 'iplist', 'scheduled', 'guide'], true)
             ? $requestedSettingsTab
             : 'protection';
 

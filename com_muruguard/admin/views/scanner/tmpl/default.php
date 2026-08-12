@@ -371,40 +371,9 @@ if ($w !== null && $w['safe'] !== true):
         <button type="button" class="muru-settings-tab flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors" data-settings-tab="scheduled">
             ⏰ <?= Text::_('COM_MURUGUARD_SETTINGS_TAB_SCHEDULED') ?>
         </button>
-        <button type="button" class="muru-settings-tab flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors" data-settings-tab="pro">
-            ⚡ <?= Text::_('COM_MURUGUARD_SETTINGS_TAB_PRO') ?>
-        </button>
         <button type="button" class="muru-settings-tab flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors" data-settings-tab="guide">
             📖 <?= Text::_('COM_MURUGUARD_SETTINGS_TAB_GUIDE') ?>
         </button>
-    </div>
-
-    <!-- Pro upsell -- MuRu Guard Pro isn't a license-gated feature here
-         (this is the free tier, there's nothing to unlock in-app), so
-         this tab is just an always-visible promo card pointing at the
-         dashboard + a direct contact option, not a locked/upgrade flow. -->
-    <div class="muru-settings-tabpanel hidden" data-settings-panel="pro">
-        <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-8 text-center">
-            <div class="text-4xl mb-3">⚡</div>
-            <h3 class="text-base font-bold text-gray-800 mb-2"><?= Text::_('COM_MURUGUARD_PRO_PROMO_TITLE') ?></h3>
-            <p class="text-sm text-gray-500 max-w-lg mx-auto mb-5"><?= Text::_('COM_MURUGUARD_PRO_PROMO_DESC') ?></p>
-            <ul class="text-sm text-gray-600 max-w-md mx-auto text-left mb-6 space-y-2">
-                <li>🤖 <?= Text::_('COM_MURUGUARD_PRO_PROMO_FEATURE_AI') ?></li>
-                <li>🚩 <?= Text::_('COM_MURUGUARD_PRO_PROMO_FEATURE_FLEET') ?></li>
-                <li>🔔 <?= Text::_('COM_MURUGUARD_PRO_PROMO_FEATURE_ALERTS') ?></li>
-                <li>🎫 <?= Text::_('COM_MURUGUARD_PRO_PROMO_FEATURE_SUPPORT') ?></li>
-            </ul>
-            <div class="flex items-center justify-center gap-3 flex-wrap">
-                <a href="https://lyzerslab.com/joomla-products/muru-guard-security-scanner" target="_blank" rel="noopener"
-                   class="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm">
-                    ⭐ <?= Text::_('COM_MURUGUARD_PRO_PROMO_UPGRADE_BTN') ?>
-                </a>
-                <a href="mailto:zkranao@gmail.com?subject=MuRu%20Guard%20Pro" target="_blank" rel="noopener"
-                   class="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-lg text-sm font-semibold text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors shadow-sm">
-                    ✉️ <?= Text::_('COM_MURUGUARD_PRO_PROMO_CONTACT_BTN') ?>
-                </a>
-            </div>
-        </div>
     </div>
 
     <!-- IP Access List -- pulled out of Site Protection into its own tab:
@@ -1491,11 +1460,13 @@ function muru_mark_safe_button(string $category, string $identifier, array $reas
     if (!$canEdit) return;
     $fingerprint = \MuruguardHelper::fingerprintReasons($reasonsList);
     ?>
-    <button type="button" class="muru-mark-safe-btn flex-shrink-0 w-7 h-7 inline-flex items-center justify-center rounded-lg text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
+    <button type="button" class="muru-mark-safe-btn flex-shrink-0 inline-flex items-center gap-1 h-7 px-2 rounded-lg border border-gray-200 bg-white text-[11px] font-medium text-gray-500 hover:text-emerald-700 hover:bg-emerald-50 hover:border-emerald-200 transition-colors whitespace-nowrap"
             data-fp-category="<?= htmlspecialchars($category) ?>"
             data-fp-identifier="<?= htmlspecialchars($identifier) ?>"
             data-fp-fingerprint="<?= htmlspecialchars($fingerprint) ?>"
-            title="<?= Text::_('COM_MURUGUARD_FP_MARK_BTN') ?>" aria-label="<?= Text::_('COM_MURUGUARD_FP_MARK_BTN') ?>">✅</button>
+            title="<?= Text::_('COM_MURUGUARD_FP_MARK_BTN') ?>" aria-label="<?= Text::_('COM_MURUGUARD_FP_MARK_BTN') ?>">
+        <span aria-hidden="true">✅</span><span><?= Text::_('COM_MURUGUARD_FP_MARK_BTN_LABEL') ?></span>
+    </button>
     <?php
 }
 

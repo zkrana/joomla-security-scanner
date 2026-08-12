@@ -8,6 +8,23 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [2.8.5] - 2026-08-12
+
+### Fixed
+
+* **Multiple confirmed false positives in the malware/suspicious-file scan:**
+  * `webshell_generic` matched "FilesMan" as a bare substring, so any code declaring an ordinary `$filesManager` variable (confirmed on a real Joomla GDPR component's Controller classes) was flagged High as a webshell. Now requires word boundaries, so only the standalone webshell banner token matches.
+  * A top-level `.DS_Store` file (macOS Finder metadata, ubiquitous on any Mac-managed site) was flagged High as an "unrecognized file in the webroot."
+  * A top-level custom folder made up entirely of static assets (e.g. a template's `/fonts` folder) was flagged High exactly like a malware staging directory, both the folder itself and every file inside it, purely because the reason text contained the word "unrecognized" (which auto-escalates confidence). Asset-only folders are now worded and scored as a lower-confidence "custom folder" finding instead.
+  * ConvertForms' own `convertforms_<FormAlias>/` custom-code folders (a real, documented ConvertForms feature) were flagged High as an unrecognized directory. Now recognized by name **only when ConvertForms is actually installed** on the scanned site — the folder's contents still get a full content-signature scan either way, so a dropped shell can't dodge detection by copying the name on a site that doesn't have ConvertForms.
+  * The image-polyglot check (`php_tag_in_image_file`) accepted the 2-3 byte `<?=` short tag as well as `<?php`, which can turn up by pure chance in the megabytes of high-entropy pixel data a large photo contains. Narrowed to require the full 5-byte `<?php`, matching Pro.
+* **"Mark as False Positive" silently not working for root-level findings** (`.DS_Store`, backup config files, unrecognized root files/directories, and everything inside them). The dismissal was being recorded correctly, but the "Shallow webroot scan" pass that produces exactly these findings never checked the false-positive list before re-adding them on the next scan — every other finding category already did. Fixed; dismissed root-level findings now stay dismissed until the underlying content actually changes.
+
+### Changed
+
+* **"Mark as False Positive" button is now a labeled button** (✅ + "False Positive" text), not a bare emoji icon, so it reads as an obviously clickable action instead of a decorative checkmark.
+* **Removed the "Pro" promo tab from Settings.** Settings now only holds Site Protection, IP Access List, Scheduled Scanning, and the Setup Guide -- the Pro upsell already has its own place under the Support panel.
+
 ## [2.8.4] - 2026-08-06
 
 ### Changed
