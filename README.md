@@ -266,6 +266,14 @@ If you have any feedback or suggestions, please open an issue on the repository.
 
 - [ZKRANA](https://github.com/zkrana)
 
+## 🐛 Thanks to our issue reporters
+
+Every bug report, false-positive flag, and suggestion filed on the [issue tracker](../../issues) directly shapes what gets fixed next. Thanks especially to:
+
+[@PhilETaylor](https://github.com/PhilETaylor) · [@daniporr](https://github.com/daniporr) · [@degiosa](https://github.com/degiosa) · [@ProfessorPeregrine](https://github.com/ProfessorPeregrine) · [@nfbauti](https://github.com/nfbauti) · [@Joom-Code](https://github.com/Joom-Code) · [@gourou69](https://github.com/gourou69) · [@HadiTak](https://github.com/HadiTak)
+
+— for taking the time to report issues, test fixes, and help push this tool to actually be better. If you've filed an issue and don't see your name here yet, it'll get added — [let me know](../../issues).
+
 ## 👨‍💻 Author
 
 **ZKRANA**
