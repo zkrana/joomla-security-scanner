@@ -8,6 +8,17 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [2.8.6] - 2026-08-12
+
+### Added
+
+* **Native Joomla update detection.** MuRu Guard now shows up directly in Extensions > Manage > Update, like any other Joomla extension -- no more manually checking for a new version.
+
+### Fixed
+
+* **"Mark as False Positive" appeared to do nothing.** The dismissal was being saved correctly, but the scan-results page reads from a 5-minute session cache on every load rather than re-scanning -- marking a finding safe never invalidated that cache, so the very next reload just showed the same stale pre-dismissal list. Same fix applied to un-marking a false positive (it now reappears immediately instead of waiting for the cache to expire).
+* **dompdf's own `Helpers.php` (bundled by multiple unrelated extensions -- com_dpcalendar, ConvertForms' PDF tool, com_rsseo, and others) flagged High as `stream_wrapper_payload`.** It legitimately parses `phar://`/`file://` resource URLs as part of normal PDF asset loading. Added a narrow, per-file, per-signature exemption matched by dompdf's own stable internal path (`dompdf/dompdf/src/Helpers.php`), not a blanket "don't scan this vendor folder" skip -- every other signature still runs fully against these files.
+
 ## [2.8.5] - 2026-08-12
 
 ### Fixed

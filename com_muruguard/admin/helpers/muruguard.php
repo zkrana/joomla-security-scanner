@@ -373,6 +373,28 @@ class MuruguardHelper
                     ['xss_report_payload', 'secure_local_marker'],
             ],
 
+            // Same idea as SELF_CONTENT_SIGNATURE_EXEMPTIONS, but for
+            // well-known THIRD-PARTY open-source libraries that get
+            // bundled by many unrelated Joomla extensions at different
+            // vendor paths -- so this is matched by path SUFFIX (the
+            // library's own stable internal layout) rather than one exact
+            // full path. dompdf's Helpers.php legitimately parses
+            // phar://file:// resource URLs as part of normal PDF asset
+            // loading (embedding local images/fonts) -- confirmed false
+            // positive, seen bundled at multiple different real vendor
+            // paths (com_dpcalendar/vendor/dompdf/..., ConvertForms' PDF
+            // tool, com_rsseo/helpers/dompdf/vendor/dompdf/...) across
+            // several real customer sites, always ending in this same
+            // dompdf/dompdf/src/Helpers.php internal path regardless of
+            // what precedes it. Every other content signature (eval,
+            // assert, shell_exec, cookie-gated backdoors, ...) still runs
+            // fully against these exact files -- only the one signature
+            // with the documented "legitimate archive access" caveat is
+            // suppressed, and only for this one known file.
+            'KNOWN_LIBRARY_SIGNATURE_EXEMPTIONS' => [
+                'dompdf/dompdf/src/Helpers.php' => ['stream_wrapper_payload'],
+            ],
+
             // "icomoon" is IcoMoon's own icon-font export/build tool name --
             // SP Page Builder (and many other extensions' icon pickers)
             // bundle their icon font exactly as IcoMoon exports it, top-
@@ -2566,6 +2588,27 @@ class MuruguardHelper
             }
             return true;
         }));
+    }
+
+    /**
+     * See KNOWN_LIBRARY_SIGNATURE_EXEMPTIONS above -- same mechanism as
+     * filterSelfSignatureExemptions(), but matched by path SUFFIX so it
+     * still applies regardless of which extension vendored the library or
+     * how deeply nested it ended up.
+     */
+    public static function filterKnownLibrarySignatureExemptions(string $relPath, array $sig, array $reasons): array
+    {
+        $relNorm = ltrim(str_replace('\\', '/', $relPath), '/');
+        foreach ($sig['KNOWN_LIBRARY_SIGNATURE_EXEMPTIONS'] as $suffix => $exemptSigNames) {
+            if (substr($relNorm, -strlen($suffix)) !== $suffix) continue;
+            return array_values(array_filter($reasons, function ($r) use ($exemptSigNames) {
+                foreach ($exemptSigNames as $sigName) {
+                    if (stripos((string) $r, "Content signature: {$sigName} ") === 0) return false;
+                }
+                return true;
+            }));
+        }
+        return $reasons;
     }
 
     /**

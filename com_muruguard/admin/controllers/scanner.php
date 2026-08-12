@@ -591,6 +591,15 @@ public function scan()
         $result = \MuruguardHelper::addFalsePositive($category, $identifier, $fingerprint, $note);
         if ($result['ok']) {
             $app->enqueueMessage(Text::_('COM_MURUGUARD_FP_MARKED_MSG'), 'message');
+            // The scan-results page reads from a 5-minute session cache, not
+            // a fresh scan, on every load -- without invalidating it here,
+            // a dismissal was saved correctly but the very next reload kept
+            // showing the same stale pre-dismissal list, making it look like
+            // nothing happened. Same cache-busting the delete/clean actions
+            // already do after their own mutations.
+            $session = $app->getSession();
+            $session->set('muruguard.filefindings', null);
+            $session->set('muruguard.filefindings_time', 0);
         } else {
             $app->enqueueMessage(htmlspecialchars($result['error']), 'error');
         }
@@ -608,6 +617,13 @@ public function scan()
         if ($id !== '') {
             \MuruguardHelper::removeFalsePositive($id);
         }
+
+        // Same reasoning as markfalsepositive() above -- without this, an
+        // un-dismissed finding wouldn't reappear until the cache happened
+        // to expire or the user manually re-scanned.
+        $session = Factory::getApplication()->getSession();
+        $session->set('muruguard.filefindings', null);
+        $session->set('muruguard.filefindings_time', 0);
 
         Factory::getApplication()->enqueueMessage(Text::_('COM_MURUGUARD_FP_UNMARKED_MSG'), 'message');
         $this->setRedirect('index.php?option=com_muruguard');

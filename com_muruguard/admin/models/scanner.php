@@ -660,6 +660,11 @@ class MuruguardModelScanner extends BaseDatabaseModel
                         // blanket skip, so an actually-injected backdoor
                         // in this scanner's own files is still caught.
                         $reasons = MuruguardHelper::filterSelfSignatureExemptions($relCheck, $sig, $reasons);
+                        // Narrow, per-file, per-signature exemption for
+                        // known-legitimate third-party libraries (see
+                        // KNOWN_LIBRARY_SIGNATURE_EXEMPTIONS) -- same
+                        // "never blanket-skip a path" reasoning as above.
+                        $reasons = MuruguardHelper::filterKnownLibrarySignatureExemptions($relCheck, $sig, $reasons);
                         if (!empty($reasons)) {
                             $flagged = true;
                         }
