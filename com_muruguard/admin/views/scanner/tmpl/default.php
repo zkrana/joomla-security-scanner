@@ -1072,13 +1072,12 @@ if ($w !== null && $w['safe'] !== true):
      Confirmed real gap: a site that hadn't run its first scan saw neither
      the version number nor the newsletter banner at all. -->
 <?php if ($this->componentVersion !== ''): ?>
-<div id="muru-version-badge-wrap" class="flex flex-col items-end gap-1 mb-3">
-    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-[#EF89EB] text-black" title="<?= Text::_('COM_MURUGUARD_VERSION_BADGE_TITLE') ?>">
-        🛡️ v<?= htmlspecialchars($this->componentVersion) ?>
-    </span>
+<div id="muru-version-badge-wrap" class="flex justify-end mb-3">
     <a href="index.php?option=com_installer&view=update"
-       class="text-[11px] text-gray-400 hover:text-indigo-600 hover:underline"
+       class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-[#EF89EB] text-black hover:bg-[#e575e0] transition-colors"
        title="<?= Text::_('COM_MURUGUARD_CHECK_UPDATES_TITLE') ?>">
+        🛡️ v<?= htmlspecialchars($this->componentVersion) ?>
+        <span class="opacity-40">|</span>
         <?= Text::_('COM_MURUGUARD_CHECK_UPDATES_LINK') ?>
     </a>
 </div>
@@ -1156,9 +1155,12 @@ $totalAreaCount = array_sum(array_map(fn($g) => count($g['areas']), $scanAreas))
         <p class="text-gray-500 text-sm leading-relaxed max-w-lg mx-auto">
             <?= Text::_('COM_MURUGUARD_HERO_DESC') ?>
         </p>
-        <p class="text-xs text-gray-400 mt-3 max-w-md mx-auto">
-            🎯 <?= Text::_('COM_MURUGUARD_HERO_SPECIALIZATION') ?>
-        </p>
+        <div class="mt-4 inline-flex items-start gap-2 max-w-lg mx-auto text-left bg-white/80 border border-indigo-200 rounded-lg px-4 py-2.5">
+            <span class="text-base shrink-0">🎯</span>
+            <p class="text-xs text-gray-700 leading-relaxed">
+                <?= Text::_('COM_MURUGUARD_HERO_SPECIALIZATION') ?>
+            </p>
+        </div>
     </div>
 
     <?php if (!empty($this->serverLimits) && !$this->serverLimits['allGood']): ?>

@@ -8,6 +8,13 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [3.0.5] - 2026-08-13
+
+### Fixed
+
+* **Version badge and "Check for updates" link readability.** The link previously sat on its own row in light gray text, hard to read and visually disconnected from the version pill above it. Merged into a single clickable pill (`v3.0.5 | Check for updates`), one row instead of two.
+* **"Built for SP Page Builder & Helix Sites" hero callout was low-contrast, floating text.** Boxed it with a visible background and border and darkened the text so it reads clearly against the hero's gradient background.
+
 ## [3.0.4] - 2026-08-13
 
 ### Added
