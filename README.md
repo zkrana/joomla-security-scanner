@@ -14,18 +14,13 @@ Everything on this page is **free and always will be** — full scanning, cleanu
 | 🧱 **Active Web Application Firewall** | Blocks generic SQL injection, XSS, local/remote file inclusion, and command-injection patterns in incoming requests -- broader than Protection Mode's webshell-specific checks, which stay on regardless and are checked first |
 | 🤖 **Smart AI Assistant** | A chat-based assistant, right inside the admin panel, that reads/searches/fixes your Joomla project's code on request |
 | 🚩 **Fleet Dashboard** | Monitor every licensed site's scan status from one place |
+| 📡 **Fleet bulk actions** | Trigger a remote re-scan or push a hardening config change across every licensed site from the Fleet Dashboard, instead of logging into each site's admin individually |
 | 🔔 **Instant Alerts** | Slack/Discord/Telegram notifications the moment a scheduled scan -- or a File Integrity Monitoring check -- finds something new |
 | 📄 **Branded Security Reports** | One-click, print-ready reports to share with clients or stakeholders |
 | 🔒 **MuRu Shield Hardening** | A self-testing, auto-rollback server-level password gate in front of `/administrator` — blocks brute-force attempts before Joomla even loads |
 | 💬 **Priority support** | A tracked support ticket, not just a public issue queue |
 
 **[Create a free account and get MuRu Guard Pro →](https://lyzerslab.com/joomla-products/muru-guard-security-scanner)**
-
-**🔜 Coming soon to Pro** — in active development, not available yet:
-
-| | |
-|---|---|
-| 📡 **Fleet bulk actions** | Trigger a remote re-scan or push a hardening config change across every licensed site from the Fleet Dashboard, instead of logging into each site's admin individually |
 
 ---
 
