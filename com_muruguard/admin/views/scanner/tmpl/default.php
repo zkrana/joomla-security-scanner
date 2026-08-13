@@ -1072,7 +1072,7 @@ if ($w !== null && $w['safe'] !== true):
      Confirmed real gap: a site that hadn't run its first scan saw neither
      the version number nor the newsletter banner at all. -->
 <?php if ($this->componentVersion !== ''): ?>
-<div class="flex justify-end mb-3">
+<div id="muru-version-badge-wrap" class="flex justify-end mb-3">
     <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-[#EF89EB] text-black" title="<?= Text::_('COM_MURUGUARD_VERSION_BADGE_TITLE') ?>">
         🛡️ v<?= htmlspecialchars($this->componentVersion) ?>
     </span>
@@ -2197,6 +2197,14 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
     var supportBtn    = document.getElementById('muru-support-btn');
     var supportBack   = document.getElementById('muru-support-back');
     var supportPanel  = document.getElementById('muru-support-panel');
+    // Both live OUTSIDE #muru-main-content (see their own comments further
+    // up), so opening Settings/Support never hid them the way the rest of
+    // the dashboard content does -- confirmed real: they kept showing up
+    // at the bottom of the Settings and Support panels, which makes no
+    // sense for a "welcome to the dashboard" banner or a scan-scoped
+    // version badge.
+    var newsletterBanner = document.getElementById('muru-newsletter-banner');
+    var versionBadgeWrap = document.getElementById('muru-version-badge-wrap');
     // Settings and Support are mutually exclusive with each other AND
     // with the dashboard content -- opening either closes the other one
     // first, so at most one of the three is ever visible.
@@ -2204,6 +2212,8 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
         if (mainContent) mainContent.classList.add('hidden');
         if (settingsPanel) settingsPanel.classList.add('hidden');
         if (supportPanel) supportPanel.classList.add('hidden');
+        if (newsletterBanner) newsletterBanner.classList.add('hidden');
+        if (versionBadgeWrap) versionBadgeWrap.classList.add('hidden');
         if (settingsBtn) { settingsBtn.classList.remove('muru-settings-open'); settingsBtn.setAttribute('aria-pressed', 'false'); }
         if (supportBtn) { supportBtn.classList.remove('muru-settings-open'); supportBtn.setAttribute('aria-pressed', 'false'); }
     }
@@ -2216,6 +2226,8 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
     function closeSettings() {
         hideAllPanels();
         if (mainContent) mainContent.classList.remove('hidden');
+        if (newsletterBanner) newsletterBanner.classList.remove('hidden');
+        if (versionBadgeWrap) versionBadgeWrap.classList.remove('hidden');
     }
     function openSupport() {
         if (!supportPanel) return;
@@ -2226,6 +2238,8 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
     function closeSupport() {
         hideAllPanels();
         if (mainContent) mainContent.classList.remove('hidden');
+        if (newsletterBanner) newsletterBanner.classList.remove('hidden');
+        if (versionBadgeWrap) versionBadgeWrap.classList.remove('hidden');
     }
     if (settingsBtn) settingsBtn.addEventListener('click', openSettings);
     var cronBadge = document.getElementById('muru-cron-status-badge');

@@ -8,6 +8,12 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [3.0.3] - 2026-08-13
+
+### Fixed
+
+* **The version badge and "Get security alerts" newsletter banner showed up on the Settings and Support panels too, not just the dashboard.** Both live outside the dashboard's own content area (so they're visible before a first scan has ever run), which meant opening Settings/Support -- which only ever hid the dashboard content itself -- never hid them either. Now hidden/restored together with the panel switch.
+
 ## [3.0.2] - 2026-08-13
 
 ### Fixed
