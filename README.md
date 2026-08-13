@@ -10,9 +10,10 @@ Everything on this page is **free and always will be** — full scanning, cleanu
 
 | | |
 |---|---|
+| 🧬 **File Integrity Monitoring** | Catches what signature scanning can't: a backdoor hand-inserted into a file you already trust. Baseline every file once, then get alerted the instant any of them silently changes |
 | 🤖 **Smart AI Assistant** | A chat-based assistant, right inside the admin panel, that reads/searches/fixes your Joomla project's code on request |
 | 🚩 **Fleet Dashboard** | Monitor every licensed site's scan status from one place |
-| 🔔 **Instant Alerts** | Slack/Discord/Telegram notifications the moment a scheduled scan finds something new |
+| 🔔 **Instant Alerts** | Slack/Discord/Telegram notifications the moment a scheduled scan -- or a File Integrity Monitoring check -- finds something new |
 | 📄 **Branded Security Reports** | One-click, print-ready reports to share with clients or stakeholders |
 | 🔒 **MuRu Shield Hardening** | A self-testing, auto-rollback server-level password gate in front of `/administrator` — blocks brute-force attempts before Joomla even loads |
 | 💬 **Priority support** | A tracked support ticket, not just a public issue queue |
@@ -23,7 +24,6 @@ Everything on this page is **free and always will be** — full scanning, cleanu
 
 | | |
 |---|---|
-| 🧬 **File Integrity Monitoring** | Baseline-hash every file once, then flag any byte-level change since -- catches a payload hidden inside an already-trusted file, independent of signature matching |
 | 🧱 **Active Web Application Firewall** | Blocks SQLi/XSS/LFI/RCE request patterns and known-CVE exploit strings before they reach Joomla, instead of only logging the attempt |
 | 📡 **Fleet bulk actions** | Trigger a remote re-scan or push a hardening config change across every licensed site from the Fleet Dashboard, instead of logging into each site's admin individually |
 
