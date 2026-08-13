@@ -1072,10 +1072,15 @@ if ($w !== null && $w['safe'] !== true):
      Confirmed real gap: a site that hadn't run its first scan saw neither
      the version number nor the newsletter banner at all. -->
 <?php if ($this->componentVersion !== ''): ?>
-<div id="muru-version-badge-wrap" class="flex justify-end mb-3">
+<div id="muru-version-badge-wrap" class="flex flex-col items-end gap-1 mb-3">
     <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-[#EF89EB] text-black" title="<?= Text::_('COM_MURUGUARD_VERSION_BADGE_TITLE') ?>">
         🛡️ v<?= htmlspecialchars($this->componentVersion) ?>
     </span>
+    <a href="index.php?option=com_installer&view=update"
+       class="text-[11px] text-gray-400 hover:text-indigo-600 hover:underline"
+       title="<?= Text::_('COM_MURUGUARD_CHECK_UPDATES_TITLE') ?>">
+        <?= Text::_('COM_MURUGUARD_CHECK_UPDATES_LINK') ?>
+    </a>
 </div>
 <?php endif; ?>
 
@@ -1150,6 +1155,9 @@ $totalAreaCount = array_sum(array_map(fn($g) => count($g['areas']), $scanAreas))
         <h2 class="text-2xl font-extrabold text-gray-900 mb-2"><?= Text::_('COM_MURUGUARD_TITLE') ?></h2>
         <p class="text-gray-500 text-sm leading-relaxed max-w-lg mx-auto">
             <?= Text::_('COM_MURUGUARD_HERO_DESC') ?>
+        </p>
+        <p class="text-xs text-gray-400 mt-3 max-w-md mx-auto">
+            🎯 <?= Text::_('COM_MURUGUARD_HERO_SPECIALIZATION') ?>
         </p>
     </div>
 

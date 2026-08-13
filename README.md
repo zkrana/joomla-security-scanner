@@ -11,6 +11,7 @@ Everything on this page is **free and always will be** — full scanning, cleanu
 | | |
 |---|---|
 | 🧬 **File Integrity Monitoring** | Catches what signature scanning can't: a backdoor hand-inserted into a file you already trust. Baseline every file once, then get alerted the instant any of them silently changes |
+| 🧱 **Active Web Application Firewall** | Blocks generic SQL injection, XSS, local/remote file inclusion, and command-injection patterns in incoming requests -- broader than Protection Mode's webshell-specific checks, which stay on regardless and are checked first |
 | 🤖 **Smart AI Assistant** | A chat-based assistant, right inside the admin panel, that reads/searches/fixes your Joomla project's code on request |
 | 🚩 **Fleet Dashboard** | Monitor every licensed site's scan status from one place |
 | 🔔 **Instant Alerts** | Slack/Discord/Telegram notifications the moment a scheduled scan -- or a File Integrity Monitoring check -- finds something new |
@@ -24,7 +25,6 @@ Everything on this page is **free and always will be** — full scanning, cleanu
 
 | | |
 |---|---|
-| 🧱 **Active Web Application Firewall** | Blocks SQLi/XSS/LFI/RCE request patterns and known-CVE exploit strings before they reach Joomla, instead of only logging the attempt |
 | 📡 **Fleet bulk actions** | Trigger a remote re-scan or push a hardening config change across every licensed site from the Fleet Dashboard, instead of logging into each site's admin individually |
 
 ---
