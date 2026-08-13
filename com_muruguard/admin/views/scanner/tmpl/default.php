@@ -621,7 +621,19 @@ if ($w !== null && $w['safe'] !== true):
             </div>
         </div>
         <?php else: ?>
-        <form action="<?= Route::_('index.php?option=com_muruguard&task=scanner.saveshieldsettings') ?>" method="post">
+        <?php
+        // Every toggle below does nothing without plg_system_muruguardshield
+        // actually installed and enabled -- the warning banner above said
+        // so, but until now the form itself stayed fully interactive and
+        // savable anyway, which reads as "this is configured" when it
+        // silently isn't. $shieldDisabled disables every input and the
+        // Save button; saveshieldsettings() also refuses the save
+        // server-side (see the controller) so a direct POST can't bypass
+        // this either.
+        $shieldDisabled = !$this->shieldPluginActive;
+        $shieldDisabledAttr = $shieldDisabled ? 'disabled' : '';
+        ?>
+        <form action="<?= Route::_('index.php?option=com_muruguard&task=scanner.saveshieldsettings') ?>" method="post" class="<?= $shieldDisabled ? 'opacity-60' : '' ?>">
             <?= HTMLHelper::_('form.token') ?>
 
             <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-5">
@@ -631,7 +643,7 @@ if ($w !== null && $w['safe'] !== true):
                         <p class="text-xs text-gray-500 mt-1 max-w-xl"><?= Text::_('COM_MURUGUARD_SHIELD_DESC') ?></p>
                     </div>
                     <label class="muru-switch flex-shrink-0" title="<?= $this->shieldEnabled ? Text::_('COM_MURUGUARD_STATUS_ENABLED') : Text::_('COM_MURUGUARD_STATUS_DISABLED') ?>">
-                        <input type="checkbox" name="shield_enabled" value="1" <?= $this->shieldEnabled ? 'checked' : '' ?>>
+                        <input type="checkbox" name="shield_enabled" value="1" <?= $this->shieldEnabled ? 'checked' : '' ?> <?= $shieldDisabledAttr ?>>
                         <span class="muru-switch-track"><span class="muru-switch-thumb"></span></span>
                     </label>
                 </div>
@@ -642,7 +654,7 @@ if ($w !== null && $w['safe'] !== true):
                         <p class="text-xs text-gray-500 mt-0.5 max-w-xl"><?= Text::_('COM_MURUGUARD_SHIELD_BLOCK_PATTERNS_DESC') ?></p>
                     </div>
                     <label class="muru-switch flex-shrink-0">
-                        <input type="checkbox" name="shield_block_patterns" value="1" <?= $this->shieldBlockPatterns ? 'checked' : '' ?>>
+                        <input type="checkbox" name="shield_block_patterns" value="1" <?= $this->shieldBlockPatterns ? 'checked' : '' ?> <?= $shieldDisabledAttr ?>>
                         <span class="muru-switch-track"><span class="muru-switch-thumb"></span></span>
                     </label>
                 </div>
@@ -653,7 +665,7 @@ if ($w !== null && $w['safe'] !== true):
                         <p class="text-xs text-gray-500 mt-0.5 max-w-xl"><?= Text::_('COM_MURUGUARD_SHIELD_BLOCK_BRUTEFORCE_DESC') ?></p>
                     </div>
                     <label class="muru-switch flex-shrink-0">
-                        <input type="checkbox" name="shield_block_bruteforce" value="1" <?= $this->shieldBlockBruteForce ? 'checked' : '' ?>>
+                        <input type="checkbox" name="shield_block_bruteforce" value="1" <?= $this->shieldBlockBruteForce ? 'checked' : '' ?> <?= $shieldDisabledAttr ?>>
                         <span class="muru-switch-track"><span class="muru-switch-thumb"></span></span>
                     </label>
                 </div>
@@ -661,14 +673,14 @@ if ($w !== null && $w['safe'] !== true):
                 <div class="grid sm:grid-cols-2 gap-4 mt-4 pt-4 border-t border-gray-100">
                     <div>
                         <label class="block text-xs font-bold text-gray-600 mb-1.5" for="muru-shield-threshold"><?= Text::_('COM_MURUGUARD_SHIELD_THRESHOLD_LABEL') ?></label>
-                        <input type="number" id="muru-shield-threshold" name="shield_bruteforce_threshold" min="2" max="50" value="<?= (int) $this->shieldThreshold ?>"
-                               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
+                        <input type="number" id="muru-shield-threshold" name="shield_bruteforce_threshold" min="2" max="50" value="<?= (int) $this->shieldThreshold ?>" <?= $shieldDisabledAttr ?>
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 disabled:bg-gray-50 disabled:text-gray-400">
                         <p class="text-xs text-gray-400 mt-1"><?= Text::_('COM_MURUGUARD_SHIELD_THRESHOLD_DESC') ?></p>
                     </div>
                     <div>
                         <label class="block text-xs font-bold text-gray-600 mb-1.5" for="muru-shield-window"><?= Text::_('COM_MURUGUARD_SHIELD_WINDOW_LABEL') ?></label>
-                        <input type="number" id="muru-shield-window" name="shield_bruteforce_window" min="1" max="1440" value="<?= (int) $this->shieldWindow ?>"
-                               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
+                        <input type="number" id="muru-shield-window" name="shield_bruteforce_window" min="1" max="1440" value="<?= (int) $this->shieldWindow ?>" <?= $shieldDisabledAttr ?>
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 disabled:bg-gray-50 disabled:text-gray-400">
                         <p class="text-xs text-gray-400 mt-1"><?= Text::_('COM_MURUGUARD_SHIELD_WINDOW_DESC') ?></p>
                     </div>
                 </div>
@@ -679,7 +691,7 @@ if ($w !== null && $w['safe'] !== true):
                         <p class="text-xs text-gray-500 mt-0.5 max-w-xl"><?= Text::_('COM_MURUGUARD_SHIELD_BLOCK_UA_DESC') ?></p>
                     </div>
                     <label class="muru-switch flex-shrink-0">
-                        <input type="checkbox" name="shield_block_useragents" value="1" <?= $this->shieldBlockUserAgents ? 'checked' : '' ?>>
+                        <input type="checkbox" name="shield_block_useragents" value="1" <?= $this->shieldBlockUserAgents ? 'checked' : '' ?> <?= $shieldDisabledAttr ?>>
                         <span class="muru-switch-track"><span class="muru-switch-thumb"></span></span>
                     </label>
                 </div>
@@ -690,19 +702,20 @@ if ($w !== null && $w['safe'] !== true):
                         <p class="text-xs text-gray-500 mt-0.5 max-w-xl"><?= Text::_('COM_MURUGUARD_SHIELD_BLOCK_COUNTRIES_DESC') ?></p>
                     </div>
                     <label class="muru-switch flex-shrink-0">
-                        <input type="checkbox" name="shield_block_countries" value="1" <?= $this->shieldBlockCountries ? 'checked' : '' ?>>
+                        <input type="checkbox" name="shield_block_countries" value="1" <?= $this->shieldBlockCountries ? 'checked' : '' ?> <?= $shieldDisabledAttr ?>>
                         <span class="muru-switch-track"><span class="muru-switch-thumb"></span></span>
                     </label>
                 </div>
                 <div class="pt-3">
                     <label class="block text-xs font-bold text-gray-600 mb-1.5" for="muru-shield-countries"><?= Text::_('COM_MURUGUARD_SHIELD_BLOCKED_COUNTRIES_LABEL') ?></label>
                     <input type="text" id="muru-shield-countries" name="shield_blocked_countries" value="<?= htmlspecialchars($this->shieldBlockedCountries) ?>"
-                           placeholder="CN,RU,KP"
-                           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
+                           placeholder="CN,RU,KP" <?= $shieldDisabledAttr ?>
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 disabled:bg-gray-50 disabled:text-gray-400">
                     <p class="text-xs text-gray-400 mt-1"><?= Text::_('COM_MURUGUARD_SHIELD_BLOCKED_COUNTRIES_DESC') ?></p>
                 </div>
 
-                <button type="submit" class="inline-flex items-center gap-1.5 px-5 py-2 mt-5 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm">
+                <button type="submit" <?= $shieldDisabledAttr ?> title="<?= $shieldDisabled ? Text::_('COM_MURUGUARD_SHIELD_PLUGIN_MISSING') : '' ?>"
+                        class="inline-flex items-center gap-1.5 px-5 py-2 mt-5 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-indigo-600">
                     💾 <?= Text::_('COM_MURUGUARD_SAVE_SETTINGS_BTN') ?>
                 </button>
             </div>

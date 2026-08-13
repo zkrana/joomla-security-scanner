@@ -8,6 +8,12 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [3.0.2] - 2026-08-13
+
+### Fixed
+
+* **Site Protection settings could be toggled and saved even when the MuRu Guard Shield plugin isn't installed or enabled**, silently doing nothing while looking fully configured. Every toggle in that form is now disabled in the UI when the plugin isn't active, and the save itself is refused server-side too (not just a UI courtesy -- a direct POST couldn't bypass it either).
+
 ## [3.0.1] - 2026-08-12
 
 ### Fixed

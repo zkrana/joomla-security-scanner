@@ -472,6 +472,20 @@ public function scan()
 
         /** @var MuruguardModelScanner $model */
         $model = $this->getModel('Scanner');
+
+        // These switches do nothing without plg_system_muruguardshield
+        // actually installed and enabled -- the template already disables
+        // every input in this form when that's the case, but that's only
+        // a UI courtesy; a direct POST (or a stale page left open from
+        // before the plugin was removed) could still reach here, so the
+        // save itself is refused server-side too rather than silently
+        // persisting settings with no effect.
+        if (!$model->isShieldPluginActive()) {
+            $app->enqueueMessage(Text::_('COM_MURUGUARD_SHIELD_PLUGIN_MISSING'), 'warning');
+            $this->setRedirect($this->settingsRedirectUrl());
+            return;
+        }
+
         $model->saveShieldSettings(
             $enabled,
             $blockPatterns,
