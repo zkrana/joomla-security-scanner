@@ -8,6 +8,12 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [3.0.4] - 2026-08-13
+
+### Added
+
+* **"Check for updates" link next to the version badge.** New releases have always been delivered through Joomla's own Extensions update system rather than a separate download, but nothing on the dashboard said so. A small link now sits right under the version badge, pointing straight at System > Manage > Update.
+
 ## [3.0.3] - 2026-08-13
 
 ### Fixed
