@@ -714,7 +714,13 @@ public function scan()
         $session->set('muruguard.filefindings_time', 0);
 
         Factory::getApplication()->enqueueMessage(Text::_('COM_MURUGUARD_FP_UNMARKED_MSG'), 'message');
-        $this->setRedirect('index.php?option=com_muruguard');
+        // This form lives inside Settings > Protection's False Positives
+        // list (a real form submit, not fetch, unlike markfalsepositive()
+        // above) -- redirecting to the bare dashboard URL previously
+        // kicked the admin out of Settings entirely on every Restore
+        // click, same class of bug as savesettings()/saveshieldsettings()
+        // before they were fixed to use settingsRedirectUrl().
+        $this->setRedirect($this->settingsRedirectUrl());
     }
 
     /** Submits the dashboard's "get security alerts & updates" banner. Edit access only -- same bar as changing any other Settings-adjacent option. */

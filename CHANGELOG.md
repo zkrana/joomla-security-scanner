@@ -8,6 +8,13 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [3.0.9] - 2026-08-14
+
+### Fixed
+
+* **Marking a finding as safe could jump you to a different results tab.** Dismissing a finding reloads the page to refresh every tab's counts, but which tab reopened was previously computed as "the first tab with any findings" -- not necessarily the one you were on. Now remembered across the reload, so dismissing something on SPPB Assets or Super Users keeps you there instead of bouncing back to Suspicious Files.
+* **Restoring a dismissed false positive (Settings > Protection > False Positives) kicked you out of Settings entirely**, back to the plain dashboard view -- the one settings-related action that hadn't been updated to use the same tab/panel-preserving redirect every other Settings save already uses.
+
 ## [3.0.8] - 2026-08-14
 
 ### Fixed

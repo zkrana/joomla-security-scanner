@@ -2173,7 +2173,11 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
         }).then(function () {
             // Simplest way to keep every tab's counts/badges/lists
             // consistent with the change, rather than hand-patching the
-            // DOM in six different places.
+            // DOM in six different places. Which tab reopens after the
+            // reload is handled separately below (sessionStorage), since
+            // a plain reload would otherwise land back on whichever tab
+            // the server computes as "first one with any findings" --
+            // not necessarily the tab this dismissal was made from.
             window.location.reload();
         }).catch(function () {
             btn.disabled = false;
@@ -2181,8 +2185,16 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
     });
 
     // ── Tabbed results ──────────────────────────────────────────
+    // Remembers the active tab across a reload (e.g. right after
+    // dismissing a false positive above) via sessionStorage, instead of
+    // always falling back to the server's "first tab with any findings"
+    // default -- that default previously meant marking something safe on
+    // a low-count tab (SPPB Assets, Super Users, ...) bounced the admin
+    // back to Suspicious Files if it still had anything in it, even
+    // though that's not the tab they were just working in.
     var tabs   = document.querySelectorAll('.muru-tab');
     var panels = document.querySelectorAll('.muru-panel');
+    var MURU_ACTIVE_TAB_KEY = 'muru_active_tab';
     function activateTab(id) {
         tabs.forEach(function (t) { t.classList.toggle('active', t.getAttribute('data-tab') === id); });
         panels.forEach(function (p) {
@@ -2190,11 +2202,17 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
             p.classList.toggle('active', on);
             p.classList.toggle('hidden', !on);
         });
+        try { sessionStorage.setItem(MURU_ACTIVE_TAB_KEY, id); } catch (err) { /* storage unavailable -- non-fatal, just no memory across reloads */ }
     }
     tabs.forEach(function (t) {
         t.addEventListener('click', function () { activateTab(t.getAttribute('data-tab')); });
     });
-    if (tabs.length) { activateTab(<?= json_encode($activeTab ?? 'files') ?>); }
+    if (tabs.length) {
+        var storedTab = null;
+        try { storedTab = sessionStorage.getItem(MURU_ACTIVE_TAB_KEY); } catch (err) { /* storage unavailable */ }
+        var validStoredTab = storedTab && Array.prototype.some.call(tabs, function (t) { return t.getAttribute('data-tab') === storedTab; });
+        activateTab(validStoredTab ? storedTab : <?= json_encode($activeTab ?? 'files') ?>);
+    }
 
     // ── Settings panel ───────────────────────────────────────────
     // Swaps #muru-main-content (whichever of scan-gate/results is
