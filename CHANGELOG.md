@@ -8,6 +8,12 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [3.0.7] - 2026-08-14
+
+### Fixed
+
+* **Pre-update snapshot exemption now also covers templates**, not just plugins/components -- `tmp/joomtower_snapshots/.../files/templates/<name>/...` from a currently-installed template (e.g. Helix Ultimate framework templates) was still flooding the results the same way the previous release's plugin/component fix addressed, just for a different extension type. Same registry-checked guarantee: an unregistered/fake template name gets no exemption.
+
 ## [3.0.6] - 2026-08-13
 
 ### Fixed
