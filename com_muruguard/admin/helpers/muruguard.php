@@ -2108,6 +2108,47 @@ class MuruguardHelper
     }
 
     /**
+     * True for a file/folder sitting inside a JoomTower-style pre-update
+     * snapshot (tmp/joomtower_snapshots/<label>/files/...) of a
+     * plugin/component that is CURRENTLY actually installed, per
+     * getRegisteredPlugins()/getRegisteredComponents(). Site-management
+     * tools that snapshot an extension's whole source tree into tmp/
+     * before updating it (for rollback) otherwise flood 'upload'-mode
+     * tmp/ scanning with thousands of ordinary vendor PHP files, each
+     * individually flagged as "executable file in an upload directory."
+     *
+     * Deliberately narrow and registry-checked, not a blanket
+     * tmp/joomtower_snapshots/ exemption: a snapshot folder naming a
+     * plugin/component that ISN'T actually installed gets no exemption
+     * at all, so an attacker can't dodge detection just by imitating
+     * this naming convention for a webshell. And this only ever
+     * suppresses the STRUCTURAL "any .php under tmp/ is suspicious"
+     * check -- every file here still goes through the unconditional
+     * content-signature scan regardless, exactly like everywhere else.
+     */
+    public static function isRegisteredExtensionSnapshotPath(string $relPath, ?array $registeredPlugins, ?array $registeredComponents): bool
+    {
+        if ($registeredPlugins === null && $registeredComponents === null) return false;
+
+        $relNorm = ltrim(str_replace('\\', '/', $relPath), '/');
+        if (!preg_match('#^tmp/joomtower_snapshots/[^/]+/files/(.+)$#i', $relNorm, $m)) {
+            return false;
+        }
+        $inner = $m[1];
+
+        if ($registeredPlugins !== null && preg_match('#^plugins/([a-z0-9_-]+)/([a-z0-9_-]+)(?:/|$)#i', $inner, $pm)) {
+            $key = strtolower($pm[1]) . '|' . strtolower($pm[2]);
+            return array_key_exists($key, $registeredPlugins);
+        }
+
+        if ($registeredComponents !== null && preg_match('#^(?:administrator/)?components/(com_[a-z0-9_-]+)(?:/|$)#i', $inner, $cm)) {
+            return array_key_exists(strtolower($cm[1]), $registeredComponents);
+        }
+
+        return false;
+    }
+
+    /**
      * True if $contents is (after stripping comments/whitespace) nothing
      * more than Joomla's standard "no direct access" guard. Joomla and
      * countless legitimate extensions place this blank stub in every

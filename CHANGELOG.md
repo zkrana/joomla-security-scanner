@@ -8,6 +8,12 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [3.0.6] - 2026-08-13
+
+### Fixed
+
+* **Massive false-positive flood from site-management "pre-update snapshot" backups.** Tools that snapshot an extension's entire source tree into `tmp/` before updating it (e.g. `tmp/joomtower_snapshots/<label>/files/...`) were having every single vendor PHP file inside individually flagged as "executable file inside an upload directory" -- thousands of ordinary, unmodified plugin/component files on a real site, none of them actually suspicious. Now recognized narrowly: a snapshot path is only exempted from that specific structural check when it names a plugin or component that is CURRENTLY actually installed (checked against the live `#__extensions` registry), so a fake snapshot folder imitating this naming convention for something that isn't really installed gets no exemption. Content-signature scanning is completely unaffected either way -- a real backdoor planted inside a snapshot folder is still caught the same as anywhere else.
+
 ## [3.0.5] - 2026-08-13
 
 ### Fixed

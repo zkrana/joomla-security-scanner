@@ -852,7 +852,10 @@ class MuruguardModelScanner extends BaseDatabaseModel
                         $isJoomlaCacheFile = $ext === 'php'
                             && strpos($relCheck, 'cache/') === 0
                             && (bool) preg_match($sig['JOOMLA_CACHE_FILE_RE'], $basename);
-                        if (!$isKnownSafeEntry && !$isBlankStub && !$isJoomlaCacheFile && in_array($ext, $sig['EXEC_EXTS'], true)) {
+                        $isRegisteredExtensionSnapshot = $ext === 'php'
+                            && strpos($relCheck, 'tmp/joomtower_snapshots/') === 0
+                            && MuruguardHelper::isRegisteredExtensionSnapshotPath($relCheck, $registeredPlugins, $registeredComponents);
+                        if (!$isKnownSafeEntry && !$isBlankStub && !$isJoomlaCacheFile && !$isRegisteredExtensionSnapshot && in_array($ext, $sig['EXEC_EXTS'], true)) {
                             $flagged = true;
                             $reasons[] = "Executable file (.$ext) inside an upload directory — these should never contain runnable code.";
                         }
