@@ -1000,22 +1000,33 @@ class MuruguardModelScanner extends BaseDatabaseModel
                     continue;
                 }
 
-                // Unrecognized directory -- flagged, unless it's made up
-                // ENTIRELY of static assets (fonts/images/css/...), a
-                // common, legitimate custom template/page-builder asset
-                // folder, not a malware staging area. Confirmed real false
-                // positive, twice: first a top-level /fonts folder was
-                // flagged High identically to a dropped-shell folder
-                // purely because the reason text contained the word
-                // "unrecognized"; downgrading it to Medium instead of
-                // removing the flag entirely was STILL reported back as a
-                // false positive needing individual per-file dismissal.
-                // An asset-only folder now gets the exact same treatment
-                // as a known extension's own data folder just above: no
-                // structural flag at all, but every file inside is still
-                // fully content-scanned, so an actual payload disguised
-                // with one of these extensions (a script-bearing .svg or
-                // .html, for instance) is still caught on its own merits.
+                // Unrecognized directory -- flagged ONCE, at the folder
+                // itself, unless it's made up ENTIRELY of static assets
+                // (fonts/images/css/...), a common, legitimate custom
+                // template/page-builder asset folder, not a malware
+                // staging area (no directory-level flag at all in that
+                // case). Confirmed real false positive, twice: first a
+                // top-level /fonts folder was flagged High identically to
+                // a dropped-shell folder purely because the reason text
+                // contained the word "unrecognized"; downgrading it to
+                // Medium instead of removing the flag entirely was STILL
+                // reported back as a false positive needing individual
+                // per-file dismissal.
+                //
+                // Files inside are never ALSO individually flagged with a
+                // blanket "inside an unrecognized folder" structural
+                // reason, regardless of which case above applies -- only
+                // content-signature scanning decides whether an inner file
+                // gets its own finding, same as a known extension's data
+                // folder just above. Confirmed real case: a legitimate
+                // ~200MB unrelated application (a separate forum/hotspot
+                // tool, nothing to do with Joomla) installed in its own
+                // top-level folder produced 16,000+ duplicate High-
+                // confidence findings, one per file, every single one
+                // just repeating the same fact the ONE folder-level
+                // finding already states. An actual payload hiding
+                // anywhere in the tree is still caught on its own merits
+                // by the unconditional content scan below.
                 $this->seenAbs[$p] = true;
                 $innerFiles = [];
                 $hasNonAssetContent = false;
@@ -1026,38 +1037,26 @@ class MuruguardModelScanner extends BaseDatabaseModel
                     if (!in_array($innerExt, $sig['ICONFONT_ALLOWED_EXTENSIONS'], true)) $hasNonAssetContent = true;
                 });
 
-                if (!$hasNonAssetContent) {
-                    foreach ($innerFiles as $innerPath) {
-                        if (isset($this->seenAbs[$innerPath])) continue;
-                        $this->seenAbs[$innerPath] = true;
-                        $innerExt = strtolower(pathinfo($innerPath, PATHINFO_EXTENSION));
-                        $innerReasons = [];
-                        MuruguardHelper::scanFileContent($innerPath, $innerExt, $sig, $maxSize, $innerReasons);
-                        if (!empty($innerReasons)) {
-                            $innerRel = ltrim(str_replace($this->root, '', $innerPath), '/');
-                            $innerFp = MuruguardHelper::fingerprintReasons($innerReasons);
-                            if (!MuruguardHelper::isFalsePositive($falsePositives, 'file', $innerRel, $innerFp)) {
-                                MuruguardHelper::recordFinding($this->fileFindings, $innerPath, $this->root, $innerReasons, false);
-                            }
-                        }
+                if ($hasNonAssetContent) {
+                    $dirReason = 'Unrecognized directory directly in the Joomla webroot — not part of a standard install.';
+                    $dirFp = MuruguardHelper::fingerprintReasons([$dirReason]);
+                    if (!MuruguardHelper::isFalsePositive($falsePositives, 'file', $it, $dirFp)) {
+                        MuruguardHelper::recordFinding($this->fileFindings, $p, $this->root, $dirReason, true);
                     }
-                    continue;
                 }
 
-                $dirReason = 'Unrecognized directory directly in the Joomla webroot — not part of a standard install.';
-                $dirFp = MuruguardHelper::fingerprintReasons([$dirReason]);
-                if (!MuruguardHelper::isFalsePositive($falsePositives, 'file', $it, $dirFp)) {
-                    MuruguardHelper::recordFinding($this->fileFindings, $p, $this->root, $dirReason, true);
-                }
-
-                $innerReasonText = 'Inside an unrecognized top-level webroot directory.';
-                $innerFp = MuruguardHelper::fingerprintReasons([$innerReasonText]);
                 foreach ($innerFiles as $innerPath) {
                     if (isset($this->seenAbs[$innerPath])) continue;
                     $this->seenAbs[$innerPath] = true;
-                    $innerRel = ltrim(str_replace($this->root, '', $innerPath), '/');
-                    if (!MuruguardHelper::isFalsePositive($falsePositives, 'file', $innerRel, $innerFp)) {
-                        MuruguardHelper::recordFinding($this->fileFindings, $innerPath, $this->root, $innerReasonText, false);
+                    $innerExt = strtolower(pathinfo($innerPath, PATHINFO_EXTENSION));
+                    $innerReasons = [];
+                    MuruguardHelper::scanFileContent($innerPath, $innerExt, $sig, $maxSize, $innerReasons);
+                    if (!empty($innerReasons)) {
+                        $innerRel = ltrim(str_replace($this->root, '', $innerPath), '/');
+                        $innerFp = MuruguardHelper::fingerprintReasons($innerReasons);
+                        if (!MuruguardHelper::isFalsePositive($falsePositives, 'file', $innerRel, $innerFp)) {
+                            MuruguardHelper::recordFinding($this->fileFindings, $innerPath, $this->root, $innerReasons, false);
+                        }
                     }
                 }
                 continue;

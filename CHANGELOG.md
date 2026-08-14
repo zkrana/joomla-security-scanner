@@ -8,6 +8,12 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [3.0.8] - 2026-08-14
+
+### Fixed
+
+* **The single biggest false-positive source found yet: an unrecognized top-level webroot folder was flagging every file inside it individually**, all as duplicate High-confidence findings repeating the exact same fact. Confirmed on a real site: a ~200MB unrelated third-party application (nothing to do with Joomla) installed in its own top-level folder produced over 16,000 duplicate findings this way. Now the folder itself is still flagged once, so it's not invisible -- but files inside are only flagged individually based on actual content-signature matches, exactly like every other "unrecognized container" case this scanner already handles (a known extension's own data folder, an icon-font asset-only folder). A real backdoor planted anywhere inside is still caught on its own merits; verified with a regression test against a real temp directory tree, including one with an actual injected backdoor pattern.
+
 ## [3.0.7] - 2026-08-14
 
 ### Fixed
