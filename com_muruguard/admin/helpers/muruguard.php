@@ -2110,25 +2110,26 @@ class MuruguardHelper
     /**
      * True for a file/folder sitting inside a JoomTower-style pre-update
      * snapshot (tmp/joomtower_snapshots/<label>/files/...) of a
-     * plugin/component that is CURRENTLY actually installed, per
-     * getRegisteredPlugins()/getRegisteredComponents(). Site-management
-     * tools that snapshot an extension's whole source tree into tmp/
-     * before updating it (for rollback) otherwise flood 'upload'-mode
-     * tmp/ scanning with thousands of ordinary vendor PHP files, each
-     * individually flagged as "executable file in an upload directory."
+     * plugin/component/template that is CURRENTLY actually installed,
+     * per getRegisteredPlugins()/getRegisteredComponents()/
+     * getRegisteredTemplates(). Site-management tools that snapshot an
+     * extension's whole source tree into tmp/ before updating it (for
+     * rollback) otherwise flood 'upload'-mode tmp/ scanning with
+     * thousands of ordinary vendor PHP files, each individually flagged
+     * as "executable file in an upload directory."
      *
      * Deliberately narrow and registry-checked, not a blanket
-     * tmp/joomtower_snapshots/ exemption: a snapshot folder naming a
-     * plugin/component that ISN'T actually installed gets no exemption
-     * at all, so an attacker can't dodge detection just by imitating
-     * this naming convention for a webshell. And this only ever
-     * suppresses the STRUCTURAL "any .php under tmp/ is suspicious"
-     * check -- every file here still goes through the unconditional
-     * content-signature scan regardless, exactly like everywhere else.
+     * tmp/joomtower_snapshots/ exemption: a snapshot folder naming an
+     * extension that ISN'T actually installed gets no exemption at all,
+     * so an attacker can't dodge detection just by imitating this
+     * naming convention for a webshell. And this only ever suppresses
+     * the STRUCTURAL "any .php under tmp/ is suspicious" check -- every
+     * file here still goes through the unconditional content-signature
+     * scan regardless, exactly like everywhere else.
      */
-    public static function isRegisteredExtensionSnapshotPath(string $relPath, ?array $registeredPlugins, ?array $registeredComponents): bool
+    public static function isRegisteredExtensionSnapshotPath(string $relPath, ?array $registeredPlugins, ?array $registeredComponents, ?array $registeredTemplates = null): bool
     {
-        if ($registeredPlugins === null && $registeredComponents === null) return false;
+        if ($registeredPlugins === null && $registeredComponents === null && $registeredTemplates === null) return false;
 
         $relNorm = ltrim(str_replace('\\', '/', $relPath), '/');
         if (!preg_match('#^tmp/joomtower_snapshots/[^/]+/files/(.+)$#i', $relNorm, $m)) {
@@ -2143,6 +2144,12 @@ class MuruguardHelper
 
         if ($registeredComponents !== null && preg_match('#^(?:administrator/)?components/(com_[a-z0-9_-]+)(?:/|$)#i', $inner, $cm)) {
             return array_key_exists(strtolower($cm[1]), $registeredComponents);
+        }
+
+        if ($registeredTemplates !== null && preg_match('#^(administrator/)?templates/([a-z0-9_-]+)(?:/|$)#i', $inner, $tm)) {
+            $clientId = $tm[1] !== '' ? 1 : 0;
+            $key = $clientId . '|' . strtolower($tm[2]);
+            return array_key_exists($key, $registeredTemplates);
         }
 
         return false;
