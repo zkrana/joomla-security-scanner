@@ -2,7 +2,7 @@
 /**
  * @package     plg_system_muruguardshield
  * @author      ZKRANA <zkranao@gmail.com>
- * @license     MIT
+ * @license     GNU General Public License version 2 or later; see LICENSE.txt
  *
  * Companion plugin to the MuRu Guard Security Scanner component
  * (com_muruguard). A component only runs when someone visits its own

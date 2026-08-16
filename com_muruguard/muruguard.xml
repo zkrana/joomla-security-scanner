@@ -3,11 +3,11 @@
     <name>com_muruguard</name>
     <author>ZKRANA</author>
     <creationDate>2026-07-09</creationDate>
-    <copyright>MIT</copyright>
-    <license>MIT</license>
+    <copyright>Copyright (C) 2026 ZKRANA. All rights reserved.</copyright>
+    <license>GNU General Public License version 2 or later; see LICENSE.txt</license>
     <authorEmail>zkranao@gmail.com</authorEmail>
     <authorUrl>https://www.linkedin.com/in/zkranadevs/</authorUrl>
-    <version>3.0.9</version>
+    <version>3.0.10</version>
     <description>MuRu Guard Security Scanner. Detects and helps clean malware left behind by the SP Page Builder uploadCustomIcon RCE and related JCE / Helix Ultimate compromises.</description>
 
     <scriptfile>script.php</scriptfile>
@@ -26,6 +26,7 @@
             <file>controller.php</file>
             <file>muruguard.php</file>
             <file>index.html</file>
+            <file>LICENSE.txt</file>
         </files>
 
         <languages folder="admin/language">

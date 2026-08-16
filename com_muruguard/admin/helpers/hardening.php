@@ -2,7 +2,7 @@
 /**
  * @package     com_muruguard
  * @author      ZKRANA <zkranao@gmail.com>
- * @license     MIT
+ * @license     GNU General Public License version 2 or later; see LICENSE.txt
  *
  * MuRu Shield Hardening — server-level (.htaccess) hardening, distinct
  * from Protection Mode (plg_muruguardshield), which operates at the PHP

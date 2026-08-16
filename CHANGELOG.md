@@ -8,6 +8,16 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [3.0.10] - 2026-08-16
+
+### Fixed
+
+* **Reduced false-positive malware/virus detections from hosting-provider and third-party AV scanners** (SiteGround Site Scanner, VirusTotal-aggregated engines) on `admin/helpers/muruguard.php` -- see [issue #8](https://github.com/zkrana/joomla-security-scanner/issues/8). This is a security scanner, so its own detection database necessarily contains the exact function-name patterns (`eval`, `base64_decode`, `assert`, `shell_exec`, `system`, `exec`, `passthru`, `popen`, `proc_open`, `create_function`, `gzinflate`, `str_rot13`, `gzuncompress`, `gzdecode`, `convert_uudecode`) it exists to catch elsewhere. Heuristic scanners key on exactly that combination, so the file was tripping over its own fingerprints -- the same class of issue fixed for three specific webshell/tool brand names in v2.8.7, now extended to every remaining raw literal occurrence of those dangerous function names across the `CONTENT_SIGNATURES` and `REQUEST_SIGNATURES` tables. Each one is now built from concatenated string fragments instead of one contiguous literal, verified byte-for-byte identical in actual regex match behavior against real backdoor-shaped samples before and after -- detection is completely unchanged, only the on-disk byte sequence differs.
+
+### Changed
+
+* **Relicensed from MIT to GPL v2 or later**, required for Joomla Extensions Directory submission eligibility (Joomla core itself is GPL, and JED requires GPL-compatible licensing for anything integrating with it). `LICENSE.txt` now bundled with both `com_muruguard` and `plg_muruguardshield` (bump to 1.2.2). No functional change.
+
 ## [3.0.9] - 2026-08-14
 
 ### Fixed

@@ -3,17 +3,18 @@
     <name>plg_system_muruguardshield</name>
     <author>ZKRANA</author>
     <creationDate>2026-07-21</creationDate>
-    <copyright>MIT</copyright>
-    <license>MIT</license>
+    <copyright>Copyright (C) 2026 ZKRANA. All rights reserved.</copyright>
+    <license>GNU General Public License version 2 or later; see LICENSE.txt</license>
     <authorEmail>zkranao@gmail.com</authorEmail>
     <authorUrl>https://www.linkedin.com/in/zkranadevs/</authorUrl>
-    <version>1.2.1</version>
+    <version>1.2.2</version>
     <description>PLG_SYSTEM_MURUGUARDSHIELD_XML_DESCRIPTION</description>
 
     <files>
         <filename plugin="muruguardshield">muruguardshield.php</filename>
         <folder>language</folder>
         <file>index.html</file>
+        <file>LICENSE.txt</file>
     </files>
 
     <languages>

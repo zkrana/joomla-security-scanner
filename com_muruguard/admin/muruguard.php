@@ -2,7 +2,7 @@
 /**
  * @package     com_muruguard
  * @author      ZKRANA <zkranao@gmail.com>
- * @license     MIT
+ * @license     GNU General Public License version 2 or later; see LICENSE.txt
  *
  * Standard Joomla admin component entry point. Joomla's own login screen,
  * session handling, and ACL (see access.xml) gate everything below this
