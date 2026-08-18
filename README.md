@@ -1,6 +1,8 @@
 # 🛡️ MuRu Guard Security Scanner (Joomla Extension)
 
-![Downloads](https://img.shields.io/github/downloads/zkrana/joomla-security-scanner/total) . *Please, download latest version from [`dist/`](dist) folder.*
+![Downloads](https://img.shields.io/github/downloads/zkrana/joomla-security-scanner/total)
+
+**Download**: grab the latest installable zip from the [`dist/`](dist) folder in this repo — built the same way a tagged release normally would, just published here directly. `com_muruguard-X.Y.Z.zip` is the scanner component; `plg_muruguardshield-X.Y.Z.zip` is its optional companion real-time protection plugin.
 
 ---
 
@@ -28,15 +30,11 @@ A Joomla extension that detects and helps remove malware left behind by the **SP
 
 Installs like any other Joomla extension. Runs inside the Joomla administrator, behind Joomla's own authentication and ACL — no separate access key, no public-facing scanner file, nothing to remember to delete afterward.
 
+**Requirements**: Joomla 4 or 5. Joomla 3 is not supported (this extension is built entirely on Joomla's namespaced `Joomla\CMS\*` API, which Joomla 3 doesn't have).
+
+**Privacy**: scanning and cleanup run entirely on your own server against your own files — no results, file paths, or matched code are ever sent anywhere. The only outbound calls this free edition ever makes are Joomla's own standard "Check for Updates" mechanism (so you're notified of new versions, exactly like any other extension) and, if you explicitly submit the optional newsletter form in the admin panel, that one submission. Nothing else, ever, without you initiating it.
+
 Need Help? <a href="https://www.linkedin.com/in/zkranadevs/">Reach Me</a> or Email me at <a href="mailto:zkranao@gmail.com">zkranao@gmail.com</a>
-
----
-
-## 🚧 Temporary: GitHub Releases are currently down (Joomla 3 not supported) (Please, Uninstall previous version then install latest version)
-
-GitHub is having a platform-side GitHub Actions outage — workflow runs stuck in "Queued" indefinitely or failing at startup before any job even runs. This isn't specific to this repo's code or workflow config (already checked billing, permissions, and runner config, and reported it to GitHub Support); it's blocking the automated pipeline from publishing new release zips to the [Releases](../../releases) page.
-
-**Until GitHub resolves it, grab the latest installable zips directly from the [`dist/`](dist) folder in this repo instead** — they're built the exact same way the release pipeline normally would, just committed here as a stand-in. This now includes **two** zips (see below): the scanner component itself, and its new companion real-time protection plugin. This notice comes down once Releases are working again.
 
 ---
 
@@ -286,4 +284,4 @@ Every bug report, false-positive flag, and suggestion filed on the [issue tracke
 
 ## 📄 License
 
-MIT
+GNU General Public License version 2 or later — see [LICENSE.txt](LICENSE.txt).
