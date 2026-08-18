@@ -1,8 +1,9 @@
 <?php
-
-defined('_JEXEC') or die;
-
 /**
+ * @package     com_muruguard
+ * @author      ZKRANA <zkranao@gmail.com>
+ * @license     GNU General Public License version 2 or later; see LICENSE.txt
+ *
  * Bundled SHA-256 checksums for a curated set of security-critical,
  * site-independent Joomla core files (entry points + static
  * protection files), keyed by exact Joomla core version. Computed
@@ -14,6 +15,9 @@ defined('_JEXEC') or die;
  * means checksum verification is skipped for that install (falls
  * back to the existing heuristic checks), never a false positive.
  */
+
+defined('_JEXEC') or die;
+
 return array (
   '6.1.2' => 
   array (

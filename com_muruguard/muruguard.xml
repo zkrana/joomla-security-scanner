@@ -7,13 +7,13 @@
     <license>GNU General Public License version 2 or later; see LICENSE.txt</license>
     <authorEmail>zkranao@gmail.com</authorEmail>
     <authorUrl>https://www.linkedin.com/in/zkranadevs/</authorUrl>
-    <version>3.0.10</version>
+    <version>3.0.11</version>
     <description>MuRu Guard Security Scanner. Detects and helps clean malware left behind by the SP Page Builder uploadCustomIcon RCE and related JCE / Helix Ultimate compromises.</description>
 
     <scriptfile>script.php</scriptfile>
 
     <administration>
-        <menu img="class:shield">MuRu Guard</menu>
+        <menu img="class:shield">MuRu Guard Security Scanner</menu>
 
         <files folder="admin">
             <folder>controllers</folder>

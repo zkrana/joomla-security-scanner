@@ -8,6 +8,16 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [3.0.11] - 2026-08-18
+
+### Fixed
+
+* **JED Checker findings, ahead of Joomla Extensions Directory submission.** The installed display name resolved to "MuRu Guard Security Scanner (Free)" -- "free" is a reserved word JED doesn't allow in a listing name, and the admin menu label ("MuRu Guard") didn't match it either. Both now read "MuRu Guard Security Scanner" consistently. Also added the missing GPL license header to `admin/helpers/data/joomla_core_checksums.php`, a data file that had been overlooked in the v3.0.10 relicense pass.
+
+### Note
+
+* JED Checker also flags several `base64`-related lines in the scanner's own signature database as "needs editor review" -- expected and non-blocking (its own report says so directly): those lines are literally the malware-detection patterns this scanner exists to search for, not obfuscation of this extension's own code. Already called out proactively in the JED submission description so a reviewer isn't caught by surprise.
+
 ## [3.0.10] - 2026-08-16
 
 ### Fixed
