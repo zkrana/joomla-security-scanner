@@ -30,6 +30,7 @@ class MuruguardViewScanner extends HtmlView
     public $cronToken = '';
     public $alertEmail = '';
     public $lastScheduledRun = null;
+    public int $itemsPerPage = 50;
     public $canDelete = false;
     public $canEdit = false;
     public $canAdmin = false;
@@ -110,6 +111,10 @@ class MuruguardViewScanner extends HtmlView
         $cfgParams = ComponentHelper::getParams('com_muruguard');
         $this->cronEnabled = (bool) $cfgParams->get('cron_enabled', 0);
         $this->cronToken   = (string) $cfgParams->get('cron_token', '');
+        $this->itemsPerPage = (int) $cfgParams->get('items_per_page', 50);
+        if (!in_array($this->itemsPerPage, [25, 50, 100, 250, 500], true)) {
+            $this->itemsPerPage = 50;
+        }
         $this->alertEmail  = (string) $cfgParams->get('alert_email', '');
         $this->lastScheduledRun = $model->getLastScheduledRunTime();
 

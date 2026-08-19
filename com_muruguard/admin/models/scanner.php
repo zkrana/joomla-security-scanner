@@ -519,6 +519,22 @@ class MuruguardModelScanner extends BaseDatabaseModel
         $table->store();
     }
 
+    /** How many rows the scan-result file lists (Suspicious/Cleanable) show per page before pagination kicks in -- purely a display preference, same storage/save pattern as the other settings above. */
+    public function saveDisplaySettings(int $itemsPerPage): void
+    {
+        $allowed = [25, 50, 100, 250, 500];
+        if (!in_array($itemsPerPage, $allowed, true)) $itemsPerPage = 50;
+
+        $table = new \Joomla\CMS\Table\Extension($this->getDatabase());
+        if (!$table->load(['element' => 'com_muruguard', 'type' => 'component'])) return;
+
+        $params = json_decode((string) $table->params, true);
+        if (!is_array($params)) $params = [];
+        $params['items_per_page'] = $itemsPerPage;
+        $table->params = json_encode($params);
+        $table->store();
+    }
+
     /**
      * Same storage the plg_system_muruguardshield plugin reads from on
      * every request via ComponentHelper::getParams('com_muruguard') --

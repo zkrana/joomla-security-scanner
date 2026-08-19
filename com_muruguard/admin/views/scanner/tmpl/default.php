@@ -16,6 +16,40 @@ use Joomla\CMS\Toolbar\ToolbarHelper;
 use Joomla\CMS\Toolbar\ToolbarInterface;
 use Joomla\CMS\Uri\Uri;
 
+/**
+ * Client-side pagination controls (Prev/Next + "Showing X-Y of Z") for a
+ * table body identified by $tbodyId -- the actual paging logic lives in
+ * JS (muruPaginateTable() in the script block below), which toggles
+ * .muru-paginated-row visibility by data-row-index. Deliberately
+ * client-side, not a server-side re-render per page: every row (and its
+ * checkbox) stays in the DOM regardless of which page is showing, so
+ * "select all" / "select high only" keep working across the WHOLE result
+ * set exactly as they already did before pagination existed, not just
+ * the currently-visible page.
+ *
+ * Declared here, at the very top of the file, rather than down near
+ * where it's mostly used -- the Protection Log section (much earlier in
+ * this template than the Suspicious/Cleanable Files tables) also calls
+ * this, and a declaration positioned after its own first call site threw
+ * "Call to undefined function" on a real Joomla 6.1.2 install despite
+ * being valid, hoistable top-level PHP. Declaring it unconditionally
+ * before ANY use removes the dependency on that behavior entirely,
+ * regardless of what in that environment (opcache, a template override,
+ * or something else) was actually causing it.
+ */
+function muru_pagination_controls(string $tbodyId, int $totalCount): void {
+    if ($totalCount === 0) return;
+    ?>
+    <div class="muru-pagination flex items-center justify-between gap-3 mb-4 text-xs text-gray-500" data-paginate-for="<?= htmlspecialchars($tbodyId) ?>">
+        <span class="muru-pagination-status"></span>
+        <div class="flex items-center gap-2">
+            <button type="button" class="muru-pagination-prev px-2.5 py-1 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed" disabled>← <?= Text::_('COM_MURUGUARD_PAGINATION_PREV') ?></button>
+            <button type="button" class="muru-pagination-next px-2.5 py-1 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed" disabled><?= Text::_('COM_MURUGUARD_PAGINATION_NEXT') ?> →</button>
+        </div>
+    </div>
+    <?php
+}
+
 /** @var MuruguardViewScanner $this */
 $fileFindings = $this->fileFindings ?? [];
 $dbFindings   = $this->dbFindings   ?? [];
@@ -538,6 +572,26 @@ if ($w !== null && $w['safe'] !== true):
                 </button>
             </div>
         </form>
+        <form action="<?= Route::_('index.php?option=com_muruguard&task=scanner.savedisplaysettings') ?>" method="post" class="mb-5">
+            <?= HTMLHelper::_('form.token') ?>
+            <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6">
+                <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2 mb-1">📄 <?= Text::_('COM_MURUGUARD_DISPLAY_TITLE') ?></h3>
+                <p class="text-xs text-gray-500 mb-3 max-w-xl"><?= Text::_('COM_MURUGUARD_DISPLAY_DESC') ?></p>
+                <div class="flex items-end gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-600 mb-1.5" for="muru-items-per-page"><?= Text::_('COM_MURUGUARD_ITEMS_PER_PAGE_LABEL') ?></label>
+                        <select id="muru-items-per-page" name="items_per_page" class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
+                            <?php foreach ([25, 50, 100, 250, 500] as $opt): ?>
+                            <option value="<?= $opt ?>" <?= $this->itemsPerPage === $opt ? 'selected' : '' ?>><?= $opt ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm">
+                        💾 <?= Text::_('COM_MURUGUARD_SAVE_SETTINGS_BTN') ?>
+                    </button>
+                </div>
+            </div>
+        </form>
         <?php endif; ?>
     </div>
 
@@ -927,6 +981,7 @@ if ($w !== null && $w['safe'] !== true):
                 <?php if (empty($attackEntries)): ?>
                     <div class="text-xs text-gray-400 mb-5">— <?= Text::_('COM_MURUGUARD_PROTECTION_LOG_NONE') ?></div>
                 <?php else: ?>
+                <?php muru_pagination_controls('muru-attacklog-tbody', count($attackEntries)); ?>
                 <div class="overflow-x-auto mb-5 border border-gray-200 rounded-lg">
                     <table class="w-full text-xs">
                         <thead class="bg-gray-50 text-gray-500 uppercase tracking-wider">
@@ -939,9 +994,9 @@ if ($w !== null && $w['safe'] !== true):
                                 <th class="text-left px-3 py-2 font-bold"><?= Text::_('COM_MURUGUARD_PROTECTION_LOG_COL_STATUS') ?></th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-gray-100">
-                            <?php foreach ($attackEntries as $e): ?>
-                            <tr class="hover:bg-gray-50/60">
+                        <tbody class="divide-y divide-gray-100" id="muru-attacklog-tbody">
+                            <?php $attackRowIndex = 0; foreach ($attackEntries as $e): ?>
+                            <tr class="muru-paginated-row hover:bg-gray-50/60" data-row-index="<?= $attackRowIndex++ ?>">
                                 <td class="px-3 py-2 text-gray-500 whitespace-nowrap"><?= date('Y-m-d H:i:s', (int) ($e['time'] ?? 0)) ?></td>
                                 <td class="px-3 py-2 font-mono text-gray-700"><?= htmlspecialchars((string) ($e['ip'] ?? '')) ?></td>
                                 <td class="px-3 py-2">
@@ -971,6 +1026,7 @@ if ($w !== null && $w['safe'] !== true):
                 <?php if (empty($bruteEntries)): ?>
                     <div class="text-xs text-gray-400"><?= Text::_('COM_MURUGUARD_PROTECTION_LOG_NONE') ?></div>
                 <?php else: ?>
+                <?php muru_pagination_controls('muru-bruteforce-tbody', count($bruteEntries)); ?>
                 <div class="overflow-x-auto border border-gray-200 rounded-lg">
                     <table class="w-full text-xs">
                         <thead class="bg-gray-50 text-gray-500 uppercase tracking-wider">
@@ -981,9 +1037,9 @@ if ($w !== null && $w['safe'] !== true):
                                 <th class="text-left px-3 py-2 font-bold"><?= Text::_('COM_MURUGUARD_PROTECTION_LOG_COL_STATUS') ?></th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-gray-100">
-                            <?php foreach ($bruteEntries as $e): ?>
-                            <tr class="hover:bg-gray-50/60">
+                        <tbody class="divide-y divide-gray-100" id="muru-bruteforce-tbody">
+                            <?php $bruteRowIndex = 0; foreach ($bruteEntries as $e): ?>
+                            <tr class="muru-paginated-row hover:bg-gray-50/60" data-row-index="<?= $bruteRowIndex++ ?>">
                                 <td class="px-3 py-2 text-gray-500 whitespace-nowrap"><?= date('Y-m-d H:i:s', (int) ($e['time'] ?? 0)) ?></td>
                                 <td class="px-3 py-2 font-mono text-gray-700"><?= htmlspecialchars((string) ($e['ip'] ?? '')) ?></td>
                                 <td class="px-3 py-2 text-gray-600"><?= htmlspecialchars((string) preg_replace('/^username:\s*/', '', (string) ($e['matched'] ?? '')) ?: '—') ?></td>
@@ -1510,9 +1566,14 @@ foreach ($tabs as $t) { if ($t['count'] > 0) { $activeTab = $t['id']; break; } }
 /* ── Helper: tab panel wrapper (ids match the $tabs 'id' above) ── */
 function muru_section_open(string $id, string $emoji, string $title, int $count): void {
     $panel = preg_replace('/^sec-/', '', $id);
+    // muru-section-badge is the stable hook the "Mark as Safe" JS uses to
+    // decrement this panel's own header count in place -- see
+    // muruDecrementBadge() below, which mirrors this exact
+    // count>0-vs-zero markup so a live update looks identical to a fresh
+    // page render.
     $dot = $count > 0
-        ? '<span class="inline-flex items-center justify-center min-w-5 h-5 px-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full ml-2">' . $count . '</span>'
-        : '<span class="inline-flex items-center justify-center w-5 h-5 bg-green-500 text-white text-[10px] font-bold rounded-full ml-2">✓</span>';
+        ? '<span class="muru-section-badge inline-flex items-center justify-center min-w-5 h-5 px-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full ml-2">' . $count . '</span>'
+        : '<span class="muru-section-badge inline-flex items-center justify-center w-5 h-5 bg-green-500 text-white text-[10px] font-bold rounded-full ml-2">✓</span>';
     echo '<section id="' . $id . '" class="muru-panel hidden bg-white border border-gray-200 rounded-xl shadow-sm mb-4 overflow-hidden anim-in" data-panel="' . $panel . '">';
     echo '<div class="flex items-center gap-2 font-bold text-gray-800 p-3 border-b border-gray-100">' . $emoji . ' <span>' . $title . '</span>' . $dot . '</div>';
     echo '<div class="p-3">';
@@ -1552,7 +1613,7 @@ function muru_mark_safe_button(string $category, string $identifier, array $reas
  *  only actually renders a preview when the file's CURRENT on-disk
  *  content still has a pattern this scanner can auto-repair -- it never
  *  shows a preview for something Clean can't actually fix. */
-function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $showCheckbox = true, ?array $registeredTemplates = null, bool $canEdit = false): void {
+function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $showCheckbox = true, ?array $registeredTemplates = null, bool $canEdit = false, int $rowIndex = 0): void {
     $pathDir  = dirname($f['rel']);
     $pathBase = basename($f['rel']);
     $isProtectedEntry = \MuruguardHelper::isProtectedEntryPath($f['rel'], \MuruguardHelper::getSignatures(), $f['abs'] ?? null, $registeredTemplates);
@@ -1565,7 +1626,7 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
     }
     $reasonsJson = htmlspecialchars(json_encode($blocksHtml), ENT_QUOTES);
     ?>
-    <tr class="hover:bg-gray-50/60 transition-colors <?= $f['confidence']==='high' ? 'bg-red-50/30' : '' ?>">
+    <tr class="muru-paginated-row hover:bg-gray-50/60 transition-colors <?= $f['confidence']==='high' ? 'bg-red-50/30' : '' ?>" data-row-index="<?= $rowIndex ?>">
         <td class="px-4 py-3">
             <?php if ($showCheckbox): ?>
             <input type="checkbox" class="muru-file-chk w-4 h-4 rounded border-gray-300"
@@ -1658,6 +1719,7 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
                 <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full font-semibold">🟡 <?= Text::sprintf('COM_MURUGUARD_COUNT_MEDIUM', $deletableMed) ?></span>
             </div>
         </div>
+        <?php muru_pagination_controls('muru-files-tbody', $deletableCount); ?>
         <div class="tbl-wrap rounded-xl border border-gray-100 overflow-hidden mb-4">
             <table class="w-full text-sm">
                 <thead>
@@ -1672,8 +1734,8 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
                         <th class="w-10 px-4 py-3"></th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-gray-50">
-                <?php foreach ($deletableFindings as $f): muru_render_file_row($f, false, $this->canDelete, $registeredTemplates, $this->canEdit); endforeach; ?>
+                <tbody class="divide-y divide-gray-50" id="muru-files-tbody">
+                <?php $muruDeletableIdx = 0; foreach ($deletableFindings as $f): muru_render_file_row($f, false, $this->canDelete, $registeredTemplates, $this->canEdit, $muruDeletableIdx++); endforeach; ?>
                 </tbody>
             </table>
         </div>
@@ -1723,6 +1785,7 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
             <?php endif; ?>
             <span class="text-xs text-gray-500"><?= $cleanableCount ?> <?= Text::_($cleanableCount === 1 ? 'COM_MURUGUARD_FILES_ELIGIBLE' : 'COM_MURUGUARD_FILES_ELIGIBLE_PLURAL') ?></span>
         </div>
+        <?php muru_pagination_controls('muru-cleanable-tbody', $cleanableCount); ?>
         <div class="tbl-wrap rounded-xl border border-gray-100 overflow-hidden mb-4">
             <table class="w-full text-sm">
                 <thead>
@@ -1737,8 +1800,8 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
                         <th class="w-10 px-4 py-3"></th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-gray-50">
-                <?php foreach ($cleanableFindings as $f): muru_render_file_row($f, true, $this->canEdit, $registeredTemplates, $this->canEdit); endforeach; ?>
+                <tbody class="divide-y divide-gray-50" id="muru-cleanable-tbody">
+                <?php $muruCleanableIdx = 0; foreach ($cleanableFindings as $f): muru_render_file_row($f, true, $this->canEdit, $registeredTemplates, $this->canEdit, $muruCleanableIdx++); endforeach; ?>
                 </tbody>
             </table>
         </div>
@@ -2149,17 +2212,54 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
     // ── "Mark as Safe" (dismiss a finding as a false positive) ──────
     // A plain button, not a <form>, since every table this appears in
     // already sits inside that tab's own bulk-select/delete <form> --
-    // HTML doesn't allow nested forms. Submitted via fetch() instead,
-    // using event delegation since these buttons exist inside tab panels
-    // that can be re-rendered/hidden by the tab switcher above.
+    // HTML doesn't allow nested forms. Submitted via fetch(), using event
+    // delegation since these buttons exist inside tab panels that can be
+    // re-rendered/hidden by the tab switcher above.
+    //
+    // Patches the DOM directly (removes the row, decrements the tab and
+    // panel-header badges) instead of reloading the whole page. This
+    // used to fetch() then do a full window.location.reload(), which
+    // visibly navigates the browser -- reads as "getting kicked back to
+    // a different page" even when the tab/state is correctly restored
+    // afterward. No reload means nothing that can look like a redirect,
+    // full stop.
     var muruFpToken = <?= json_encode(\Joomla\CMS\Session\Session::getFormToken()) ?>;
+
+    // Mirrors muru_section_open()'s PHP markup exactly (count>0 = red
+    // pill with the number, count=0 = green checkmark) so a live
+    // decrement looks identical to what a fresh page render would show.
+    function muruDecrementBadge(el) {
+        var current = parseInt(el.textContent, 10);
+        var next = isNaN(current) ? 0 : Math.max(0, current - 1);
+        if (next > 0) {
+            el.textContent = String(next);
+            el.classList.remove('bg-green-500');
+            el.classList.add('bg-red-500');
+        } else {
+            el.textContent = '✓';
+            el.classList.remove('bg-red-500');
+            el.classList.add('bg-green-500');
+        }
+    }
+
     document.addEventListener('click', function (e) {
         var btn = e.target.closest('.muru-mark-safe-btn');
         if (!btn) return;
+        // Stops this click from being interpreted by anything else this
+        // event might otherwise bubble into (the tab's own bulk-select
+        // <form> this button lives inside, a row-click handler, etc.) --
+        // this button's own fetch is the only thing a click on it should
+        // ever trigger.
+        e.preventDefault();
+        e.stopPropagation();
         if (btn.disabled) return;
         if (!confirm(<?= json_encode(Text::_('COM_MURUGUARD_FP_MARK_CONFIRM')) ?>)) return;
 
         btn.disabled = true;
+        var row = btn.closest('tr');
+        var panel = btn.closest('.muru-panel');
+        var panelId = panel ? panel.getAttribute('data-panel') : null;
+
         var body = new URLSearchParams();
         body.set('fp_category', btn.getAttribute('data-fp-category'));
         body.set('fp_identifier', btn.getAttribute('data-fp-identifier'));
@@ -2170,19 +2270,87 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: body.toString(),
-        }).then(function () {
-            // Simplest way to keep every tab's counts/badges/lists
-            // consistent with the change, rather than hand-patching the
-            // DOM in six different places. Which tab reopens after the
-            // reload is handled separately below (sessionStorage), since
-            // a plain reload would otherwise land back on whichever tab
-            // the server computes as "first one with any findings" --
-            // not necessarily the tab this dismissal was made from.
-            window.location.reload();
+        }).then(function (res) {
+            return res.json().catch(function () { return null; }).then(function (data) {
+                return { ok: res.ok && !!data && data.ok === true, error: data && data.error };
+            });
+        }).then(function (result) {
+            if (!result.ok) {
+                btn.disabled = false;
+                window.alert(result.error || <?= json_encode(Text::_('COM_MURUGUARD_FP_MARK_FAILED')) ?>);
+                return;
+            }
+
+            if (row) {
+                row.style.transition = 'opacity 180ms ease, transform 180ms ease';
+                row.style.opacity = '0';
+                row.style.transform = 'scale(0.99)';
+                setTimeout(function () { row.remove(); }, 180);
+            }
+            if (panelId) {
+                var tabBadge = document.querySelector('.muru-tab[data-tab="' + panelId + '"] .muru-tab-badge');
+                if (tabBadge) muruDecrementBadge(tabBadge);
+            }
+            if (panel) {
+                var sectionBadge = panel.querySelector('.muru-section-badge');
+                if (sectionBadge) muruDecrementBadge(sectionBadge);
+            }
         }).catch(function () {
             btn.disabled = false;
+            window.alert(<?= json_encode(Text::_('COM_MURUGUARD_FP_MARK_FAILED')) ?>);
         });
     });
+
+    // ── Pagination (Suspicious/Cleanable file tables + Protection Log) ──
+    // Purely client-side -- every row (and its checkbox) stays in the
+    // DOM regardless of which page is showing, only .muru-paginated-row
+    // visibility toggles. This is deliberate: "Select All" / "Select
+    // High Only" already work by querySelectorAll() over the whole
+    // table (see their onclick handlers above), which doesn't care
+    // about CSS visibility -- so pagination needed to not break that,
+    // rather than requiring it to be specially taught about pages.
+    var muruItemsPerPage = <?= (int) $this->itemsPerPage ?>;
+    function muruPaginateTable(tbodyId) {
+        var tbody = document.getElementById(tbodyId);
+        var controls = document.querySelector('.muru-pagination[data-paginate-for="' + tbodyId + '"]');
+        if (!tbody || !controls) return;
+
+        var rows = Array.prototype.slice.call(tbody.querySelectorAll('.muru-paginated-row'));
+        var total = rows.length;
+        var totalPages = Math.max(1, Math.ceil(total / muruItemsPerPage));
+        var currentPage = 1;
+
+        var statusEl = controls.querySelector('.muru-pagination-status');
+        var prevBtn   = controls.querySelector('.muru-pagination-prev');
+        var nextBtn   = controls.querySelector('.muru-pagination-next');
+
+        if (total <= muruItemsPerPage) {
+            // Nothing to page -- hide the controls entirely rather than
+            // showing a pointless "1 of 1" with disabled buttons.
+            controls.style.display = 'none';
+            return;
+        }
+
+        function render() {
+            var start = (currentPage - 1) * muruItemsPerPage;
+            var end = Math.min(start + muruItemsPerPage, total);
+            rows.forEach(function (row, i) {
+                row.classList.toggle('hidden', i < start || i >= end);
+            });
+            statusEl.textContent = <?= json_encode(Text::_('COM_MURUGUARD_PAGINATION_SHOWING')) ?>
+                .replace('%s', start + 1).replace('%s', end).replace('%s', total);
+            prevBtn.disabled = currentPage <= 1;
+            nextBtn.disabled = currentPage >= totalPages;
+        }
+
+        prevBtn.addEventListener('click', function () { if (currentPage > 1) { currentPage--; render(); } });
+        nextBtn.addEventListener('click', function () { if (currentPage < totalPages) { currentPage++; render(); } });
+        render();
+    }
+    muruPaginateTable('muru-files-tbody');
+    muruPaginateTable('muru-cleanable-tbody');
+    muruPaginateTable('muru-attacklog-tbody');
+    muruPaginateTable('muru-bruteforce-tbody');
 
     // ── Tabbed results ──────────────────────────────────────────
     // Remembers the active tab across a reload (e.g. right after

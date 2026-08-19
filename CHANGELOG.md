@@ -8,6 +8,16 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [3.0.12] - 2026-08-18
+
+### Fixed
+
+* **"Mark as Safe" no longer reloads the page.** Ported from Pro v3.5.6: `markfalsepositive()` now returns a small JSON acknowledgment instead of redirecting (it was only ever called via fetch, never a plain form submit -- the Settings > False Positives "Restore" flow remains a real form submit and is unchanged). The button's own JS removes its row and decrements the tab/section counts in place, so clicking it never visibly navigates anywhere.
+
+### Added
+
+* **Pagination on the Suspicious Files / Cleanable Files tables and the Protection Log**, ported from Pro. Purely client-side (every row and its checkbox stays in the DOM regardless of which page is showing, so "Select All" / "Select High Only" keep working across the whole result set, not just the visible page) with a new configurable "items per page" display setting (Settings > Scheduled, default 50, options 25/50/100/250/500).
+
 ## [3.0.11] - 2026-08-18
 
 ### Fixed

@@ -425,6 +425,23 @@ public function scan()
         $this->setRedirect($this->settingsRedirectUrl());
     }
 
+    /** Saves the "items per page" display preference for the scan-result file lists. */
+    public function savedisplaysettings()
+    {
+        Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
+        \MuruguardHelper::requireAdminAccess();
+
+        $app = Factory::getApplication();
+        $itemsPerPage = $app->input->getInt('items_per_page', 50);
+
+        /** @var MuruguardModelScanner $model */
+        $model = $this->getModel('Scanner');
+        $model->saveDisplaySettings($itemsPerPage);
+
+        $app->enqueueMessage(Text::_('COM_MURUGUARD_SETTINGS_SAVED_MSG'), 'message');
+        $this->setRedirect($this->settingsRedirectUrl());
+    }
+
     /**
      * Every Settings-saving action redirects here instead of a bare
      * 'index.php?option=com_muruguard' -- that used to drop the admin
@@ -677,22 +694,36 @@ public function scan()
         $note        = $input->getString('fp_note', '');
 
         $result = \MuruguardHelper::addFalsePositive($category, $identifier, $fingerprint, $note);
+
+        // Only ever called via fetch() from the "Mark as Safe" button's JS
+        // (see default.php) -- unmarkfalsepositive() below is the one
+        // real <form> submit still needs a redirect. This one used to
+        // redirect too, back to the bare results page, which the fetch()
+        // call transparently followed and then discarded the resulting
+        // full HTML page -- wasted work, and the actual source of a
+        // real-world "gets kicked back to the plain results page" report,
+        // since the JS then did its OWN reload on top of that. A small
+        // JSON response is both cheaper and lets the button remove its
+        // own row and update the surrounding counts in place, with zero
+        // navigation at all.
+        header('Content-Type: application/json; charset=utf-8');
         if ($result['ok']) {
-            $app->enqueueMessage(Text::_('COM_MURUGUARD_FP_MARKED_MSG'), 'message');
             // The scan-results page reads from a 5-minute session cache, not
             // a fresh scan, on every load -- without invalidating it here,
-            // a dismissal was saved correctly but the very next reload kept
-            // showing the same stale pre-dismissal list, making it look like
-            // nothing happened. Same cache-busting the delete/clean actions
-            // already do after their own mutations.
+            // a dismissal was saved correctly but the next full reload
+            // (e.g. after a later "Run Scan") kept showing the same stale
+            // pre-dismissal list, making it look like nothing happened.
+            // Same cache-busting the delete/clean actions already do after
+            // their own mutations.
             $session = $app->getSession();
             $session->set('muruguard.filefindings', null);
             $session->set('muruguard.filefindings_time', 0);
+            echo json_encode(['ok' => true]);
         } else {
-            $app->enqueueMessage(htmlspecialchars($result['error']), 'error');
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => (string) $result['error']]);
         }
-
-        $this->setRedirect('index.php?option=com_muruguard');
+        $app->close();
     }
 
     /** Reverses a "Mark as Safe" dismissal, making the finding reappear on the next scan. */
