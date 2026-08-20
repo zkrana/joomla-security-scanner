@@ -8,6 +8,12 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [3.0.13] - 2026-08-20
+
+### Fixed
+
+* **"Ignored paths" wildcard didn't cover subfolders.** A pattern ending in `/*` (e.g. `plugins/mcp/*`, documented as a way to ignore an entire extension) only ever matched files placed directly inside that folder, never anything in a subfolder underneath it, such as `plugins/mcp/mcpadminlogin/`. A trailing `/*` now also matches the whole subtree, matching the documented behavior; every other wildcard shape is unchanged.
+
 ## [3.0.12] - 2026-08-18
 
 ### Fixed
