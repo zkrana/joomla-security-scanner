@@ -8,6 +8,15 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [3.0.14] - 2026-08-20
+
+### Fixed
+
+* **False positives on JED Checker's own working copy.** Running the official Joomla Extensions Directory compliance tool against this scanner's own release zip extracts a full copy of its source into `tmp/jed_checker/unzipped/`, which was flagged both structurally ("executable file in an upload directory") and via content signatures re-matching its own signature-definition text. Both are now recognized, the same way an already-installed copy of this scanner is.
+* **`scan-progress.php` self-flagging.** This internal cache file stores the most recent scan's own findings, including the literal "Matched code: ..." snippet several checks append — so any real finding elsewhere on the site could get its snippet echoed back into this file and re-trigger the same signature on the next scan. Every snippet-bearing reason is now stripped for this one file specifically (its content is only ever read as JSON, never executed).
+* **`.htaccess.admintools` and `.myjoomla.*.md5` false positives.** Recognized as legitimate artifacts of Akeeba Admin Tools and the MyJoomla.com monitoring service instead of "unrecognized file in webroot."
+* **Newsletter banner's ✕ button didn't close it.** It relied on a full page reload to reflect the dismissal; now dismisses instantly via the same no-reload pattern already used for "Mark as Safe."
+
 ## [3.0.13] - 2026-08-20
 
 ### Fixed
