@@ -746,6 +746,23 @@ class MuruguardModelScanner extends BaseDatabaseModel
             foreach ($ignoredPaths as $pattern) {
                 if ($pattern === '') continue;
                 if (fnmatch($pattern, $relPath, FNM_PATHNAME)) return true;
+
+                // A trailing "/*" is documented (COM_MURUGUARD_CONFIG_IGNORED_
+                // PATHS_DESC) as ignoring an entire extension, e.g.
+                // "plugins/mcp/*" -- but FNM_PATHNAME makes "*" stop at the
+                // first "/", so that pattern only ever matched files placed
+                // directly inside plugins/mcp/, never anything one level
+                // deeper like plugins/mcp/mcpadminlogin/foo.php. Treat a
+                // trailing "/*" as "this whole subtree" via a plain prefix
+                // check instead, without loosening any other pattern shape
+                // (a bare "*.php" still only matches within one directory,
+                // as documented/expected).
+                if (substr($pattern, -2) === '/*') {
+                    $prefix = substr($pattern, 0, -1); // keep the trailing slash
+                    if ($prefix !== '/' && strncmp($relPath, $prefix, strlen($prefix)) === 0) {
+                        return true;
+                    }
+                }
             }
             return false;
         };
