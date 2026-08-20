@@ -888,7 +888,10 @@ class MuruguardModelScanner extends BaseDatabaseModel
                         $isRegisteredExtensionSnapshot = $ext === 'php'
                             && strpos($relCheck, 'tmp/joomtower_snapshots/') === 0
                             && MuruguardHelper::isRegisteredExtensionSnapshotPath($relCheck, $registeredPlugins, $registeredComponents, $registeredTemplates);
-                        if (!$isKnownSafeEntry && !$isBlankStub && !$isJoomlaCacheFile && !$isRegisteredExtensionSnapshot && in_array($ext, $sig['EXEC_EXTS'], true)) {
+                        $isJedCheckerOwnZipSnapshot = $ext === 'php'
+                            && strpos($relCheck, 'tmp/jed_checker/unzipped/') === 0
+                            && MuruguardHelper::isJedCheckerOwnZipSnapshotPath($relCheck);
+                        if (!$isKnownSafeEntry && !$isBlankStub && !$isJoomlaCacheFile && !$isRegisteredExtensionSnapshot && !$isJedCheckerOwnZipSnapshot && in_array($ext, $sig['EXEC_EXTS'], true)) {
                             $flagged = true;
                             $reasons[] = "Executable file (.$ext) inside an upload directory — these should never contain runnable code.";
                         }
@@ -919,6 +922,12 @@ class MuruguardModelScanner extends BaseDatabaseModel
                         // KNOWN_LIBRARY_SIGNATURE_EXEMPTIONS) -- same
                         // "never blanket-skip a path" reasoning as above.
                         $reasons = MuruguardHelper::filterKnownLibrarySignatureExemptions($relCheck, $sig, $reasons);
+                        // Full content-signature exemption for exactly
+                        // one file (scan-progress.php) -- see
+                        // filterStubProtectedDataCacheExemptions()'s own
+                        // docblock for why this one is structurally
+                        // different from the two narrower filters above.
+                        $reasons = MuruguardHelper::filterStubProtectedDataCacheExemptions($relCheck, $reasons);
                         if (!empty($reasons)) {
                             $flagged = true;
                         }

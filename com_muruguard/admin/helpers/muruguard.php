@@ -2171,6 +2171,36 @@ class MuruguardHelper
     }
 
     /**
+     * True for a file sitting inside JED Checker's own working directory
+     * (tmp/jed_checker/unzipped/com_muruguard-X.Y.Z.zip/... or the
+     * pre-rebrand com_sppbscan-X.Y.Z.zip) -- the official Joomla
+     * Extensions Directory compliance tool, run by extension developers
+     * against their own release zip before submission (see CHANGELOG.md
+     * "JED Checker findings" entries). Running it against THIS scanner's
+     * own zip extracts a full copy of its own source into a tmp/ folder,
+     * which otherwise floods the 'upload'-mode "executable file in an
+     * upload directory" structural check exactly like the
+     * tmp/joomtower_snapshots/ case just above.
+     *
+     * Deliberately hardcoded to this scanner's own two product names (no
+     * registry lookup needed, unlike isRegisteredExtensionSnapshotPath()
+     * above) -- those names aren't attacker-choosable the way an
+     * arbitrary plugin/component folder name would be, so matching them
+     * literally is already as narrow as a registry check would be. And
+     * this only ever suppresses the STRUCTURAL check -- every file here
+     * still goes through the unconditional content-signature scan
+     * regardless, exactly like everywhere else.
+     */
+    public static function isJedCheckerOwnZipSnapshotPath(string $relPath): bool
+    {
+        $relNorm = ltrim(str_replace('\\', '/', $relPath), '/');
+        return (bool) preg_match(
+            '#^tmp/jed_checker/unzipped/(?:com_muruguard|com_sppbscan)-[\d.]+\.zip/#i',
+            $relNorm
+        );
+    }
+
+    /**
      * True if $contents is (after stripping comments/whitespace) nothing
      * more than Joomla's standard "no direct access" guard. Joomla and
      * countless legitimate extensions place this blank stub in every
@@ -2713,6 +2743,20 @@ class MuruguardHelper
     public static function filterSelfSignatureExemptions(string $relPath, array $sig, array $reasons): array
     {
         $relNorm = ltrim(str_replace('\\', '/', $relPath), '/');
+
+        // A JED Checker unzip (see isJedCheckerOwnZipSnapshotPath()) is a
+        // copy of this scanner's OWN raw distribution zip, whose internal
+        // layout is admin/... (Joomla renames that to administrator/
+        // components/com_muruguard/... only at install time -- see
+        // muruguard.xml's <files folder="admin">). Normalize back to the
+        // canonical installed path before the lookup below, so this exact
+        // same file gets the exact same narrow exemption it already has
+        // at its real install location, rather than duplicating the
+        // SELF_CONTENT_SIGNATURE_EXEMPTIONS table for a second path shape.
+        if (preg_match('#^tmp/jed_checker/unzipped/(com_muruguard|com_sppbscan)-[\d.]+\.zip/admin/(.+)$#i', $relNorm, $m)) {
+            $relNorm = 'administrator/components/' . strtolower($m[1]) . '/' . $m[2];
+        }
+
         $exemptSigNames = $sig['SELF_CONTENT_SIGNATURE_EXEMPTIONS'][$relNorm] ?? null;
         if ($exemptSigNames === null) return $reasons;
 
@@ -2743,6 +2787,49 @@ class MuruguardHelper
             }));
         }
         return $reasons;
+    }
+
+    /**
+     * Full snippet-bearing-reason exemption for exactly one file:
+     * administrator/components/com_muruguard/helpers/data/scan-progress.php.
+     * This scanner's own stub-protected data files (see
+     * dataFileStubPrefix()) are never actually interpreted as PHP
+     * regardless of what bytes follow the stub -- the stub's own "?>" is
+     * the entire executable surface; everything after it is inert text,
+     * only ever read back via file_get_contents()+json_decode(), never
+     * include()/require()'d. scan-progress.php specifically stores a live
+     * copy of the most recent scan's own findings, and several different
+     * checks (content signatures, the masquerade/location checks, the
+     * non-standard-index.php check, ...) all append a literal code
+     * snippet onto their reason string -- see formatReasonForDisplay()'s
+     * own "Matched code:"/"Offending code:"/"Preview:" marker regex,
+     * reused below as the authoritative test for "does this reason carry
+     * a snippet" -- so on the NEXT scan, this file is guaranteed to
+     * eventually contain byte sequences that look exactly like a real
+     * threat, purely by quoting one back from wherever it was actually
+     * found, regardless of which specific check originally found it.
+     *
+     * Unlike SELF_CONTENT_SIGNATURE_EXEMPTIONS (a fixed, small, reviewed
+     * set of signatures known to self-match this scanner's own SOURCE
+     * text), there's no fixed set of signatures/checks that could show up
+     * here -- it depends entirely on what else a given site's scan
+     * actually found -- so this strips every snippet-bearing reason for
+     * this one file, justified by it being structurally inert rather than
+     * by "every signature has been reviewed." A reason with no snippet
+     * (a purely structural finding) is left untouched, though none apply
+     * anyway since this path is a normal, expected component location,
+     * not an upload/tmp directory.
+     */
+    public static function filterStubProtectedDataCacheExemptions(string $relPath, array $reasons): array
+    {
+        $relNorm = ltrim(str_replace('\\', '/', $relPath), '/');
+        if ($relNorm !== 'administrator/components/com_muruguard/helpers/data/scan-progress.php') {
+            return $reasons;
+        }
+        return array_values(array_filter(
+            $reasons,
+            fn($r) => !preg_match('/(Matched code:|Offending code:|Preview:)/', (string) $r)
+        ));
     }
 
     /**
