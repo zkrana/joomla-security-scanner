@@ -775,7 +775,18 @@ public function scan()
         $this->setRedirect('index.php?option=com_muruguard');
     }
 
-    /** Dismisses the newsletter banner without subscribing -- never shown again on this site. */
+    /**
+     * Dismisses the newsletter banner without subscribing -- never shown
+     * again on this site. Only ever called via fetch() from the X
+     * button's JS (see default.php), same reasoning as
+     * markfalsepositive(): a real form-POST-then-redirect round trip
+     * means whether the banner is actually gone depends on the NEXT
+     * page load re-reading the freshly-saved param correctly, and if
+     * anything else on the page reloads/re-renders around the same
+     * moment the click just looks like it silently did nothing. A small
+     * JSON response lets the button remove its own banner from the DOM
+     * immediately, with zero navigation at all.
+     */
     public function dismissnewsletter()
     {
         Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
@@ -785,7 +796,9 @@ public function scan()
         $model = $this->getModel('Scanner');
         $model->dismissNewsletterBanner();
 
-        $this->setRedirect('index.php?option=com_muruguard');
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['ok' => true]);
+        Factory::getApplication()->close();
     }
 
     /** Clears the Protection Log. Requires the same admin-level permission as changing settings, since it's destroying a security audit trail, not just tidying a scan result. */

@@ -1164,11 +1164,8 @@ if ($w !== null && $w['safe'] !== true):
                 <?= Text::_('COM_MURUGUARD_NEWSLETTER_SUBSCRIBE_BTN') ?>
             </button>
         </form>
-        <form action="index.php?option=com_muruguard&task=scanner.dismissnewsletter" method="post" style="margin:0">
-            <?= HTMLHelper::_('form.token') ?>
-            <button type="submit" title="<?= Text::_('COM_MURUGUARD_NEWSLETTER_DISMISS') ?>" aria-label="<?= Text::_('COM_MURUGUARD_NEWSLETTER_DISMISS') ?>"
-                    class="text-gray-400 hover:text-gray-600 hover:bg-white/60 rounded-lg p-1.5 transition-colors">✕</button>
-        </form>
+        <button type="button" id="muru-newsletter-dismiss-btn" title="<?= Text::_('COM_MURUGUARD_NEWSLETTER_DISMISS') ?>" aria-label="<?= Text::_('COM_MURUGUARD_NEWSLETTER_DISMISS') ?>"
+                class="text-gray-400 hover:text-gray-600 hover:bg-white/60 rounded-lg p-1.5 transition-colors">✕</button>
     </div>
 </div>
 <?php endif; ?>
@@ -2401,6 +2398,39 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
     // version badge.
     var newsletterBanner = document.getElementById('muru-newsletter-banner');
     var versionBadgeWrap = document.getElementById('muru-version-badge-wrap');
+    // Fetch-only dismiss, same no-reload reasoning as markfalsepositive()
+    // above (and reuses its same session form token, muruFpToken -- it's
+    // just Session::getFormToken(), valid for any POST on this page, not
+    // specific to the false-positive flow despite the variable name).
+    // Removing the banner from the DOM only on a CONFIRMED successful
+    // response is what makes this reliably match server state, instead
+    // of a form-POST-then-redirect round trip where whether the banner
+    // is actually gone depends on the NEXT full page load re-reading the
+    // freshly-saved param -- indistinguishable from "the click did
+    // nothing" if anything else on the page reloads around the same time.
+    var newsletterDismissBtn = document.getElementById('muru-newsletter-dismiss-btn');
+    if (newsletterDismissBtn) {
+        newsletterDismissBtn.addEventListener('click', function () {
+            newsletterDismissBtn.disabled = true;
+            var body = new URLSearchParams();
+            body.set(muruFpToken, '1');
+            fetch('index.php?option=com_muruguard&task=scanner.dismissnewsletter', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: body.toString(),
+            }).then(function (res) {
+                return res.json().catch(function () { return null; });
+            }).then(function (data) {
+                if (!data || data.ok !== true) {
+                    newsletterDismissBtn.disabled = false;
+                    return;
+                }
+                if (newsletterBanner) newsletterBanner.remove();
+            }).catch(function () {
+                newsletterDismissBtn.disabled = false;
+            });
+        });
+    }
     // Settings and Support are mutually exclusive with each other AND
     // with the dashboard content -- opening either closes the other one
     // first, so at most one of the three is ever visible.
