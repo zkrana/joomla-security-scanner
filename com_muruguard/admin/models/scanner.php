@@ -1106,6 +1106,7 @@ class MuruguardModelScanner extends BaseDatabaseModel
 
             if (!is_file($p)) continue;
             if (in_array(strtolower($it), array_map('strtolower', $sig['KNOWN_ROOT_FILES']), true)) continue;
+            if (preg_match($sig['MYJOOMLA_CHECKSUM_FILE_RE'], $it)) continue;
             $relCheck = ltrim(str_replace($this->root, '', $p), '/');
             if (in_array($relCheck, $sig['KNOWN_SAFE_RELATIVE_FILES'], true)) continue;
 

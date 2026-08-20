@@ -330,7 +330,23 @@ class MuruguardHelper
                 // Mac at any point. Confirmed real false positive: 100%
                 // binary metadata, never executed, ubiquitous on real sites.
                 '.DS_Store',
+                // Akeeba Admin Tools' own backup of the previous .htaccess,
+                // written automatically whenever its .htaccess Maker feature
+                // regenerates the real one -- a well-known, trusted Joomla
+                // security extension's own artifact, not a threat.
+                '.htaccess.admintools',
             ],
+
+            // MyJoomla.com's remote file-integrity-monitoring service writes
+            // one small checksum marker per tracked core file, named after
+            // it (e.g. .myjoomla.configuration.php.md5,
+            // .myjoomla.administrator.index.php.md5) -- an open-ended set
+            // depending on which files that service is watching, so this is
+            // a pattern check rather than an exact-filename entry in
+            // KNOWN_ROOT_FILES above. Confirmed real: a legitimate, popular
+            // third-party Joomla monitoring tool, not a threat -- these
+            // files are 32 bytes of hex, never executed.
+            'MYJOOMLA_CHECKSUM_FILE_RE' => '/^\.myjoomla\..+\.md5$/i',
 
             'KNOWN_SAFE_RELATIVE_FILES' => [
                 'index.php', 'administrator/index.php', '', 'api/index.php',
