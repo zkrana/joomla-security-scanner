@@ -556,12 +556,26 @@ if ($w !== null && $w['safe'] !== true):
                     </div>
                 </div>
 
+                <?php
+                // Routed through com_ajax (plg_muruguardshield's
+                // onAjaxMuruguardshield() bridge), NOT a direct
+                // option=com_muruguard hit -- Joomla core's
+                // AdministratorApplication::findOption() only lets a
+                // GUEST request reach option=com_login or option=com_ajax,
+                // silently redirecting anything else (including
+                // com_muruguard itself) to the login page before a real,
+                // unauthenticated external cron caller ever reaches
+                // scheduledcheck()'s own token check. See
+                // onAjaxMuruguardshield()'s own docblock for the full
+                // explanation.
+                $webcronUrl = Uri::root() . 'administrator/index.php?option=com_ajax&plugin=muruguardshield&group=system&format=raw&token=' . $this->cronToken;
+                ?>
                 <div class="mb-5">
                     <label class="block text-xs font-bold text-gray-600 mb-1.5"><?= Text::_('COM_MURUGUARD_WEBCRON_URL_LABEL') ?> <span class="font-normal text-gray-400"><?= Text::_('COM_MURUGUARD_WEBCRON_URL_HINT') ?></span></label>
                     <div class="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
-                        <code id="muru-webcron-url" class="flex-1 min-w-0 text-xs text-gray-600 break-all"><?= htmlspecialchars(Uri::root() . 'administrator/index.php?option=com_muruguard&task=scanner.scheduledcheck&token=' . $this->cronToken) ?></code>
+                        <code id="muru-webcron-url" class="flex-1 min-w-0 text-xs text-gray-600 break-all"><?= htmlspecialchars($webcronUrl) ?></code>
                         <button type="button" class="muru-copy-btn flex-shrink-0 w-7 h-7 inline-flex items-center justify-center rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
-                                data-copy="<?= htmlspecialchars(Uri::root() . 'administrator/index.php?option=com_muruguard&task=scanner.scheduledcheck&token=' . $this->cronToken) ?>" title="<?= Text::_('COM_MURUGUARD_COPY_URL') ?>" aria-label="<?= Text::_('COM_MURUGUARD_COPY_URL') ?>">
+                                data-copy="<?= htmlspecialchars($webcronUrl) ?>" title="<?= Text::_('COM_MURUGUARD_COPY_URL') ?>" aria-label="<?= Text::_('COM_MURUGUARD_COPY_URL') ?>">
                             <span class="muru-copy-icon">📋</span>
                         </button>
                     </div>
@@ -2533,7 +2547,7 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
     var tokenField = document.getElementById('muru-cron-token');
     var urlEl      = document.getElementById('muru-webcron-url');
     var urlCopyBtn = urlEl ? urlEl.closest('div').querySelector('.muru-copy-btn') : null;
-    var webcronBase = <?= json_encode(Uri::root() . 'administrator/index.php?option=com_muruguard&task=scanner.scheduledcheck&token=') ?>;
+    var webcronBase = <?= json_encode(Uri::root() . 'administrator/index.php?option=com_ajax&plugin=muruguardshield&group=system&format=raw&token=') ?>;
     function refreshWebcronUrl() {
         if (!tokenField || !urlEl) return;
         var url = webcronBase + encodeURIComponent(tokenField.value || '');

@@ -330,8 +330,31 @@ public function scan()
             $app->close();
         }
 
+        // A full unchunked scanFilesystem()+scanDatabase() pass can
+        // genuinely exceed PHP's stock 30s/128M defaults on a real site
+        // with a non-trivial extension count -- unlike a browser-driven
+        // scan, nothing is waiting on this response, so a generous
+        // ceiling costs nothing.
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(600);
+        }
+        @ini_set('memory_limit', '512M');
+
+        // Constructed directly rather than via $this->getModel('Scanner') --
+        // this action is also reached through plg_muruguardshield's
+        // onAjaxMuruguardshield() bridge (see that method's own docblock
+        // for why the bridge exists at all), which instantiates this
+        // exact controller manually, outside Joomla's normal component
+        // dispatch. BaseController::getModel() resolves through the
+        // legacy MVC factory, which needs component context
+        // (base_path/prefix wiring) that only Joomla's own dispatcher
+        // sets up -- confirmed empirically that it silently returns
+        // false when this controller is constructed manually, which then
+        // crashed PHP-FPM outright calling a method on that false rather
+        // than throwing a catchable error. A direct `new` has no such
+        // dependency and works identically either way.
         /** @var MuruguardModelScanner $model */
-        $model = $this->getModel('Scanner');
+        $model = new MuruguardModelScanner();
         $result = $model->runScheduledCheck();
 
         $alertEmail = trim((string) $params->get('alert_email', ''));

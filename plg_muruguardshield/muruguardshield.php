@@ -195,6 +195,51 @@ class plgSystemMuruguardshield extends CMSPlugin
     }
 
     /**
+     * Bridges Joomla's own guest-reachable com_ajax entry point --
+     * index.php?option=com_ajax&plugin=muruguardshield&group=system&format=raw&token=...
+     * -- into com_muruguard's existing scheduledcheck() controller
+     * action, so the webcron URL Settings shows customers actually works
+     * for a real, unauthenticated cron caller.
+     *
+     * Why this bridge exists at all: Joomla core's
+     * AdministratorApplication::findOption() (confirmed against real
+     * Joomla 6 core source, @since 4.0.0 -- not new, not this site's own
+     * config) hardcodes $allowedUnprivilegedOptions to exactly
+     * ['com_login', 'com_ajax']. A GUEST request for ANY other option,
+     * including com_muruguard itself, gets silently swapped to com_login
+     * before it ever reaches scheduledcheck()'s own cron_enabled/token
+     * check -- meaning a direct
+     * option=com_muruguard&task=scanner.scheduledcheck hit from a real
+     * external cron job (curl/wget, no session) has never actually run
+     * on Joomla 4+; it only ever appeared to work when tested from an
+     * already-logged-in browser tab. com_ajax is the one guest-reachable
+     * admin entry point Joomla itself provides for exactly this case
+     * (its own docblock: "administrative callbacks without logging in"),
+     * and this plugin is already loaded on every single admin request
+     * regardless of login state, so it's the natural bridge -- no new
+     * plugin needed.
+     *
+     * scheduledcheck() still does its OWN complete cron_enabled/token
+     * validation and echoes its own plain-text response before calling
+     * Factory::getApplication()->close() on every path (success and
+     * 403 alike) -- this method's only job is getting the request to
+     * it at all; every actual authorization and response decision still
+     * lives in exactly the one place it always has.
+     */
+    public function onAjaxMuruguardshield()
+    {
+        $controllerPath = JPATH_ADMINISTRATOR . '/components/com_muruguard/controllers/scanner.php';
+        if (!is_file($controllerPath)) return; // component not installed -- nothing to bridge to
+
+        require_once $controllerPath;
+        if (!class_exists('MuruguardControllerScanner')) return;
+
+        $controller = new \MuruguardControllerScanner();
+        $controller->scheduledcheck();
+        // Unreachable: scheduledcheck() always calls $app->close() itself.
+    }
+
+    /**
      * True once com_muruguard's helper class is loaded and usable.
      * False (without throwing) if the component isn't installed --
      * this plugin has zero effect on its own, it is entirely inert
