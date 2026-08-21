@@ -1947,6 +1947,18 @@ class MuruguardHelper
             return null;
         }
 
+        // administrator/components/com_dropfiles/templates/dropfilesfrontend/
+        // index.php -- Dropfiles (JoomUnited) ships its own small
+        // templating system for its 4 bundled front-end themes; this is
+        // that theme's real front-end entry point, not Joomla's blank
+        // stub, the same shape as the JCE case above (an extension's own
+        // view/template layer using its own convention instead of
+        // Joomla's). Also exempted from this STRUCTURAL check only -- the
+        // content-signature scan below still runs fully on it.
+        if (strcasecmp($relPath, 'administrator/components/com_dropfiles/templates/dropfilesfrontend/index.php') === 0) {
+            return null;
+        }
+
         $contents = @file_get_contents($absPath, false, null, 0, 4096);
         if ($contents === false) return null;
         if (self::isStandardJoomlaStub($contents)) return null;

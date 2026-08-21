@@ -937,7 +937,21 @@ class MuruguardModelScanner extends BaseDatabaseModel
                 // known-malicious filename pattern (location-independent, runs both modes --
                 // malware doesn't respect the upload-vs-code folder distinction)
                 if (!$isDir && !$isKnownSafeEntry) {
+                    // Joomla's own legacy MVC convention names a view's
+                    // per-format render file view.<format>.php --
+                    // view.html.php, view.xml.php, view.json.php,
+                    // view.rss.php, view.atom.php, ... -- ubiquitous
+                    // across virtually every real component that outputs
+                    // more than plain HTML (sitemaps, feeds, JSON APIs),
+                    // this scanner's own admin/views/scanner/view.html.php
+                    // included. The .xml.php entry in
+                    // SUSPICIOUS_FILENAME_REGEXES exists for a webshell/
+                    // dropper disguised as an XML file, not this
+                    // well-known naming convention -- confirmed false
+                    // positive on com_osmap's views/xml/view.xml.php.
+                    $isStandardMvcFormatView = (bool) preg_match('/^view\.[a-z0-9]+\.php$/i', $basename);
                     foreach ($sig['SUSPICIOUS_FILENAME_REGEXES'] as $re) {
+                        if ($re === '/\.xml\.php$/i' && $isStandardMvcFormatView) continue;
                         if (preg_match($re, $basename)) { $flagged = true; $reasons[] = 'Filename matches known malicious pattern.'; break; }
                     }
                 }
