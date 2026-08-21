@@ -15,6 +15,8 @@ Each release on GitHub pulls its description directly from this file — see `sc
 * **The Scheduled Scanning webcron URL never actually worked for a real, unauthenticated cron caller, on any Joomla 4, 5, or 6 site.** Joomla core (`AdministratorApplication::findOption()`, since Joomla 4.0) only lets a guest request reach `option=com_login` or `option=com_ajax` in the admin area, silently redirecting anything else -- including `com_muruguard` itself -- to the login page before it ever reached the webcron's own token check. The URL only ever appeared to work when tested from an already-logged-in browser tab. Fixed by routing the webcron through `plg_muruguardshield` (already loaded on every admin request) via Joomla's own `com_ajax` bridge, the guest-reachable entry point Joomla itself provides for exactly this case. The URL shown under Settings > Scheduled Scanning has changed accordingly -- copy the new one if you had the old one saved in an external cron job.
 * **A related crash when the scheduled-check controller is reached this new way**: it previously resolved its model via `$this->getModel('Scanner')`, which depends on Joomla's normal component-dispatch context and returned `false` when the controller was constructed directly instead -- now constructs the model directly, which needs no such context.
 
+**Companion plugin also updated**: `plg_muruguardshield` 1.2.3 provides the `com_ajax` bridge above -- both extensions need to be updated together for the webcron fix to take effect.
+
 ## [3.0.14] - 2026-08-20
 
 ### Fixed
