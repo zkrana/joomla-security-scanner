@@ -517,6 +517,18 @@ class MuruguardModelScanner extends BaseDatabaseModel
         $params['alert_email'] = $email;
         $table->params = json_encode($params);
         $table->store();
+        // ComponentHelper::getComponents() (what every ComponentHelper::
+        // getParams('com_muruguard') call in this codebase reads through)
+        // caches the ENTIRE component registry, params blob included, in
+        // the '_system' cache group when Joomla's own system caching is
+        // enabled. Writing straight to the #__extensions row via
+        // Table::store() never invalidates that cache on its own -- so
+        // the write itself succeeds, but the NEXT page load can still
+        // read back the stale pre-write params, making the change look
+        // like it silently reverted. Real reported bug: the newsletter
+        // banner's dismissal (saved this same way) reappeared after
+        // every reload despite dismissing it successfully each time.
+        $this->cleanCache('_system');
     }
 
     /** How many rows the scan-result file lists (Suspicious/Cleanable) show per page before pagination kicks in -- purely a display preference, same storage/save pattern as the other settings above. */
@@ -533,6 +545,18 @@ class MuruguardModelScanner extends BaseDatabaseModel
         $params['items_per_page'] = $itemsPerPage;
         $table->params = json_encode($params);
         $table->store();
+        // ComponentHelper::getComponents() (what every ComponentHelper::
+        // getParams('com_muruguard') call in this codebase reads through)
+        // caches the ENTIRE component registry, params blob included, in
+        // the '_system' cache group when Joomla's own system caching is
+        // enabled. Writing straight to the #__extensions row via
+        // Table::store() never invalidates that cache on its own -- so
+        // the write itself succeeds, but the NEXT page load can still
+        // read back the stale pre-write params, making the change look
+        // like it silently reverted. Real reported bug: the newsletter
+        // banner's dismissal (saved this same way) reappeared after
+        // every reload despite dismissing it successfully each time.
+        $this->cleanCache('_system');
     }
 
     /**
@@ -573,6 +597,18 @@ class MuruguardModelScanner extends BaseDatabaseModel
         $params['shield_blocked_countries'] = implode(',', $codes);
         $table->params = json_encode($params);
         $table->store();
+        // ComponentHelper::getComponents() (what every ComponentHelper::
+        // getParams('com_muruguard') call in this codebase reads through)
+        // caches the ENTIRE component registry, params blob included, in
+        // the '_system' cache group when Joomla's own system caching is
+        // enabled. Writing straight to the #__extensions row via
+        // Table::store() never invalidates that cache on its own -- so
+        // the write itself succeeds, but the NEXT page load can still
+        // read back the stale pre-write params, making the change look
+        // like it silently reverted. Real reported bug: the newsletter
+        // banner's dismissal (saved this same way) reappeared after
+        // every reload despite dismissing it successfully each time.
+        $this->cleanCache('_system');
     }
 
     private function saveHardeningParams(array $set): void
@@ -586,6 +622,18 @@ class MuruguardModelScanner extends BaseDatabaseModel
         }
         $table->params = json_encode($params);
         $table->store();
+        // ComponentHelper::getComponents() (what every ComponentHelper::
+        // getParams('com_muruguard') call in this codebase reads through)
+        // caches the ENTIRE component registry, params blob included, in
+        // the '_system' cache group when Joomla's own system caching is
+        // enabled. Writing straight to the #__extensions row via
+        // Table::store() never invalidates that cache on its own -- so
+        // the write itself succeeds, but the NEXT page load can still
+        // read back the stale pre-write params, making the change look
+        // like it silently reverted. Real reported bug: the newsletter
+        // banner's dismissal (saved this same way) reappeared after
+        // every reload despite dismissing it successfully each time.
+        $this->cleanCache('_system');
     }
 
     /**

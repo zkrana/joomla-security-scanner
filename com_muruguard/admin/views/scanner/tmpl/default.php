@@ -101,7 +101,7 @@ $rescanUrl  = 'index.php?option=com_muruguard&task=scanner.scan&rescan=1';
   /* tabs */
   .muru-tab { color:#4b5563; background:transparent; border:1px solid transparent; cursor:pointer; }
   .muru-tab:hover { background:#fff; color:#111827; }
-  .muru-tab.active { background:#fff; color:#4338ca; border-color:#e5e7eb; box-shadow:0 1px 2px rgba(0,0,0,.05); }
+  .muru-tab.active { background:#fff; color:#4338ca; border:1px solid #e5e7eb !important; box-shadow:0 1px 2px rgba(0,0,0,.05); }
   .muru-panel.active { display:block; }
 
   /* settings sub-tabs (Scheduled Scanning / Setup Guide) */

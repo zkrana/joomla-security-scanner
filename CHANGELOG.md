@@ -8,7 +8,13 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
-## [3.1.0] - 2026-08-24
+## [3.1.1] - 2026-08-24
+
+### Fixed
+
+* **Every file under a legitimately-installed but disabled template (most commonly Joomla's own bundled Cassiopeia, sitting there unused once a different template is set as default) was flagged as suspicious.** A disabled `#__extensions` template record on its own is completely normal and not a sign of compromise. Now only flagged when corroborated by an actual red flag -- a junk-named folder or a missing `templateDetails.xml` manifest -- exactly the real attack pattern this check exists for. A totally missing registry record is still always flagged, no corroboration needed.
+* **Settings could silently "revert" after a reload despite saving successfully** -- most visibly, the newsletter banner's dismissal reappearing every time. Every settings-save method wrote straight to `#__extensions` without invalidating Joomla's own `_system` cache group, which caches the whole component registry (params included) when Joomla's system caching is enabled -- so the write succeeded but the next page load could read back the stale, pre-write value. Every settings-save path now clears that cache after writing.
+* Reworded the "no matching `#__extensions` component record" message to acknowledge a legitimate non-core component installed separately (FTP, a migration, a custom build) without ever running through Joomla's own Install screen, instead of implying it was never really installed.
 
 ### Added
 

@@ -1603,7 +1603,22 @@ class MuruguardHelper
             $key = $clientId . '|' . strtolower($topFolder);
             if (!array_key_exists($key, $registeredTemplates)) {
                 $registryProblem = 'no matching #__extensions row of type "template" exists for it';
-            } elseif (!$registeredTemplates[$key]) {
+            } elseif (!$registeredTemplates[$key] && ($junkName || $noManifest)) {
+                // A disabled #__extensions row on its OWN is not suspicious --
+                // admins routinely leave a legitimately-installed template
+                // disabled (most commonly Joomla's own bundled Cassiopeia or
+                // Atum, sitting there unused once a different template is set
+                // as default), which is a completely normal, extremely common
+                // state that has nothing to do with compromise. Real reported
+                // false positive: every file under a disabled-but-genuine
+                // Cassiopeia install was flagged. Only treat "disabled" as a
+                // red flag when corroborated by one of the on-disk signals
+                // above -- exactly the actual attack pattern this check
+                // exists for (see the docblock above): an injected
+                // #__extensions row that could never be marked enabled,
+                // PAIRED with a junk-named or manifest-less folder on disk.
+                // A totally MISSING row (the branch above) needs no such
+                // corroboration -- that's unambiguous on its own.
                 $registryProblem = 'its #__extensions template record exists but is disabled (enabled = 0)';
             }
         }
@@ -1771,7 +1786,7 @@ class MuruguardHelper
             if ($registeredComponents !== null) {
                 $key = strtolower($compName);
                 if (!array_key_exists($key, $registeredComponents)) {
-                    return "Sits inside \"{$compName}\" — no matching #__extensions row of type \"component\" exists for it, meaning Joomla never actually installed this as a real component.";
+                    return "Sits inside \"{$compName}\" — no matching #__extensions row of type \"component\" exists for it. This can mean a fake component planted directly on disk, or simply a legitimate non-core component installed separately (FTP, a migration, a custom build) without ever running through Joomla's own Install screen.";
                 }
                 if (!$registeredComponents[$key]) {
                     return "Sits inside \"{$compName}\" — its #__extensions component record has no populated install manifest (manifest_cache), which every genuinely Joomla-installed extension has; a strong sign of a directly-inserted database row rather than a real installation.";
