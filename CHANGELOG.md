@@ -16,6 +16,8 @@ Each release on GitHub pulls its description directly from this file — see `sc
 * **Settings could silently "revert" after a reload despite saving successfully** -- most visibly, the newsletter banner's dismissal reappearing every time. Every settings-save method wrote straight to `#__extensions` without invalidating Joomla's own `_system` cache group, which caches the whole component registry (params included) when Joomla's system caching is enabled -- so the write succeeded but the next page load could read back the stale, pre-write value. Every settings-save path now clears that cache after writing.
 * Reworded the "no matching `#__extensions` component record" message to acknowledge a legitimate non-core component installed separately (FTP, a migration, a custom build) without ever running through Joomla's own Install screen, instead of implying it was never really installed.
 
+## [3.1.0] - 2026-08-24
+
 ### Added
 
 * **New detection: injected `joomla@test.com` admin account.** A widespread automated attack wave creates a rogue Super User account using exactly this email address on hijacked sites. The Super Users check now flags any account with this exact email as suspicious (red), regardless of its username or display name.
