@@ -1240,6 +1240,13 @@ class MuruguardModelScanner extends BaseDatabaseModel
                 $why = [];
                 if (stripos($row['email'], 'secure.local') !== false) { $suspicious = true; $why[] = 'email domain: secure.local (known attacker marker)'; }
                 if (preg_match('/webmanager\d+|codex|sppb/i', $row['username'])) { $suspicious = true; $why[] = 'username matches known attacker pattern'; }
+                // A widespread automated attack wave injects a rogue Super
+                // User account using exactly this email address on hijacked
+                // sites (regardless of username/display name, which vary).
+                // Exact match only -- this is a known literal marker, not a
+                // pattern, so no false positives on legitimate similar-looking
+                // addresses.
+                if (strcasecmp(trim((string) $row['email']), 'joomla@test.com') === 0) { $suspicious = true; $why[] = 'known mass-attack marker: injected admin account using joomla@test.com'; }
                 // Only a "suspicious" row is ever a candidate for dismissal
                 // -- an already-normal row has nothing to suppress.
                 if ($suspicious) {
@@ -1749,5 +1756,94 @@ class MuruguardModelScanner extends BaseDatabaseModel
             'major'   => $major,
             'enabled' => (bool) $row['enabled'],
         ];
+    }
+
+    /**
+     * Checks whether Joomla's own update-checking mechanism is actually
+     * working -- not whether an update exists, but whether Joomla is even
+     * capable of finding out. A real, reported failure mode: a site gets
+     * compromised through an unpatched extension because Joomla's "Check
+     * for Updates" screen never showed an update was available, not
+     * because none existed, but because the plumbing that tells Joomla
+     * WHERE to look was broken -- #__update_sites.enabled = 0 (Joomla
+     * itself calls this out with a one-line warning on the Find Updates
+     * screen, see com_installer's UpdateController::find(), but that's
+     * easy to never see -- most admins only ever look at the Update list
+     * itself, which just silently omits anything whose update site is
+     * broken instead of explaining why), or no #__update_sites_extensions
+     * link row at all.
+     *
+     * Deliberately narrow: only the extensions this scanner already has
+     * dedicated, name-specific knowledge of elsewhere (SPPB's own version
+     * check above, JCE's upload-path signature in getSignatures()) are
+     * checked for a totally MISSING update site, since third-party
+     * extensions vary too much in normal update-server behaviour to flag
+     * that reliably without noise. A DISABLED update site, in contrast,
+     * is checked for every installed extension -- Joomla having once
+     * registered one and then stopped checking it is unambiguous
+     * regardless of which extension it is.
+     *
+     * Returns null when nothing is wrong -- this is an "only show if
+     * there's a real problem" banner, not a status line.
+     */
+    public function getUpdateSiteHealthWarning(): ?array
+    {
+        try {
+            $db    = $this->getDatabase();
+            $query = $db->getQuery(true)
+                ->select($db->quoteName(['e.extension_id', 'e.name', 'e.element', 'us.update_site_id', 'us.enabled']))
+                ->from($db->quoteName('#__extensions', 'e'))
+                ->join('LEFT', $db->quoteName('#__update_sites_extensions', 'use') . ' ON ' . $db->quoteName('use.extension_id') . ' = ' . $db->quoteName('e.extension_id'))
+                ->join('LEFT', $db->quoteName('#__update_sites', 'us') . ' ON ' . $db->quoteName('us.update_site_id') . ' = ' . $db->quoteName('use.update_site_id'))
+                ->where($db->quoteName('e.state') . ' = 0')
+                ->where($db->quoteName('e.enabled') . ' = 1');
+            $db->setQuery($query);
+            $rows = $db->loadAssocList() ?: [];
+        } catch (\Throwable $e) {
+            return null;
+        }
+
+        $knownNames = [
+            'com_sppagebuilder' => 'SP Page Builder',
+            'com_jce'           => 'JCE Editor',
+        ];
+
+        // Group by extension first -- a LEFT JOIN through
+        // #__update_sites_extensions can legitimately return more than
+        // one row per extension (an extension CAN register more than one
+        // update site), so a per-row decision would misjudge an extension
+        // that has one disabled site AND one working one.
+        $byExtension = [];
+        foreach ($rows as $row) {
+            $extId = (int) $row['extension_id'];
+            $byExtension[$extId]['element'] = $byExtension[$extId]['element'] ?? (string) $row['element'];
+            $byExtension[$extId]['name']    = $byExtension[$extId]['name']    ?? (string) $row['name'];
+            $byExtension[$extId]['sites'][]   = ['has' => $row['update_site_id'] !== null, 'enabled' => (int) ($row['enabled'] ?? 0) === 1];
+        }
+
+        $disabled = [];
+        $missing  = [];
+        foreach ($byExtension as $info) {
+            $label         = $knownNames[$info['element']] ?? $info['name'];
+            $hasAnySite     = false;
+            $hasEnabledSite = false;
+            foreach ($info['sites'] as $site) {
+                if ($site['has']) {
+                    $hasAnySite = true;
+                    if ($site['enabled']) $hasEnabledSite = true;
+                }
+            }
+            if ($hasAnySite && !$hasEnabledSite) {
+                $disabled[] = $label;
+            } elseif (!$hasAnySite && isset($knownNames[$info['element']])) {
+                $missing[] = $label;
+            }
+        }
+
+        if (empty($disabled) && empty($missing)) {
+            return null;
+        }
+
+        return ['disabled' => $disabled, 'missing' => $missing];
     }
 }

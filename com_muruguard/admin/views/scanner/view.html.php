@@ -24,6 +24,7 @@ class MuruguardViewScanner extends HtmlView
     public $scanned = false;
     public $scanStartedAt = 0;
     public $sppbWarning = null;
+    public $updateSiteHealthWarning = null;
     public $scanAreas = [];
     public $selectedAreas = [];
     public $cronEnabled = false;
@@ -57,7 +58,7 @@ class MuruguardViewScanner extends HtmlView
     public int $emergencyModeActivated = 0;
     public string $componentVersion = '';
     public string $activePanel = 'dashboard';
-    public string $activeSettingsTab = 'protection';
+    public string $activeSettingsTab = 'general';
     public bool $newsletterBannerDismissed = false;
 
     public function display($tpl = null)
@@ -92,6 +93,11 @@ class MuruguardViewScanner extends HtmlView
 
         // Show SPPB version warning
         $this->sppbWarning = $model->getSppbVersionWarning();
+
+        // Is Joomla's own update-checking mechanism actually working?
+        // Only ever set to a non-null value when there's a real problem --
+        // see getUpdateSiteHealthWarning()'s docblock.
+        $this->updateSiteHealthWarning = $model->getUpdateSiteHealthWarning();
 
         // .htaccess hardening advisor -- read-only, cheap (one file read +
         // a handful of regexes), so it's always available regardless of
@@ -187,9 +193,17 @@ class MuruguardViewScanner extends HtmlView
         $this->activePanel = in_array($requestedPanel, ['dashboard', 'settings', 'support'], true) ? $requestedPanel : 'dashboard';
 
         $requestedSettingsTab = $app->input->getCmd('settings_tab', '');
-        $this->activeSettingsTab = in_array($requestedSettingsTab, ['protection', 'iplist', 'scheduled', 'guide'], true)
+        // 'protection'/'iplist' merged into 'site_protection' and
+        // 'scheduled' merged into 'general' in 3.1.0 -- map any stale
+        // redirect/bookmark carrying the old id onto its replacement
+        // instead of silently falling back to the default tab.
+        $legacySettingsTabMap = ['protection' => 'site_protection', 'iplist' => 'site_protection', 'scheduled' => 'general'];
+        if (isset($legacySettingsTabMap[$requestedSettingsTab])) {
+            $requestedSettingsTab = $legacySettingsTabMap[$requestedSettingsTab];
+        }
+        $this->activeSettingsTab = in_array($requestedSettingsTab, ['general', 'site_protection', 'guide'], true)
             ? $requestedSettingsTab
-            : 'protection';
+            : 'general';
 
         $this->addToolbar();
         $this->addSubmenu();

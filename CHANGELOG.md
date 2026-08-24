@@ -8,6 +8,18 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [3.1.0] - 2026-08-24
+
+### Added
+
+* **New detection: injected `joomla@test.com` admin account.** A widespread automated attack wave creates a rogue Super User account using exactly this email address on hijacked sites. The Super Users check now flags any account with this exact email as suspicious (red), regardless of its username or display name.
+* **New: Update Site Health warning.** A real reported cause of sites getting hacked through a since-patched vulnerability: Joomla's own "Check for Updates" screen silently shows nothing for an extension because the record telling Joomla *where to check* is broken (`#__update_sites.enabled = 0`, which Joomla only ever surfaces as an easy-to-miss one-line notice on its own Find Updates screen, or no update site registered at all for SP Page Builder/JCE specifically). A red banner now appears at the very top of the report -- only when this is actually broken -- naming the affected extension(s) and linking straight to Joomla's Update Sites screen to fix it.
+
+### Changed
+
+* **Settings, simplified to 3 tabs.** "Site Protection", "IP Access List", and "Scheduled Scanning" are now "General" (Scheduled Scanning) and "Site Protection" (which now also includes the IP Access List) -- fewer tabs to hunt through, matching MuRu Guard Pro's layout. Nothing was removed, only regrouped; existing settings and bookmarked links to the old tabs still land in the right place.
+* **Shorter admin menu name.** The sidebar entry is now just "MuRu Guard" instead of "MuRu Guard Security Scanner", matching Pro.
+
 ## [3.0.15] - 2026-08-21
 
 ### Fixed

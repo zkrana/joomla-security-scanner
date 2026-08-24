@@ -233,6 +233,22 @@ class com_muruguardInstallerScript
                     ->where($db->quoteName('title') . ' = ' . $db->quote('Settings'))
             )->execute();
 
+            // Same idempotent rename, but for the top-level parent item
+            // itself: the manifest's <menu> tag was shortened from "MuRu
+            // Guard Security Scanner" to "MuRu Guard" in 3.1.0 to match Pro,
+            // but Joomla's installer only ever reads that tag to CREATE the
+            // row once -- it never renames an existing one on update. Only
+            // touch it if it still has the exact old default title, so an
+            // admin's own rename via Joomla's Menus manager is left alone.
+            $db->setQuery(
+                $db->getQuery(true)
+                    ->update($db->quoteName('#__menu'))
+                    ->set($db->quoteName('title') . ' = ' . $db->quote('MuRu Guard'))
+                    ->set($db->quoteName('alias') . ' = ' . $db->quote('MuRu Guard'))
+                    ->where($db->quoteName('id') . ' = ' . (int) $parentMenu->id)
+                    ->where($db->quoteName('title') . ' = ' . $db->quote('MuRu Guard Security Scanner'))
+            )->execute();
+
             foreach ($children as $child) {
                 $existsQuery = $db->getQuery(true)
                     ->select('COUNT(*)')

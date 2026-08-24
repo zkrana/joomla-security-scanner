@@ -1,3 +1,9 @@
+[![Get MuRu Guard Pro — 3 months free, no payment needed, register to redeem](docs/assets/pro-promo-banner.svg)](https://lyzerslab.com/dashboard/register)
+
+🎁 **[Register free to get MuRu Guard Pro — 3 months, no payment needed →](https://lyzerslab.com/dashboard/register)**
+
+> You review every finding yourself and decide what's real. **[MuRu Guard Pro](https://lyzerslab.com/joomla-products/muru-guard-security-scanner)** adds an AI check that verifies confirmed threats and safely deletes them for you, with false positives filtered out first.
+
 # 🛡️ MuRu Guard Security Scanner (Joomla Extension)
 
 ![Downloads](https://img.shields.io/github/downloads/zkrana/joomla-security-scanner/total)

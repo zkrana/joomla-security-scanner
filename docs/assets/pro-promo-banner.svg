@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="140" viewBox="0 0 920 140" role="img" aria-label="Get MuRu Guard Pro, 3 months free, no payment needed, register to redeem">
+  <title>Get MuRu Guard Pro — 3 months free, no payment needed</title>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0ea5e9"/>
+      <stop offset="55%" stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#4338ca"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="50%" stop-color="#ffffff" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="clip">
+      <rect x="0" y="0" width="920" height="140" rx="16"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#clip)">
+    <rect x="0" y="0" width="920" height="140" fill="url(#bg)"/>
+
+    <!-- animated diagonal shine sweep -->
+    <rect x="-260" y="0" width="220" height="140" fill="url(#shine)" transform="skewX(-20)">
+      <animate attributeName="x" from="-260" to="960" dur="3.4s" repeatCount="indefinite"/>
+    </rect>
+
+    <!-- pulsing gift icon -->
+    <text x="52" y="80" text-anchor="middle" dominant-baseline="middle">
+      🎁
+      <animate attributeName="font-size" values="40;48;40" dur="1.6s" repeatCount="indefinite"/>
+    </text>
+
+    <text x="98" y="58" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="27" font-weight="700" fill="#ffffff">
+      Get MuRu Guard Pro — 3 Months Free
+    </text>
+    <text x="98" y="86" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="16" fill="#dbeafe">
+      No payment needed — register free and redeem in one click
+    </text>
+
+    <!-- CTA pill -->
+    <g>
+      <rect x="98" y="102" width="150" height="28" rx="14" fill="#ffffff"/>
+      <text x="173" y="121" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" font-weight="700" fill="#1e3a8a" text-anchor="middle">Register free →</text>
+    </g>
+  </g>
+</svg>
