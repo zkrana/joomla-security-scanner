@@ -151,9 +151,24 @@ class MuruguardViewScanner extends HtmlView
         $this->emergencyModeEnabled   = (bool) $cfgParams->get('emergency_mode_enabled', 0);
         $this->emergencyModeActivated = (int) $cfgParams->get('emergency_mode_activated', 0);
 
-        // Restore cached scan results
+        // Restore cached scan results. Deliberately NOT gated on the same
+        // 300-second freshness window getFileFindings() uses internally
+        // to decide "reuse the cache vs. do a fresh rescan" -- that's a
+        // read-time optimisation concern, not a "should results even be
+        // shown at all" concern. This used to conflate the two: any bulk
+        // action (delete, mark safe, clean code, any DB-row action --
+        // Super Users/Menu XSS/SPPB Assets/Defacement included, since ALL
+        // of them are gated behind this same file-findings check) taken
+        // more than 5 minutes after the original scan -- entirely
+        // plausible while reviewing dozens of flagged items one at a
+        // time -- redirected back to the "no scan yet, run one" landing
+        // screen instead of showing the just-updated results, even
+        // though the action itself succeeded. Now "has a scan ever
+        // completed this session" (any real timestamp) is enough to show
+        // results; getFileFindings() below still transparently re-scans
+        // on its own if the underlying cache actually is stale.
         $cachedAt = (int) $session->get('muruguard.filefindings_time', 0);
-        $hasCache = $cachedAt > 0 && (time() - $cachedAt) < 300;
+        $hasCache = $cachedAt > 0;
 
         if ($hasCache) {
             $this->fileFindings = $model->getFileFindings();

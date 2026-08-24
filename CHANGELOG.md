@@ -8,6 +8,12 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [3.1.2] - 2026-08-24
+
+### Fixed
+
+* **Any action taken on scan results (Delete Selected, Mark Selected Safe, cleanup, any Super Users/Menu XSS/SPPB Assets/Defacement row action) more than 5 minutes after the original scan silently redirected back to the "run a scan" landing screen instead of showing the just-updated results** -- entirely plausible while reviewing a real list of dozens of flagged items one at a time. The results view was gated on the same 5-minute freshness window the scan cache uses internally to decide whether to auto-refresh, conflating "is this data stale" with "should results even be shown at all." Results now stay visible for the rest of the session once a scan has completed, regardless of how long ago.
+
 ## [3.1.1] - 2026-08-24
 
 ### Fixed
