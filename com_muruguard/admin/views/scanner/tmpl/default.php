@@ -381,6 +381,39 @@ if ($uh !== null && (!empty($uh['disabled']) || !empty($uh['missing']))):
 </div>
 <?php endif; ?>
 
+<?php
+/* ── Known-vulnerability banner ────────────────────────────────
+   Not "this got hacked" -- "this COULD get hacked": installed
+   extension versions cross-referenced against an admin-curated feed
+   of published advisories. Independent of whether a scan has run --
+   see MuruguardModelScanner::getVulnerableExtensions()'s docblock.
+   Only rendered when at least one CRITICAL/HIGH match exists; MEDIUM/
+   LOW matches still appear in the Vulnerable Extensions tab below,
+   just without demanding attention at the top of the page. */
+$vulns = $this->vulnerableExtensions ?? [];
+$criticalVulns = array_filter($vulns, fn($v) => in_array($v['severity'], ['CRITICAL', 'HIGH'], true));
+if (!empty($criticalVulns)):
+?>
+<div class="anim-in flex gap-4 items-start rounded-xl border-l-4 p-4 mb-5 shadow-sm"
+     style="background:#fef2f2; border-color:#dc2626; color:#991b1b">
+    <div class="text-3xl flex-shrink-0 mt-0.5">🛑</div>
+    <div class="flex-1 min-w-0">
+        <p class="font-bold text-sm leading-snug mb-1">
+            <?= count($criticalVulns) ?> known vulnerabilit<?= count($criticalVulns) === 1 ? 'y' : 'ies' ?> found in installed extension<?= count($criticalVulns) === 1 ? '' : 's' ?> -- not a compromise yet, but a published way in.
+        </p>
+        <ul class="text-xs leading-relaxed space-y-0.5 mb-2">
+            <?php foreach ($criticalVulns as $v): ?>
+                <li>
+                    <strong><?= htmlspecialchars($v['extensionName']) ?></strong> (<?= htmlspecialchars($v['installedVersion']) ?>) --
+                    <?= htmlspecialchars($v['title']) ?><?php if (!empty($v['fixedVersion'])): ?>, fixed in <?= htmlspecialchars($v['fixedVersion']) ?><?php endif; ?>
+                </li>
+            <?php endforeach; ?>
+        </ul>
+        <p class="text-xs opacity-90">Run a scan to see the full Vulnerable Extensions tab, including any lower-severity matches.</p>
+    </div>
+</div>
+<?php endif; ?>
+
 <!-- ── Loading overlay (re-parented to <body> at runtime, see script) ── -->
 <div id="muruguard-overlay">
     <div class="muruguard-overlay-card">
@@ -1571,6 +1604,7 @@ $deletableFindings = array_filter($fileFindings, fn($f) => !$notDeletable($f));
 $deletableCount = count($deletableFindings);
 $deletableHigh = count(array_filter($deletableFindings, fn($f) => $f['confidence'] === 'high'));
 $deletableMed  = $deletableCount - $deletableHigh;
+$vulnCount = count($dbFindings['vulnerable_extensions'] ?? []);
 $tabs = [
     ['id' => 'files',      'emoji' => '📁', 'title' => Text::_('COM_MURUGUARD_LABEL_SUSPICIOUS_FILES'), 'count' => $deletableCount],
     ['id' => 'cleanable',  'emoji' => '🧹', 'title' => Text::_('COM_MURUGUARD_TAB_CLEANABLE_FILES'),     'count' => $cleanableCount],
@@ -1578,6 +1612,7 @@ $tabs = [
     ['id' => 'menu',       'emoji' => '🔗', 'title' => Text::_('COM_MURUGUARD_TAB_MENU_XSS'),            'count' => $menuCount],
     ['id' => 'assets',     'emoji' => '🗄', 'title' => Text::_('COM_MURUGUARD_TAB_SPPB_ASSETS'),         'count' => $assetCount],
     ['id' => 'template',   'emoji' => '🖼', 'title' => Text::_('COM_MURUGUARD_TAB_DEFACEMENT'),          'count' => $deface],
+    ['id' => 'vulns',      'emoji' => '🛑', 'title' => Text::_('COM_MURUGUARD_TAB_VULNERABILITIES'),     'count' => $vulnCount],
 ];
 // Open on the first tab that has findings; otherwise the first tab.
 $activeTab = $tabs[0]['id'];
@@ -2152,6 +2187,70 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
         <?php endif; ?>
     </<?= $tag ?>>
     <p class="text-xs text-gray-400"><?= Text::_('COM_MURUGUARD_DEFACEMENT_NOTE') ?></p>
+<?php endif; ?>
+<?php muru_section_close(); ?>
+
+<?php
+/* ── Vulnerable Extensions ─────────────────────────────────────
+   Awareness, not cleanup -- these rows are installed extensions with a
+   known, published vulnerability (see MuruguardModelScanner::
+   getVulnerableExtensions()), not something that got compromised. No
+   "mark safe"/delete action: the only real fix is updating the
+   extension, so each row links out to it instead. */
+$severityBadge = [
+    'CRITICAL' => 'bg-red-100 text-red-700',
+    'HIGH'     => 'bg-orange-100 text-orange-700',
+    'MEDIUM'   => 'bg-amber-100 text-amber-700',
+    'LOW'      => 'bg-gray-100 text-gray-600',
+];
+?>
+<?php muru_section_open('sec-vulns', '🛑', Text::_('COM_MURUGUARD_SECTION_VULNERABILITIES'), $vulnCount); ?>
+<?php if (empty($dbFindings['vulnerable_extensions'])): ?>
+    <div class="flex items-center gap-3 text-green-700 bg-green-50 rounded-xl p-[10px]">
+        <span class="text-2xl">✅</span><span class="font-medium"><?= Text::_('COM_MURUGUARD_NO_VULNERABILITIES_FOUND') ?></span>
+    </div>
+<?php else: ?>
+    <div class="tbl-wrap rounded-xl border border-gray-100 overflow-hidden mb-3">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="bg-gray-50 border-b border-gray-100">
+                    <?php foreach (['COM_MURUGUARD_COL_EXTENSION','COM_MURUGUARD_COL_VULNERABILITY','COM_MURUGUARD_COL_SEVERITY','COM_MURUGUARD_COL_VERSION','COM_MURUGUARD_COL_FIX'] as $h): ?>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"><?= Text::_($h) ?></th>
+                    <?php endforeach; ?>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-50">
+            <?php foreach ($dbFindings['vulnerable_extensions'] as $v): ?>
+                <tr class="hover:bg-red-50/40 bg-red-50/20 transition-colors">
+                    <td class="px-4 py-3">
+                        <div class="font-medium"><?= htmlspecialchars($v['extensionName']) ?></div>
+                        <code class="text-xs text-gray-500"><?= htmlspecialchars($v['element']) ?></code>
+                    </td>
+                    <td class="px-4 py-3">
+                        <div><?= htmlspecialchars($v['title']) ?></div>
+                        <?php if (!empty($v['cveId'])): ?><code class="text-xs text-gray-500"><?= htmlspecialchars($v['cveId']) ?></code><?php endif; ?>
+                        <?php if (!empty($v['advisoryUrl'])): ?>
+                            <a href="<?= htmlspecialchars($v['advisoryUrl']) ?>" target="_blank" rel="noopener noreferrer" class="block text-xs text-blue-600 hover:text-blue-700">Advisory ↗</a>
+                        <?php endif; ?>
+                    </td>
+                    <td class="px-4 py-3">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold <?= $severityBadge[$v['severity']] ?? $severityBadge['MEDIUM'] ?>"><?= htmlspecialchars($v['severity']) ?></span>
+                    </td>
+                    <td class="px-4 py-3 text-xs font-mono text-gray-600"><?= htmlspecialchars($v['installedVersion']) ?></td>
+                    <td class="px-4 py-3 text-xs">
+                        <?php if (!empty($v['fixedVersion'])): ?>
+                            <span class="text-emerald-700 font-medium">Update to <?= htmlspecialchars($v['fixedVersion']) ?></span>
+                        <?php else: ?>
+                            <span class="text-gray-400">No fixed version published yet</span>
+                        <?php endif; ?>
+                        <a href="index.php?option=com_installer&view=update" class="block text-blue-600 hover:text-blue-700 mt-0.5">Go to Updates →</a>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-xs text-gray-400"><?= Text::_('COM_MURUGUARD_VULNERABILITIES_NOTE') ?></p>
 <?php endif; ?>
 <?php muru_section_close(); ?>
 

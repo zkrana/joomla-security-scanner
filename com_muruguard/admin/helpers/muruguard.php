@@ -115,6 +115,23 @@ class MuruguardHelper
                 '/^codex_sppb.*\.php$/i',
                 '/queue_\d+\.php$/i',
                 '/\.php\.gif$/i',
+                // General double-extension webshell disguise: an
+                // executable extension (any of EXEC_EXTS above) followed
+                // by a second, innocent-looking one -- shell.php.gif,
+                // backdoor.phtml.png, evil.php5.pdf, ... -- some servers'
+                // handler config still executes these as PHP despite the
+                // trailing extension, and it's a well-known upload-filter
+                // bypass technique regardless (real-world reported case:
+                // a customer's own scanner flagged one this narrower
+                // list missed). Supersedes the single-case .php.gif entry
+                // above -- kept alongside it rather than removed, purely
+                // for git-blame/history clarity, not because it still
+                // catches anything this doesn't. A small, deliberate
+                // allowlist of genuinely benign secondary extensions
+                // (config.php.dist / .sample / .example / .orig / .bak,
+                // template/backup conventions some projects use) is
+                // excluded so this doesn't false-positive on those.
+                '/\.(?:php|phtml|php3|php4|php5|php7|phar|pht|shtml)\.(?!bak$|dist$|sample$|example$|orig$|swp$|save$|disabled$|off$)[a-z0-9]{2,6}$/i',
                 '/\.xml\.php$/i',
                 '/^x\.xml$/i',
                 '/^filefuns\.php$/i',
@@ -1375,6 +1392,89 @@ class MuruguardHelper
 
             $code = (string) ($data['countryCode'] ?? '');
             return preg_match('/^[A-Z]{2}$/', $code) ? $code : null;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Known-vulnerability feed -- an admin-curated database of published
+    // Joomla extension vulnerabilities, hosted publicly (no license key
+    // needed, same posture as the newsletter opt-in above) at
+    // VULN_FEED_URL. Fetched at most once every 24h and cached locally
+    // using the exact same stub-prefixed-file + flock pattern as the
+    // GeoIP cache above -- a scan must never be slowed down (or broken)
+    // by the dashboard being briefly unreachable, so a failed fetch
+    // silently falls back to whatever was last cached (or an empty list
+    // if nothing has ever been cached).
+    // ------------------------------------------------------------------
+
+    private const VULN_FEED_URL = 'https://lyzerslab.com/api/vuln-feed';
+    private const VULN_FEED_MAX_AGE = 86400; // 24h
+
+    private static function vulnFeedCacheFilePath(): string
+    {
+        return JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/vulnfeed-cache.php';
+    }
+
+    /**
+     * Returns the cached advisory list (array of associative arrays, see
+     * VulnerabilityAdvisory's public feed shape), re-fetching from
+     * VULN_FEED_URL when the cache is missing or older than
+     * VULN_FEED_MAX_AGE. Never throws; a fetch/parse failure just returns
+     * whatever was cached before (or []).
+     */
+    public static function fetchVulnerabilityFeed(): array
+    {
+        $cachePath = self::vulnFeedCacheFilePath();
+        $cached = null;
+        if (is_file($cachePath)) {
+            $decoded = json_decode(self::stripDataFileStub((string) @file_get_contents($cachePath)), true);
+            if (is_array($decoded) && isset($decoded['fetchedAt'], $decoded['advisories'])) {
+                $cached = $decoded;
+            }
+        }
+
+        $isFresh = $cached !== null && (time() - (int) $cached['fetchedAt']) < self::VULN_FEED_MAX_AGE;
+        if ($isFresh) {
+            return is_array($cached['advisories']) ? $cached['advisories'] : [];
+        }
+
+        $fetched = self::fetchVulnerabilityFeedFromApi();
+        if ($fetched === null) {
+            // Fetch failed -- serve the stale cache rather than nothing,
+            // if there is one; an old warning is still more useful than
+            // silently going blind because of a transient network blip.
+            return $cached !== null && is_array($cached['advisories']) ? $cached['advisories'] : [];
+        }
+
+        $fh = @fopen($cachePath, 'c+');
+        if ($fh !== false) {
+            if (@flock($fh, LOCK_EX)) {
+                ftruncate($fh, 0);
+                rewind($fh);
+                fwrite($fh, self::dataFileStubPrefix() . json_encode(['fetchedAt' => time(), 'advisories' => $fetched]));
+                fflush($fh);
+                flock($fh, LOCK_UN);
+            }
+            fclose($fh);
+        }
+
+        return $fetched;
+    }
+
+    /** Isolated for testability -- swap/mock this in tests rather than the caching wrapper above. */
+    protected static function fetchVulnerabilityFeedFromApi(): ?array
+    {
+        try {
+            $context = stream_context_create(['http' => ['timeout' => 5, 'ignore_errors' => true]]);
+            $response = @file_get_contents(self::VULN_FEED_URL, false, $context);
+            if ($response === false) return null;
+
+            $data = json_decode($response, true);
+            if (!is_array($data) || !isset($data['advisories']) || !is_array($data['advisories'])) return null;
+
+            return $data['advisories'];
         } catch (\Throwable $e) {
             return null;
         }

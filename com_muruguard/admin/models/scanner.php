@@ -32,7 +32,7 @@ class MuruguardModelScanner extends BaseDatabaseModel
     protected array $fileFindings = [];
     protected array $dbFindings = [
         'superusers' => [], 'menu_xss' => [], 'sppb_assets' => [],
-        'rogue_iconfont' => [], 'template_defacement' => [],
+        'rogue_iconfont' => [], 'template_defacement' => [], 'vulnerable_extensions' => [],
     ];
     protected array $seenAbs = [];
     protected ?array $registeredTemplatesCache = null;
@@ -1530,6 +1530,11 @@ class MuruguardModelScanner extends BaseDatabaseModel
                 }
             }
         } catch (\Throwable $e) { /* non-fatal */ }
+
+        // Known-vulnerability cross-check -- cheap (one #__extensions
+        // query + comparing against the already-cached feed, no file I/O),
+        // so it runs as part of every scan alongside everything else here.
+        $this->dbFindings['vulnerable_extensions'] = $this->getVulnerableExtensions();
     }
 
     // ------------------------------------------------------------------
@@ -1893,5 +1898,115 @@ class MuruguardModelScanner extends BaseDatabaseModel
         }
 
         return ['disabled' => $disabled, 'missing' => $missing];
+    }
+
+    /**
+     * Every installed extension with a parsed version number, keyed by
+     * lowercase element -- ['element' => ..., 'type' => ..., 'name' =>
+     * ..., 'version' => ...]. Version comes out of manifest_cache the
+     * same way getSppbVersionWarning() already parses it for SPPB
+     * specifically; here it's done generically for every row so it can
+     * be cross-referenced against the known-vulnerability feed. A row
+     * with no parseable version is skipped -- nothing to compare it
+     * against anyway.
+     */
+    protected function getInstalledExtensionsWithVersions(): array
+    {
+        try {
+            $db = $this->getDatabase();
+            $query = $db->getQuery(true)
+                ->select($db->quoteName(['element', 'type', 'name', 'manifest_cache']))
+                ->from($db->quoteName('#__extensions'));
+            $db->setQuery($query);
+            $rows = $db->loadAssocList() ?: [];
+        } catch (\Throwable $e) {
+            return [];
+        }
+
+        $extensions = [];
+        foreach ($rows as $row) {
+            $element = strtolower(trim((string) $row['element']));
+            if ($element === '') continue;
+
+            $manifest = json_decode((string) ($row['manifest_cache'] ?? ''), true);
+            $version = is_array($manifest) ? trim((string) ($manifest['version'] ?? '')) : '';
+            if ($version === '' || !preg_match('/^\d+(\.\d+)*/', $version)) continue;
+
+            $extensions[] = [
+                'element' => $element,
+                'type'    => (string) $row['type'],
+                'name'    => (string) $row['name'],
+                'version' => $version,
+            ];
+        }
+
+        return $extensions;
+    }
+
+    /**
+     * Cross-references installed extensions (see
+     * getInstalledExtensionsWithVersions()) against the cached
+     * known-vulnerability feed (MuruguardHelper::fetchVulnerabilityFeed(),
+     * admin-curated on the dashboard -- see that method's docblock), using
+     * plain version_compare() against each advisory's affectedFrom/
+     * affectedTo. Both bounds are inclusive; a blank bound means
+     * "unbounded on that side" (e.g. no affectedTo -- still unpatched as
+     * of publish). Returns one row per match: the advisory plus the
+     * actually-installed version, so the UI can show "you have 4.1.0,
+     * this affects up to 4.2.1, update to 4.2.3". Independent of whether
+     * a full scan has been run -- safe to call any time (e.g. for the
+     * top-of-report banner), same as getUpdateSiteHealthWarning().
+     */
+    public function getVulnerableExtensions(): array
+    {
+        $advisories = MuruguardHelper::fetchVulnerabilityFeed();
+        if (empty($advisories)) return [];
+
+        $installed = $this->getInstalledExtensionsWithVersions();
+        if (empty($installed)) return [];
+
+        // Index installed extensions by element for O(1) lookup per advisory
+        // rather than a nested loop over every installed row per advisory.
+        $byElement = [];
+        foreach ($installed as $ext) {
+            $byElement[$ext['element']] = $ext;
+        }
+
+        $matches = [];
+        foreach ($advisories as $advisory) {
+            $element = strtolower(trim((string) ($advisory['extensionElement'] ?? '')));
+            if ($element === '' || !isset($byElement[$element])) continue;
+
+            $ext = $byElement[$element];
+            $version = $ext['version'];
+            $from = trim((string) ($advisory['affectedFrom'] ?? ''));
+            $to   = trim((string) ($advisory['affectedTo'] ?? ''));
+
+            if ($from !== '' && version_compare($version, $from, '<')) continue;
+            if ($to !== '' && version_compare($version, $to, '>')) continue;
+
+            // A fixed version already installed is never a match, even if
+            // it technically still falls inside an affectedTo bound the
+            // admin hasn't tightened yet (fixedVersion is the more
+            // trustworthy, more specific signal when both are present).
+            $fixedVersion = trim((string) ($advisory['fixedVersion'] ?? ''));
+            if ($fixedVersion !== '' && version_compare($version, $fixedVersion, '>=')) continue;
+
+            $matches[] = [
+                'element'        => $element,
+                'installedName'  => $ext['name'],
+                'installedType'  => $ext['type'],
+                'installedVersion' => $version,
+                'extensionName'  => (string) ($advisory['extensionName'] ?? $ext['name']),
+                'title'          => (string) ($advisory['title'] ?? ''),
+                'severity'       => strtoupper((string) ($advisory['severity'] ?? 'MEDIUM')),
+                'fixedVersion'   => $fixedVersion !== '' ? $fixedVersion : null,
+                'cveId'          => $advisory['cveId'] ?? null,
+                'advisoryUrl'    => $advisory['advisoryUrl'] ?? null,
+                'description'    => $advisory['description'] ?? null,
+            ];
+        }
+
+        return $matches;
     }
 }

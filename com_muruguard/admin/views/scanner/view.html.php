@@ -25,6 +25,7 @@ class MuruguardViewScanner extends HtmlView
     public $scanStartedAt = 0;
     public $sppbWarning = null;
     public $updateSiteHealthWarning = null;
+    public $vulnerableExtensions = [];
     public $scanAreas = [];
     public $selectedAreas = [];
     public $cronEnabled = false;
@@ -98,6 +99,11 @@ class MuruguardViewScanner extends HtmlView
         // Only ever set to a non-null value when there's a real problem --
         // see getUpdateSiteHealthWarning()'s docblock.
         $this->updateSiteHealthWarning = $model->getUpdateSiteHealthWarning();
+
+        // Known-vulnerability cross-check against installed extension
+        // versions -- independent of whether a scan has run, same as the
+        // update-site-health check above, so the banner shows immediately.
+        $this->vulnerableExtensions = $model->getVulnerableExtensions();
 
         // .htaccess hardening advisor -- read-only, cheap (one file read +
         // a handful of regexes), so it's always available regardless of
