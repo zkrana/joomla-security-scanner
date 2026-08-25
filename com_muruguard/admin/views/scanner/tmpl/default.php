@@ -2229,7 +2229,13 @@ $severityBadge = [
                     <td class="px-4 py-3">
                         <div><?= htmlspecialchars($v['title']) ?></div>
                         <?php if (!empty($v['cveId'])): ?><code class="text-xs text-gray-500"><?= htmlspecialchars($v['cveId']) ?></code><?php endif; ?>
-                        <?php if (!empty($v['advisoryUrl'])): ?>
+                        <?php /* Defense in depth: the dashboard's own API validates advisoryUrl's
+                                 scheme before storing it (see isSafeAdvisoryUrl() in
+                                 app/api/dashboard/vulnerabilities/route.ts), but this feed crosses
+                                 a network boundary into every install's admin session -- only ever
+                                 render it as a link if it's still recognisably http(s), never trust
+                                 the scheme blindly just because htmlspecialchars() was applied. */ ?>
+                        <?php if (!empty($v['advisoryUrl']) && preg_match('#^https?://#i', (string) $v['advisoryUrl'])): ?>
                             <a href="<?= htmlspecialchars($v['advisoryUrl']) ?>" target="_blank" rel="noopener noreferrer" class="block text-xs text-blue-600 hover:text-blue-700">Advisory ↗</a>
                         <?php endif; ?>
                     </td>
