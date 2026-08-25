@@ -8,6 +8,13 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [3.2.0] - 2026-08-25
+
+### Added
+
+* **Known-Vulnerability Cross-Check.** New "Vulnerabilities" tab and a top-of-report banner cross-reference every installed extension's version against an admin-curated feed of published Joomla vulnerability advisories -- catching a site running a known-exploitable extension version *before* it's compromised, not just cleaning up after the fact. Runs as part of every scan (no extra wait), refreshes its local copy of the feed at most once every 24 hours, and fails silently to the last-cached copy if the feed is briefly unreachable so a scan is never slowed down or broken by it. No action beyond an "Update to vX.Y.Z" link -- the fix is always updating the extension, nothing is touched automatically.
+* **New detection: general double-extension webshell disguise.** Any executable extension (`.php`, `.phtml`, `.php3`-`.php7`, `.phar`, `.pht`, `.shtml`) followed by a second, innocent-looking one -- e.g. `shell.php.gif`, `backdoor.phtml.png`, `evil.php5.pdf` -- is now flagged, a well-known upload-filter bypass some server configs still execute despite the trailing extension. A small allowlist of genuinely benign secondary extensions (`.dist`, `.sample`, `.example`, `.orig`, `.bak`, and similar backup/template conventions) is excluded so this doesn't flag legitimate files.
+
 ## [3.1.2] - 2026-08-24
 
 ### Fixed
