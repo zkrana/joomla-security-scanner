@@ -8,6 +8,12 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [3.2.1] - 2026-08-25
+
+### Security
+
+* **Hardened the Vulnerable Extensions tab's advisory link against scheme injection.** The dashboard's own API already validates an advisory's URL is `http(s)://` before it's ever stored, but this extension now double-checks the scheme itself before rendering the link too, rather than trusting the feed blindly -- found during a security review of the new dashboard API communication added in v3.2.0.
+
 ## [3.2.0] - 2026-08-25
 
 ### Added
