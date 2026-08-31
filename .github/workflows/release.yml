@@ -80,6 +80,11 @@ jobs:
           DASHBOARD_URL: https://lyzerslab.com
           DASHBOARD_PRODUCT_ID: cmruqkeub00008s5frl2g9feh
           DASHBOARD_RELEASE_TOKEN: ${{ secrets.DASHBOARD_RELEASE_TOKEN }}
+          # upload-to-dashboard.sh defaults to PRO when this is unset --
+          # this repo only ever builds the Free edition, so without this
+          # explicit override every automated release here would silently
+          # get uploaded to the dashboard mislabeled as a Pro version.
+          DASHBOARD_EDITION: FREE
         run: |
           chmod +x scripts/upload-to-dashboard.sh
           scripts/upload-to-dashboard.sh \
