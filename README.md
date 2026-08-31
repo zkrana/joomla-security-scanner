@@ -50,7 +50,7 @@ In June 2026, a critical unauthenticated RCE was disclosed in SP Page Builder ve
 
 **Before doing anything else:**
 
-1. **Update SP Page Builder to 6.6.2 or later.** Scanning a site that's still vulnerable just means cleaning up the same infection again tomorrow.
+1. **Update SP Page Builder to 6.8.0 or later.** Scanning a site that's still vulnerable just means cleaning up the same infection again tomorrow.
 2. **Update or remove JCE** if installed. Several hosts have reported malware appearing inside `com_jce` on sites also hit by the SPPB exploit — most likely the same attacker reusing JCE's file-browser upload path as a fallback once they had a foothold.
 3. **Take a full backup** and, if possible, run your first scan on a staging copy of the site rather than production.
 
@@ -225,7 +225,7 @@ Since these are standard Joomla extensions, removal is a normal uninstall — no
 ## 📋 Recommended order of operations
 
 1. Back up the full site
-2. Update SP Page Builder to 6.6.2+
+2. Update SP Page Builder to 6.8.0+
 3. Update or remove JCE if installed
 4. Install the extension via the Joomla administrator
 5. Run the scan, review findings carefully — start with core entry-point findings if any exist

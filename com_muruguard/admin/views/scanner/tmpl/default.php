@@ -315,19 +315,19 @@ if ($w !== null && $w['safe'] !== true):
         $borderColor = '#dc2626'; $bgColor = '#fef2f2'; $textColor = '#991b1b';
         $icon = '🚨'; $badgeClass = 'bg-red-600';
         $headline = "SP Page Builder {$version} is installed — this major version is vulnerable and has no patch.";
-        $detail   = 'SPPB 5.x has its own separate known vulnerabilities. <strong>Update to SPPB 6.6.2+ immediately</strong>, or remove the component if you no longer use it.';
+        $detail   = 'SPPB 5.x has its own separate known vulnerabilities. <strong>Update to SPPB 6.8.0+ immediately</strong>, or remove the component if you no longer use it.';
         $btnClass = 'bg-red-600 hover:bg-red-700';
     elseif ($w['safe'] === false):
         $borderColor = '#dc2626'; $bgColor = '#fef2f2'; $textColor = '#991b1b';
         $icon = '🚨'; $badgeClass = 'bg-red-600';
         $headline = "SP Page Builder {$version} is installed — vulnerable to the uploadCustomIcon RCE.";
-        $detail   = 'Unauthenticated attackers can upload PHP webshells via Custom Icons in SPPB 6.x &lt; 6.6.2. <strong>Update to 6.6.2 immediately</strong> before doing anything else.';
+        $detail   = 'Unauthenticated attackers can upload PHP webshells via Custom Icons in SPPB 6.x &lt; 6.6.2. <strong>Update to 6.8.0 immediately</strong> before doing anything else.';
         $btnClass = 'bg-red-600 hover:bg-red-700';
     else:
         $borderColor = '#d97706'; $bgColor = '#fffbeb'; $textColor = '#78350f';
         $icon = '⚠️'; $badgeClass = 'bg-amber-500';
         $headline = "SP Page Builder is installed but its version could not be determined.";
-        $detail   = 'Check manually under <strong>Extensions → Manage → Manage</strong> and confirm it is 6.6.2 or newer.';
+        $detail   = 'Check manually under <strong>Extensions → Manage → Manage</strong> and confirm it is 6.8.0 or newer.';
         $btnClass = 'bg-amber-500 hover:bg-amber-600';
     endif;
 ?>

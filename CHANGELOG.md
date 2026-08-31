@@ -8,6 +8,16 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [3.2.2] - 2026-08-31
+
+### Added
+
+* **New detection: `nxtest.json` / `nxproof.php.json` malware filenames.** A customer-reported infection dropped these exact filenames at multiple depths under `templates/` (e.g. `templates/shaper_moview/layout/nxtest.json`, `templates/nxproof.php.json`) as part of the SP Page Builder compromise this tool targets. Matched on the bare filename regardless of location, so it's caught wherever it's dropped, not just at a specific path. `nxproof.php.json` was already caught by the general double-extension rule added in v3.2.0; `nxtest.json` is a genuinely new case, since a single `.json` extension isn't inherently suspicious on its own.
+
+### Changed
+
+* **Recommended SP Page Builder update target bumped to 6.8.0.** The README and the in-app version-warning banner now recommend updating to the current 6.8.0 release rather than just the 6.6.2 floor that originally patched the `uploadCustomIcon` RCE. The scanner's actual safe/vulnerable version check is unchanged (still correctly treats any 6.6.2+ install as patched against that RCE) -- this only updates the advice to point at the latest release instead of the bare minimum.
+
 ## [3.2.1] - 2026-08-25
 
 ### Security

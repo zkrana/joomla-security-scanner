@@ -149,6 +149,21 @@ class MuruguardHelper
                 // on the exact bare filename alone regardless of content --
                 // no legitimate site names a file this way.
                 '/^kill\.(gif|png)$/i',
+                // Real-world customer-reported infection (SPPB/shaper_moview
+                // template campaign): dropped as templates/shaper_moview/
+                // layout/nxtest.json, templates/shaper_moview/layout/
+                // nxproof.php.json, templates/shaper_moview/nxproof.php.json,
+                // and templates/nxproof.php.json -- same two filenames
+                // recurring at multiple directory depths, matched on the
+                // bare basename alone (matching preg_match() against
+                // $basename below, not the full path) so it's caught
+                // wherever it's dropped. nxproof.php.json is already
+                // covered by the general .php(.json)+ double-extension
+                // rule above; nxtest.json is a genuinely new case since a
+                // single, non-double .json extension isn't inherently
+                // suspicious on its own -- this is a named, exact-filename
+                // IOC for this specific campaign, not a generic pattern.
+                '/^nxtest\.json$|^nxproof\.php\.json$/i',
             ],
 
             'ROOT_SUSPICIOUS_FILENAME_REGEXES' => [
