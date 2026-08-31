@@ -4,6 +4,10 @@
 
 > You review every finding yourself and decide what's real. **[MuRu Guard Pro](https://lyzerslab.com/joomla-products/muru-guard-security-scanner)** adds an AI check that verifies confirmed threats and safely deletes them for you, with false positives filtered out first.
 
+[![Get MuRu Compliance Auditor Pro — 3 months free, no payment needed, register to redeem](/uploads/muru-compliance-auditor-promo-banner.svg)](https://lyzerslab.com/dashboard/register)
+
+🧭 **Also from us: [MuRu Compliance Auditor](https://lyzerslab.com/joomla-products/muru-compliance-auditor)** — audits your Joomla site against the European Accessibility Act, ADA, and WCAG 2.2. Free edition does a whole-site scan, in-editor linter, and an Accessibility Statement generator; Pro adds scheduled monitoring, dated PDF audit reports, EN 301 549 / VPAT export, and a privacy & consent audit.
+
 # 🛡️ MuRu Guard Security Scanner (Joomla Extension)
 
 ![Downloads](https://img.shields.io/github/downloads/zkrana/joomla-security-scanner/total)
@@ -27,6 +31,8 @@ Everything on this page is **free and always will be** — full scanning, cleanu
 | 📄 **Branded Security Reports** | One-click, print-ready reports to share with clients or stakeholders |
 | 🔒 **MuRu Shield Hardening** | A self-testing, auto-rollback server-level password gate in front of `/administrator` — blocks brute-force attempts before Joomla even loads |
 | 💬 **Priority support** | A tracked support ticket, not just a public issue queue |
+
+**🎁 New: already on Pro?** Share MuRu Guard Pro in a Joomla community or leave a review, submit the link from **My Products** in your dashboard, and get **15 free days** added to your license per verified link -- submit as many as you like.
 
 **[Create a free account and get MuRu Guard Pro →](https://lyzerslab.com/joomla-products/muru-guard-security-scanner)**
 
