@@ -108,6 +108,14 @@ class MuruguardHelper
             // Grow this list if another legitimate one turns up.
             'HIDDEN_DOTFILE_ALLOWLIST' => [
                 '.phpstorm.meta.php',
+                // PHP CS Fixer's own config file -- a hidden dot-file with
+                // a .php extension is exactly its documented naming
+                // convention (it's loaded by the CLI tool, never by a web
+                // server), shipped inside plenty of real Composer packages'
+                // own vendor/ trees (e.g. php-http/discovery). Confirmed
+                // real false positive.
+                '.php-cs-fixer.php',
+                '.php-cs-fixer.dist.php',
             ],
 
             'SUSPICIOUS_FILENAME_REGEXES' => [
@@ -367,6 +375,12 @@ class MuruguardHelper
                 // regenerates the real one -- a well-known, trusted Joomla
                 // security extension's own artifact, not a threat.
                 '.htaccess.admintools',
+                // Composer's own project metadata -- ubiquitous on any
+                // Joomla site whose extensions (or the site itself) pull
+                // dependencies via Composer. Plain JSON, not executable
+                // content, so there's nothing a content-signature scan
+                // could meaningfully check here anyway.
+                'composer.json', 'composer.lock',
             ],
 
             // MyJoomla.com's remote file-integrity-monitoring service writes
@@ -1869,6 +1883,23 @@ class MuruguardHelper
         return false;
     }
 
+    /**
+     * True for a top-level webroot vendor/ folder that's actually
+     * Composer's own dependency directory -- same "not itself suspicious,
+     * but every file inside still gets scanned" treatment as
+     * isKnownExtensionDataFolder() above, just correlated against a
+     * sibling file (composer.json existing at the webroot) instead of an
+     * installed-extension registry, since a Composer-managed vendor/
+     * folder isn't tied to any one named Joomla extension. Naming alone
+     * is never trusted: a folder called "vendor" with no composer.json
+     * next to it gets no exemption at all.
+     */
+    public static function isComposerVendorFolder(string $dirName, string $webroot): bool
+    {
+        if (strtolower($dirName) !== 'vendor') return false;
+        return is_file($webroot . '/composer.json');
+    }
+
     public static function checkJunkExtensionFolder(string $relPath, array $sig, ?array $registeredPlugins = null, ?array $registeredComponents = null, ?string $absPath = null): ?string
     {
         $relPath = ltrim(str_replace('\\', '/', $relPath), '/');
@@ -2420,6 +2451,37 @@ class MuruguardHelper
             '#^tmp/jed_checker/unzipped/(?:com_muruguard|com_sppbscan)-[\d.]+\.zip/#i',
             $relNorm
         );
+    }
+
+    /**
+     * True for a file inside HikaShop's own media/com_hikashop/mail/
+     * folder -- unlike almost every other media/ subfolder (genuinely
+     * just static assets), HikaShop stores its email-rendering PHP view
+     * templates here by design (order/payment/notification emails,
+     * skinned in several color variants) and executes them itself; a
+     * real HikaShop install can easily have 40-50 legitimate .php files
+     * here, each individually flooding the 'upload'-mode "executable
+     * file in an upload directory" structural check as a false positive.
+     * Confirmed real: reported false-positive run flagged every one of
+     * them.
+     *
+     * Registry-checked like isRegisteredExtensionSnapshotPath() (only
+     * exempt when com_hikashop is actually installed), not hardcoded
+     * like isJedCheckerOwnZipSnapshotPath() just above -- the path
+     * itself only exists at all once HikaShop is installed, but
+     * requiring the registry check too costs nothing and keeps the same
+     * discipline as every other exemption here. And this only ever
+     * suppresses the STRUCTURAL check -- every file here still goes
+     * through the unconditional content-signature scan regardless,
+     * exactly like everywhere else.
+     */
+    public static function isHikashopMailTemplatePath(string $relPath, ?array $registeredComponents): bool
+    {
+        if ($registeredComponents === null || !array_key_exists('com_hikashop', $registeredComponents)) {
+            return false;
+        }
+        $relNorm = ltrim(str_replace('\\', '/', $relPath), '/');
+        return (bool) preg_match('#^media/com_hikashop/mail/#i', $relNorm);
     }
 
     /**

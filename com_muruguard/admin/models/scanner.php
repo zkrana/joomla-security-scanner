@@ -878,6 +878,22 @@ class MuruguardModelScanner extends BaseDatabaseModel
                         if (in_array($extL, $sig['EXEC_EXTS'], true)) {
                             $flagged = true;
                             $reasons[] = 'Executable file inside icon-font asset folder.';
+                        } elseif ($basename === '.htaccess') {
+                            // Icon-font export tools (IcoMoon, Fontello, ...)
+                            // commonly ship a minimal .htaccess here purely
+                            // to set the correct MIME type for .woff/.ttf/
+                            // .eot -- checked by CONTENT, not trusted by
+                            // location alone: only a genuinely permissive
+                            // .htaccess is flagged, same criteria the
+                            // 'upload' mode structural check below already
+                            // uses for every other .htaccess it finds.
+                            $htContents = @file_get_contents($path, false, null, 0, 4096);
+                            if ($htContents !== false
+                                && preg_match('/Allow\s+from\s+all|Require\s+all\s+granted|RewriteEngine\s+Off/i', $htContents)
+                                && !preg_match('/FilesMatch.*php/i', $htContents)) {
+                                $flagged = true;
+                                $reasons[] = 'Suspicious .htaccess inside icon-font asset directory: permissively allows access.';
+                            }
                         } else {
                             $baseNoExt = strtolower(pathinfo($basename, PATHINFO_FILENAME));
                             if (!in_array($extL, $sig['ICONFONT_ALLOWED_EXTENSIONS'], true)
@@ -930,7 +946,10 @@ class MuruguardModelScanner extends BaseDatabaseModel
                         $isJedCheckerOwnZipSnapshot = $ext === 'php'
                             && strpos($relCheck, 'tmp/jed_checker/unzipped/') === 0
                             && MuruguardHelper::isJedCheckerOwnZipSnapshotPath($relCheck);
-                        if (!$isKnownSafeEntry && !$isBlankStub && !$isJoomlaCacheFile && !$isRegisteredExtensionSnapshot && !$isJedCheckerOwnZipSnapshot && in_array($ext, $sig['EXEC_EXTS'], true)) {
+                        $isHikashopMailTemplate = $ext === 'php'
+                            && strpos($relCheck, 'media/com_hikashop/mail/') === 0
+                            && MuruguardHelper::isHikashopMailTemplatePath($relCheck, $registeredComponents);
+                        if (!$isKnownSafeEntry && !$isBlankStub && !$isJoomlaCacheFile && !$isRegisteredExtensionSnapshot && !$isJedCheckerOwnZipSnapshot && !$isHikashopMailTemplate && in_array($ext, $sig['EXEC_EXTS'], true)) {
                             $flagged = true;
                             $reasons[] = "Executable file (.$ext) inside an upload directory — these should never contain runnable code.";
                         }
@@ -1070,12 +1089,14 @@ class MuruguardModelScanner extends BaseDatabaseModel
                     continue;
                 }
 
-                if (MuruguardHelper::isKnownExtensionDataFolder($it, $sig, $registeredComponents)) {
+                if (MuruguardHelper::isKnownExtensionDataFolder($it, $sig, $registeredComponents)
+                    || MuruguardHelper::isComposerVendorFolder($it, $this->root)) {
                     // Recognized companion data folder of an installed
                     // extension (e.g. ConvertForms' own convertforms_<alias>
-                    // custom-code folders) -- not itself suspicious, but
-                    // still content-scanned file by file so malware planted
-                    // here later doesn't get a free pass just because the
+                    // custom-code folders) or Composer's own vendor/
+                    // dependency tree -- not itself suspicious, but still
+                    // content-scanned file by file so malware planted here
+                    // later doesn't get a free pass just because the
                     // folder name matches a known convention.
                     $this->seenAbs[$p] = true;
                     MuruguardHelper::walkDir($p, function (string $innerPath, bool $innerIsDir) use ($sig, $maxSize, $falsePositives) {

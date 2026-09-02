@@ -15,6 +15,13 @@ Each release on GitHub pulls its description directly from this file — see `sc
 * **AI Integration (Settings > AI).** Add your own API key + model name for ChatGPT (OpenAI), Claude (Anthropic), and/or Gemini (Google), and pick one as the default. An "Ask AI" button appears on each Suspicious/Cleanable Files row once a default is configured -- it sends only the file's path, confidence level, and the scanner's own already-shown detection reason to the provider (never the file's actual content), and shows the reply in a modal.
 * **"Report an issue" link**, next to the version badge -- opens a new GitHub issue directly.
 
+### Fixed
+
+* **False positive: HikaShop's email template files.** `media/com_hikashop/mail/` (and its `template/` subfolder) legitimately holds 40-50+ PHP view templates HikaShop uses to render order/payment/notification emails -- unlike almost every other `media/` subfolder, which really is just static assets. Every one of them was being individually flagged as "executable file inside an upload directory." Now exempted from that specific structural check (only when com_hikashop is actually installed) -- the content-signature scan still runs on these files unconditionally, so a genuinely tampered one is still caught.
+* **False positive: Composer-managed sites.** `composer.json` and `composer.lock` (plain JSON, not executable) no longer flag as unrecognized webroot files, and a top-level `vendor/` folder is recognized as Composer's own dependency tree when a `composer.json` sits alongside it -- every file inside it still gets the full content-signature scan, same as any other recognized folder.
+* **False positive: `.php-cs-fixer.php` / `.php-cs-fixer.dist.php`.** PHP CS Fixer's own config file is a hidden dot-file with a `.php` extension by its documented naming convention (loaded by its CLI tool, never by a web server) -- ships inside plenty of real Composer packages' `vendor/` trees.
+* **False positive: icon-font `.htaccess` files.** Icon-font export tools (IcoMoon, Fontello, ...) commonly ship a minimal `.htaccess` purely to set the MIME type for `.woff`/`.ttf`/`.eot` -- now checked by content instead of blanket-flagged by location, using the exact same "is this actually permissive" criteria the scanner already applies to every other `.htaccess` it finds.
+
 ### Removed
 
 * **Support menu and panel.** Removed the top-level admin submenu item, the in-component sidebar entry, and the "Support This Project" panel (donation info, contact links). An existing install updating from an earlier version also gets its now-dead menu row cleaned up automatically.
