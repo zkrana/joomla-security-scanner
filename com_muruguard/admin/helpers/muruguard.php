@@ -1495,39 +1495,103 @@ class MuruguardHelper
         }
     }
 
-    private const NEWSLETTER_OPT_IN_URL = 'https://lyzerslab.com/api/optin';
-
     /**
-     * Submits the "get security alerts & updates" dashboard banner's
-     * name/email to the same public opt-in endpoint the main site's own
-     * newsletter form posts to -- same NewsletterOptIn table, same admin
-     * notification/welcome-email flow, just tagged with a distinct
-     * 'source' so an admin reviewing subscribers can tell this one came
-     * from a Free install rather than the website. No auth needed: this
-     * is a server-side PHP call, not a browser request, so there's no
-     * CORS concern, and the endpoint itself is already public/unauthenticated.
+     * Calls whichever of the three AI providers the admin configured
+     * under Settings > AI, with a single-turn prompt, and returns its
+     * text reply. Used only by the per-row "Ask AI" action on a scan
+     * finding -- $provider/$apiKey/$model come straight from that
+     * Settings tab (see MuruguardViewScanner::$aiDefaultProvider and
+     * friends), never guessed or hardcoded. Same file_get_contents() +
+     * stream_context_create() pattern as every other outbound call in
+     * this file (see getVulnerableExtensions(), getIpGeolocation()) --
+     * no cURL dependency assumed.
+     *
+     * Returns ['ok' => true, 'text' => string] on success, or
+     * ['ok' => false, 'error' => string] -- the error is a short,
+     * user-facing reason (timeout, bad key, unexpected response shape),
+     * never the raw provider response (which could contain the key
+     * echoed back in an error body on some providers).
+     *
+     * @return array{ok:bool,text?:string,error?:string}
      */
-    public static function submitNewsletterOptIn(string $name, string $email): bool
+    public static function askAi(string $provider, string $apiKey, string $model, string $prompt): array
     {
-        $email = trim($email);
-        if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) return false;
+        $apiKey = trim($apiKey);
+        $model  = trim($model);
+        if ($apiKey === '' || $model === '') {
+            return ['ok' => false, 'error' => 'AI provider is not fully configured -- add both an API key and a model name under Settings > AI.'];
+        }
 
-        $payload = json_encode(['name' => trim($name), 'email' => $email, 'source' => 'muruguard-free']);
         try {
+            if ($provider === 'openai') {
+                $url  = 'https://api.openai.com/v1/chat/completions';
+                $body = json_encode([
+                    'model'    => $model,
+                    'messages' => [['role' => 'user', 'content' => $prompt]],
+                ]);
+                $headers = "Content-Type: application/json\r\nAuthorization: Bearer {$apiKey}\r\n";
+                $extract = function (array $data) {
+                    return $data['choices'][0]['message']['content'] ?? null;
+                };
+            } elseif ($provider === 'claude') {
+                $url  = 'https://api.anthropic.com/v1/messages';
+                $body = json_encode([
+                    'model'      => $model,
+                    'max_tokens' => 1024,
+                    'messages'   => [['role' => 'user', 'content' => $prompt]],
+                ]);
+                $headers = "Content-Type: application/json\r\nx-api-key: {$apiKey}\r\nanthropic-version: 2023-06-01\r\n";
+                $extract = function (array $data) {
+                    return $data['content'][0]['text'] ?? null;
+                };
+            } elseif ($provider === 'gemini') {
+                $url  = 'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($model) . ':generateContent?key=' . rawurlencode($apiKey);
+                $body = json_encode([
+                    'contents' => [['parts' => [['text' => $prompt]]]],
+                ]);
+                $headers = "Content-Type: application/json\r\n";
+                $extract = function (array $data) {
+                    return $data['candidates'][0]['content']['parts'][0]['text'] ?? null;
+                };
+            } else {
+                return ['ok' => false, 'error' => 'Unknown AI provider.'];
+            }
+
             $context = stream_context_create(['http' => [
                 'method'        => 'POST',
-                'header'        => "Content-Type: application/json\r\n",
-                'content'       => $payload,
-                'timeout'       => 5,
+                'header'        => $headers,
+                'content'       => $body,
+                'timeout'       => 20,
                 'ignore_errors' => true,
             ]]);
-            $response = @file_get_contents(self::NEWSLETTER_OPT_IN_URL, false, $context);
-            if ($response === false) return false;
+            $response = @file_get_contents($url, false, $context);
+            if ($response === false) {
+                return ['ok' => false, 'error' => 'Could not reach the AI provider (network error or timeout).'];
+            }
+
+            // $http_response_header is populated by file_get_contents()
+            // itself for an http:// stream -- checking it is the only way
+            // to tell "got a response" apart from "got a 4xx/5xx response
+            // body" when ignore_errors is on, which is deliberate here
+            // (a 4xx body often has the actual reason, e.g. a bad key).
+            $statusOk = true;
+            if (isset($http_response_header[0]) && preg_match('/\s(\d{3})\s/', $http_response_header[0], $m)) {
+                $statusOk = ((int) $m[1]) < 400;
+            }
 
             $data = json_decode($response, true);
-            return is_array($data) && !empty($data['success']);
+            if (!$statusOk || !is_array($data)) {
+                return ['ok' => false, 'error' => 'The AI provider returned an error -- double-check the API key and model name under Settings > AI.'];
+            }
+
+            $text = $extract($data);
+            if (!is_string($text) || trim($text) === '') {
+                return ['ok' => false, 'error' => 'The AI provider returned an empty response.'];
+            }
+
+            return ['ok' => true, 'text' => trim($text)];
         } catch (\Throwable $e) {
-            return false;
+            return ['ok' => false, 'error' => 'Unexpected error calling the AI provider.'];
         }
     }
 

@@ -8,6 +8,19 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [3.2.3] - 2026-09-02
+
+### Added
+
+* **AI Integration (Settings > AI).** Add your own API key + model name for ChatGPT (OpenAI), Claude (Anthropic), and/or Gemini (Google), and pick one as the default. An "Ask AI" button appears on each Suspicious/Cleanable Files row once a default is configured -- it sends only the file's path, confidence level, and the scanner's own already-shown detection reason to the provider (never the file's actual content), and shows the reply in a modal.
+* **"Report an issue" link**, next to the version badge -- opens a new GitHub issue directly.
+
+### Removed
+
+* **Support menu and panel.** Removed the top-level admin submenu item, the in-component sidebar entry, and the "Support This Project" panel (donation info, contact links). An existing install updating from an earlier version also gets its now-dead menu row cleaned up automatically.
+* **Newsletter opt-in banner.** Removed the dismissible "get security alerts & updates" name/email capture banner from the dashboard, along with its backend (opt-in submission, dismiss/subscribe state, and the admin-notification round trip to the public opt-in endpoint).
+* **Pro-promo banners from the README.** Trimmed the top-of-README promotional blocks for MuRu Guard Pro and MuRu Compliance Auditor Pro.
+
 ## [3.2.2] - 2026-08-31
 
 ### Added

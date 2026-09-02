@@ -60,7 +60,27 @@ class MuruguardViewScanner extends HtmlView
     public string $componentVersion = '';
     public string $activePanel = 'dashboard';
     public string $activeSettingsTab = 'general';
-    public bool $newsletterBannerDismissed = false;
+
+    // AI Integration -- an admin-supplied API key + model name for each of
+    // three providers, one picked as the default. Used only for the
+    // per-row "Ask AI" action on a scan finding (see
+    // MuruguardHelper::askAi()). Displayed the same way cron_token
+    // already is elsewhere on this same Settings panel -- a plain input
+    // pre-filled with the real value, same admin-only trust boundary as
+    // the rest of this page -- rather than inventing a separate masked-
+    // secret system this codebase doesn't otherwise have.
+    public string $aiOpenaiKey = '';
+    public string $aiOpenaiModel = '';
+    public string $aiClaudeKey = '';
+    public string $aiClaudeModel = '';
+    public string $aiGeminiKey = '';
+    public string $aiGeminiModel = '';
+    public string $aiDefaultProvider = '';
+    // True only when the CHOSEN default provider actually has both an
+    // API key and a model name set -- gates whether the "Ask AI" button
+    // shows on scan result rows at all, rather than showing a button
+    // that would just error every time.
+    public bool $aiConfigured = false;
 
     public function display($tpl = null)
     {
@@ -146,10 +166,24 @@ class MuruguardViewScanner extends HtmlView
         $this->shieldBlockedCountries = (string) $cfgParams->get('shield_blocked_countries', '');
         $this->ipList                = MuruguardHelper::getIpList();
         $this->falsePositives        = MuruguardHelper::getFalsePositives();
-        // Covers both an explicit dismissal and a successful subscription
-        // (subscribeToNewsletter() sets this same flag on success) --
-        // either way, the banner has nothing left to ask this site for.
-        $this->newsletterBannerDismissed = (bool) $cfgParams->get('newsletter_banner_dismissed', 0);
+
+        // AI Integration -- see MuruguardHelper::askAi() for how these are
+        // actually used (only ever server-side, on the per-row "Ask AI"
+        // action).
+        $this->aiOpenaiKey      = (string) $cfgParams->get('ai_openai_key', '');
+        $this->aiOpenaiModel    = (string) $cfgParams->get('ai_openai_model', '');
+        $this->aiClaudeKey      = (string) $cfgParams->get('ai_claude_key', '');
+        $this->aiClaudeModel    = (string) $cfgParams->get('ai_claude_model', '');
+        $this->aiGeminiKey      = (string) $cfgParams->get('ai_gemini_key', '');
+        $this->aiGeminiModel    = (string) $cfgParams->get('ai_gemini_model', '');
+        $this->aiDefaultProvider = (string) $cfgParams->get('ai_default_provider', '');
+        if ($this->aiDefaultProvider === 'openai') {
+            $this->aiConfigured = $this->aiOpenaiKey !== '' && $this->aiOpenaiModel !== '';
+        } elseif ($this->aiDefaultProvider === 'claude') {
+            $this->aiConfigured = $this->aiClaudeKey !== '' && $this->aiClaudeModel !== '';
+        } elseif ($this->aiDefaultProvider === 'gemini') {
+            $this->aiConfigured = $this->aiGeminiKey !== '' && $this->aiGeminiModel !== '';
+        }
 
         $this->backendAuthEnabled     = (bool) $cfgParams->get('backend_auth_enabled', 0);
         $this->backendAuthUsername    = (string) $cfgParams->get('backend_auth_username', '');
@@ -203,15 +237,14 @@ class MuruguardViewScanner extends HtmlView
         // Which panel the left sidebar submenu (see addSubmenu()) should
         // land on -- a plain custom query param rather than Joomla's
         // reserved &layout=, since there's deliberately no separate
-        // tmpl/settings.php / tmpl/support.php file: this component is
-        // still one page with everything on it, the submenu just jumps
-        // straight to the right part of it (auto-opening the existing
-        // Settings panel / Support section client-side) rather than a
-        // full page reload into isolated views, which would mean
-        // duplicating the scan-results header/stats across three
-        // separate templates for no real benefit.
+        // tmpl/settings.php file: this component is still one page with
+        // everything on it, the submenu just jumps straight to the right
+        // part of it (auto-opening the existing Settings panel client-
+        // side) rather than a full page reload into an isolated view,
+        // which would mean duplicating the scan-results header/stats
+        // across separate templates for no real benefit.
         $requestedPanel = $app->input->getCmd('view_panel', 'dashboard');
-        $this->activePanel = in_array($requestedPanel, ['dashboard', 'settings', 'support'], true) ? $requestedPanel : 'dashboard';
+        $this->activePanel = in_array($requestedPanel, ['dashboard', 'settings'], true) ? $requestedPanel : 'dashboard';
 
         $requestedSettingsTab = $app->input->getCmd('settings_tab', '');
         // 'protection'/'iplist' merged into 'site_protection' and
@@ -222,7 +255,7 @@ class MuruguardViewScanner extends HtmlView
         if (isset($legacySettingsTabMap[$requestedSettingsTab])) {
             $requestedSettingsTab = $legacySettingsTabMap[$requestedSettingsTab];
         }
-        $this->activeSettingsTab = in_array($requestedSettingsTab, ['general', 'site_protection', 'guide'], true)
+        $this->activeSettingsTab = in_array($requestedSettingsTab, ['general', 'site_protection', 'ai', 'guide'], true)
             ? $requestedSettingsTab
             : 'general';
 
@@ -245,9 +278,9 @@ class MuruguardViewScanner extends HtmlView
     }
 
     /**
-     * Left-sidebar submenu (Dashboard / Settings / Support), the same
-     * mechanism com_content/com_banners/... and third-party components
-     * like SP Page Builder use for their own multi-page navigation.
+     * Left-sidebar submenu (Dashboard / Settings), the same mechanism
+     * com_content/com_banners/... and third-party components like SP
+     * Page Builder use for their own multi-page navigation.
      */
     protected function addSubmenu(): void
     {
@@ -262,12 +295,6 @@ class MuruguardViewScanner extends HtmlView
             Text::_('COM_MURUGUARD_SUBMENU_SETTINGS'),
             'index.php?option=com_muruguard&view_panel=settings',
             $this->activePanel === 'settings'
-        );
-        \Joomla\CMS\HTML\HTMLHelper::_(
-            'sidebar.addEntry',
-            Text::_('COM_MURUGUARD_SUBMENU_SUPPORT'),
-            'index.php?option=com_muruguard&view_panel=support',
-            $this->activePanel === 'support'
         );
     }
 }

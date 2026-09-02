@@ -123,7 +123,7 @@ $rescanUrl  = 'index.php?option=com_muruguard&task=scanner.scan&rescan=1';
 
   /* ── Loading overlay & floating header-actions widget ────────────
      Deliberately PLAIN CSS (no Tailwind utility classes). Both the
-     overlay and the header-actions wrapper (Settings + Support) get
+     overlay and the header-actions wrapper (Settings) get
      re-parented to <body> at runtime via JS: Joomla's admin template
      applies a CSS transform to the content wrapper while animating the
      collapsible sidebar, and a transformed ancestor breaks
@@ -154,8 +154,8 @@ $rescanUrl  = 'index.php?option=com_muruguard&task=scanner.scan&rescan=1';
 
 
   /* ── Code-analysis modal ──────────────────────────────────────
-     Same plain-CSS + re-parent-to-<body> treatment as the overlay and
-     support widget above, for the same reason: Joomla's admin template
+     Same plain-CSS + re-parent-to-<body> treatment as the overlay
+     above, for the same reason: Joomla's admin template
      transforms the content wrapper, which breaks `position: fixed`. */
   #muru-modal { display:none; position:fixed; inset:0; z-index:999997; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
   #muru-modal.muru-show { display:block; }
@@ -471,6 +471,12 @@ if (!empty($criticalVulns)):
                 <span class="inline-flex items-center justify-center min-w-4 h-4 px-1 bg-gray-200 text-gray-600 text-[10px] font-bold rounded-full"><?= count($this->ipList) ?></span>
             <?php endif; ?>
         </button>
+        <button type="button" class="muru-settings-tab flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors" data-settings-tab="ai">
+            🤖 <?= Text::_('COM_MURUGUARD_SETTINGS_TAB_AI') ?>
+            <?php if ($this->aiConfigured): ?>
+                <span class="inline-flex items-center justify-center w-2 h-2 rounded-full bg-emerald-500"></span>
+            <?php endif; ?>
+        </button>
         <button type="button" class="muru-settings-tab flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors" data-settings-tab="guide">
             📖 <?= Text::_('COM_MURUGUARD_SETTINGS_TAB_GUIDE') ?>
         </button>
@@ -635,6 +641,70 @@ if (!empty($criticalVulns)):
                 </div>
             <?php endif; ?>
         </div>
+    </div>
+
+    <div class="muru-settings-tabpanel hidden" data-settings-panel="ai">
+        <?php if (!$this->canAdmin): ?>
+        <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-5">
+            <div class="flex items-center gap-2 text-xs text-gray-500">
+                <span class="text-base">🔒</span>
+                <span><?= Text::_('COM_MURUGUARD_SCHEDULED_READONLY') ?></span>
+            </div>
+        </div>
+        <?php else: ?>
+        <form action="<?= Route::_('index.php?option=com_muruguard&task=scanner.saveaisettings') ?>" method="post">
+            <?= HTMLHelper::_('form.token') ?>
+
+            <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-5">
+                <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2 mb-1">🤖 <?= Text::_('COM_MURUGUARD_AI_HEADING') ?></h3>
+                <p class="text-xs text-gray-500 mb-5 max-w-2xl"><?= Text::_('COM_MURUGUARD_AI_DESC') ?></p>
+
+                <?php
+                $aiProviders = [
+                    'openai' => ['label' => 'ChatGPT (OpenAI)', 'key' => $this->aiOpenaiKey, 'model' => $this->aiOpenaiModel, 'placeholder' => 'e.g. gpt-4o-mini'],
+                    'claude' => ['label' => 'Claude (Anthropic)', 'key' => $this->aiClaudeKey, 'model' => $this->aiClaudeModel, 'placeholder' => 'e.g. claude-3-5-haiku-20241022'],
+                    'gemini' => ['label' => 'Gemini (Google)', 'key' => $this->aiGeminiKey, 'model' => $this->aiGeminiModel, 'placeholder' => 'e.g. gemini-2.0-flash'],
+                ];
+                ?>
+
+                <div class="space-y-4">
+                    <?php foreach ($aiProviders as $providerId => $p): ?>
+                    <div class="border border-gray-200 rounded-xl p-4">
+                        <label class="flex items-center gap-2 mb-3 cursor-pointer w-fit">
+                            <input type="radio" name="ai_default_provider" value="<?= $providerId ?>" <?= $this->aiDefaultProvider === $providerId ? 'checked' : '' ?> style="accent-color:#4338ca">
+                            <span class="text-sm font-bold text-gray-800"><?= htmlspecialchars($p['label']) ?></span>
+                            <?php if ($this->aiDefaultProvider === $providerId): ?>
+                                <span class="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700"><?= Text::_('COM_MURUGUARD_AI_DEFAULT_BADGE') ?></span>
+                            <?php endif; ?>
+                        </label>
+                        <div class="grid sm:grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1"><?= Text::_('COM_MURUGUARD_AI_API_KEY_LABEL') ?></label>
+                                <input type="password" name="ai_<?= $providerId ?>_key" value="<?= htmlspecialchars($p['key']) ?>"
+                                       placeholder="<?= Text::_('COM_MURUGUARD_AI_API_KEY_PLACEHOLDER') ?>"
+                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1"><?= Text::_('COM_MURUGUARD_AI_MODEL_LABEL') ?></label>
+                                <input type="text" name="ai_<?= $providerId ?>_model" value="<?= htmlspecialchars($p['model']) ?>"
+                                       placeholder="<?= htmlspecialchars($p['placeholder']) ?>"
+                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
+                            </div>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+
+                <p class="text-[11px] text-gray-400 mt-4"><?= Text::_('COM_MURUGUARD_AI_NOTE') ?></p>
+
+                <div class="mt-5">
+                    <button type="submit" class="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm">
+                        💾 <?= Text::_('COM_MURUGUARD_SAVE_SETTINGS_BTN') ?>
+                    </button>
+                </div>
+            </div>
+        </form>
+        <?php endif; ?>
     </div>
 
     <div class="muru-settings-tabpanel hidden" data-settings-panel="guide">
@@ -1136,74 +1206,18 @@ if (!empty($criticalVulns)):
     </div>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════════
-     SUPPORT PANEL -- hidden by default, toggled by the sidebar's
-     Support entry / the header Support widget. Same show/hide-vs-
-     #muru-main-content mechanism as the Settings panel above; the two
-     are mutually exclusive (opening one closes the other).
-     ══════════════════════════════════════════════════════════════ -->
-<div id="muru-support-panel" class="hidden">
-    <div class="flex items-center justify-between mb-6">
-        <h2 class="text-lg font-bold text-gray-800 flex items-center gap-2">💬 <?= Text::_('COM_MURUGUARD_SUPPORT_HEADING') ?></h2>
-        <button type="button" id="muru-support-back" class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors shadow-sm">
-            ← <?= Text::_('COM_MURUGUARD_SETTINGS_BACK') ?>
-        </button>
-    </div>
-
-    <div class="rounded-xl shadow-sm p-6 mb-5 flex flex-wrap items-center justify-between gap-4"
-         style="background:linear-gradient(135deg,#eef2ff 0%,#f5f3ff 55%,#fdf2f8 100%); border:1px solid #e5e7eb;">
-        <div>
-            <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2 mb-1">⚡ <?= Text::_('COM_MURUGUARD_PRO_PROMO_TITLE') ?></h3>
-            <p class="text-xs text-gray-600 max-w-xl"><?= Text::_('COM_MURUGUARD_PRO_PROMO_DESC') ?></p>
-        </div>
-        <div class="flex items-center gap-2 flex-shrink-0">
-            <a href="https://lyzerslab.com/joomla-products/muru-guard-security-scanner" target="_blank" rel="noopener"
-               class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm">
-                ⭐ <?= Text::_('COM_MURUGUARD_PRO_PROMO_UPGRADE_BTN') ?>
-            </a>
-            <a href="mailto:zkranao@gmail.com?subject=MuRu%20Guard%20Pro" target="_blank" rel="noopener"
-               class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors shadow-sm">
-                ✉️ <?= Text::_('COM_MURUGUARD_PRO_PROMO_CONTACT_BTN') ?>
-            </a>
-        </div>
-    </div>
-
-    <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-5">
-        <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2 mb-2">☕ <?= Text::_('COM_MURUGUARD_SUPPORT_FUND_TITLE') ?></h3>
-        <p class="text-xs text-gray-500 mb-4 max-w-xl"><?= Text::_('COM_MURUGUARD_SUPPORT_FUND_DESC') ?></p>
-
-        <div class="grid sm:grid-cols-2 gap-3">
-            <div class="border border-gray-200 rounded-xl p-4">
-                <div class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">💳 Payoneer</div>
-                <code class="text-sm font-mono text-gray-800 break-all"><?= htmlspecialchars(Text::_('COM_MURUGUARD_SUPPORT_PAYONEER_EMAIL')) ?></code>
-                <p class="text-[11px] text-gray-400 mt-1.5"><?= Text::_('COM_MURUGUARD_SUPPORT_PAYONEER_NOTE') ?></p>
-            </div>
-            <div class="border border-gray-200 rounded-xl p-4">
-                <div class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">📱 <?= Text::_('COM_MURUGUARD_SUPPORT_PAYPALZOOM_LABEL') ?></div>
-                <code class="text-sm font-mono text-gray-800 break-all"><?= htmlspecialchars(Text::_('COM_MURUGUARD_SUPPORT_PAYPALZOOM_NUMBER')) ?></code>
-                <p class="text-[11px] text-gray-400 mt-1.5"><?= Text::_('COM_MURUGUARD_SUPPORT_PAYPALZOOM_NOTE') ?></p>
-            </div>
-        </div>
-
-        <p class="text-[11px] text-gray-400 mt-4"><?= Text::_('COM_MURUGUARD_SUPPORT_CONFIRM_NOTE') ?></p>
-    </div>
-
-    <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6">
-        <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2 mb-3">✉️ <?= Text::_('COM_MURUGUARD_SUPPORT_CONTACT_TITLE') ?></h3>
-        <div class="flex flex-col gap-2 text-sm">
-            <a href="mailto:zkranao@gmail.com" target="_blank" rel="noopener" class="inline-flex items-center gap-2 text-indigo-600 hover:text-indigo-800">✉️ zkranao@gmail.com</a>
-            <a href="https://www.linkedin.com/in/zkranadevs/" target="_blank" rel="noopener" class="inline-flex items-center gap-2 text-indigo-600 hover:text-indigo-800">💼 <?= Text::_('COM_MURUGUARD_SUPPORT_LINKEDIN') ?></a>
-        </div>
-    </div>
-</div>
-
 <!-- Persistent header -- version badge + newsletter banner. Deliberately
      OUTSIDE #muru-main-content's scanned/not-scanned split below, so both
      show up regardless of whether a scan has ever been run yet.
      Confirmed real gap: a site that hadn't run its first scan saw neither
      the version number nor the newsletter banner at all. -->
 <?php if ($this->componentVersion !== ''): ?>
-<div id="muru-version-badge-wrap" class="flex justify-end mb-3">
+<div id="muru-version-badge-wrap" class="flex justify-between items-center mb-3">
+    <a href="https://github.com/zkrana/joomla-security-scanner/issues/new" target="_blank" rel="noopener"
+       class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+       title="<?= Text::_('COM_MURUGUARD_REPORT_ISSUE_TITLE') ?>">
+        <?= Text::_('COM_MURUGUARD_REPORT_ISSUE_LINK') ?>
+    </a>
     <a href="index.php?option=com_installer&view=update"
        class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-[#EF89EB] text-black hover:bg-[#e575e0] transition-colors"
        title="<?= Text::_('COM_MURUGUARD_CHECK_UPDATES_TITLE') ?>">
@@ -1211,37 +1225,6 @@ if (!empty($criticalVulns)):
         <span class="opacity-40">|</span>
         <?= Text::_('COM_MURUGUARD_CHECK_UPDATES_LINK') ?>
     </a>
-</div>
-<?php endif; ?>
-
-<?php if (!$this->newsletterBannerDismissed): ?>
-<!-- Newsletter opt-in banner -- optional, dismissible, never shown again
-     once dismissed or subscribed (see newsletter_banner_dismissed in
-     component params). Posts to the dashboard's public opt-in endpoint,
-     same table/flow as the main site's own newsletter signup. -->
-<div id="muru-newsletter-banner" class="anim-in flex flex-wrap items-center justify-between gap-3
-            bg-gradient-to-r from-indigo-50 to-violet-50 border border-indigo-200 rounded-xl px-5 py-3 mb-6 shadow-sm">
-    <div class="min-w-[220px]">
-        <p class="text-sm font-semibold text-gray-800">📬 <?= Text::_('COM_MURUGUARD_NEWSLETTER_TITLE') ?></p>
-        <p class="text-xs text-gray-500 mt-0.5"><?= Text::_('COM_MURUGUARD_NEWSLETTER_DESC') ?></p>
-    </div>
-    <div class="flex items-center gap-2 flex-wrap">
-        <form action="index.php?option=com_muruguard&task=scanner.subscribenewsletter" method="post" class="flex flex-wrap items-center gap-2" style="margin:0">
-            <?= HTMLHelper::_('form.token') ?>
-            <input type="text" name="newsletter_name" placeholder="<?= Text::_('COM_MURUGUARD_NEWSLETTER_NAME_PLACEHOLDER') ?>"
-                   class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-indigo-400 w-36">
-            <input type="email" name="newsletter_email" required placeholder="<?= Text::_('COM_MURUGUARD_NEWSLETTER_EMAIL_PLACEHOLDER') ?>"
-                   class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-indigo-400 w-52">
-            <button type="submit"
-                    class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-indigo-200
-                           rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700
-                           transition-colors shadow-sm hover:shadow whitespace-nowrap">
-                <?= Text::_('COM_MURUGUARD_NEWSLETTER_SUBSCRIBE_BTN') ?>
-            </button>
-        </form>
-        <button type="button" id="muru-newsletter-dismiss-btn" title="<?= Text::_('COM_MURUGUARD_NEWSLETTER_DISMISS') ?>" aria-label="<?= Text::_('COM_MURUGUARD_NEWSLETTER_DISMISS') ?>"
-                class="text-gray-400 hover:text-gray-600 hover:bg-white/60 rounded-lg p-1.5 transition-colors">✕</button>
-    </div>
 </div>
 <?php endif; ?>
 
@@ -1687,7 +1670,7 @@ function muru_mark_safe_button(string $category, string $identifier, array $reas
  *  only actually renders a preview when the file's CURRENT on-disk
  *  content still has a pattern this scanner can auto-repair -- it never
  *  shows a preview for something Clean can't actually fix. */
-function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $showCheckbox = true, ?array $registeredTemplates = null, bool $canEdit = false, int $rowIndex = 0): void {
+function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $showCheckbox = true, ?array $registeredTemplates = null, bool $canEdit = false, int $rowIndex = 0, bool $aiConfigured = false): void {
     $pathDir  = dirname($f['rel']);
     $pathBase = basename($f['rel']);
     $isProtectedEntry = \MuruguardHelper::isProtectedEntryPath($f['rel'], \MuruguardHelper::getSignatures(), $f['abs'] ?? null, $registeredTemplates);
@@ -1751,6 +1734,14 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
                     data-reasons="<?= $reasonsJson ?>">
                 🧬 <?= Text::_('COM_MURUGUARD_CODE_ISSUES_BTN') ?><?= count($reasonsList) > 1 ? ' (' . count($reasonsList) . ')' : '' ?><?= $diffHtml !== null ? ' + 🔍 ' . Text::_('COM_MURUGUARD_PREVIEW_LABEL') : '' ?>
             </button>
+            <?php if ($aiConfigured): ?>
+            <button type="button" class="muru-ask-ai-btn inline-flex items-center gap-1 px-2.5 py-1 mt-1.5 rounded-lg text-[11px] font-bold bg-violet-100 text-violet-700 hover:bg-violet-200 transition-colors"
+                    data-path="<?= htmlspecialchars($f['rel']) ?>"
+                    data-confidence="<?= htmlspecialchars($f['confidence']) ?>"
+                    data-reason-summary="<?= htmlspecialchars(\MuruguardHelper::shortReasonLabel($reasonsList)) ?>">
+                🤖 <?= Text::_('COM_MURUGUARD_ASK_AI_BTN') ?>
+            </button>
+            <?php endif; ?>
         </td>
         <td class="px-4 py-3 text-xs text-gray-500"><?= \MuruguardHelper::humanSize($f['size']) ?></td>
         <td class="px-4 py-3 text-xs text-gray-400"><?= $f['mtime'] ? date('Y-m-d H:i',$f['mtime']) : '—' ?></td>
@@ -1809,7 +1800,7 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-50" id="muru-files-tbody">
-                <?php $muruDeletableIdx = 0; foreach ($deletableFindings as $f): muru_render_file_row($f, false, $this->canDelete, $registeredTemplates, $this->canEdit, $muruDeletableIdx++); endforeach; ?>
+                <?php $muruDeletableIdx = 0; foreach ($deletableFindings as $f): muru_render_file_row($f, false, $this->canDelete, $registeredTemplates, $this->canEdit, $muruDeletableIdx++, $this->aiConfigured); endforeach; ?>
                 </tbody>
             </table>
         </div>
@@ -1875,7 +1866,7 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-50" id="muru-cleanable-tbody">
-                <?php $muruCleanableIdx = 0; foreach ($cleanableFindings as $f): muru_render_file_row($f, true, $this->canEdit, $registeredTemplates, $this->canEdit, $muruCleanableIdx++); endforeach; ?>
+                <?php $muruCleanableIdx = 0; foreach ($cleanableFindings as $f): muru_render_file_row($f, true, $this->canEdit, $registeredTemplates, $this->canEdit, $muruCleanableIdx++, $this->aiConfigured); endforeach; ?>
                 </tbody>
             </table>
         </div>
@@ -2534,61 +2525,20 @@ $severityBadge = [
     var settingsBack  = document.getElementById('muru-settings-back');
     var settingsPanel = document.getElementById('muru-settings-panel');
     var mainContent   = document.getElementById('muru-main-content');
-    var supportBtn    = document.getElementById('muru-support-btn');
-    var supportBack   = document.getElementById('muru-support-back');
-    var supportPanel  = document.getElementById('muru-support-panel');
-    // Both live OUTSIDE #muru-main-content (see their own comments further
-    // up), so opening Settings/Support never hid them the way the rest of
-    // the dashboard content does -- confirmed real: they kept showing up
-    // at the bottom of the Settings and Support panels, which makes no
-    // sense for a "welcome to the dashboard" banner or a scan-scoped
-    // version badge.
-    var newsletterBanner = document.getElementById('muru-newsletter-banner');
+    // Lives OUTSIDE #muru-main-content (see its own comment further up),
+    // so opening Settings never hid it the way the rest of the dashboard
+    // content does -- confirmed real: it kept showing up at the bottom of
+    // the Settings panel, which makes no sense for a scan-scoped version
+    // badge.
     var versionBadgeWrap = document.getElementById('muru-version-badge-wrap');
-    // Fetch-only dismiss, same no-reload reasoning as markfalsepositive()
-    // above (and reuses its same session form token, muruFpToken -- it's
-    // just Session::getFormToken(), valid for any POST on this page, not
-    // specific to the false-positive flow despite the variable name).
-    // Removing the banner from the DOM only on a CONFIRMED successful
-    // response is what makes this reliably match server state, instead
-    // of a form-POST-then-redirect round trip where whether the banner
-    // is actually gone depends on the NEXT full page load re-reading the
-    // freshly-saved param -- indistinguishable from "the click did
-    // nothing" if anything else on the page reloads around the same time.
-    var newsletterDismissBtn = document.getElementById('muru-newsletter-dismiss-btn');
-    if (newsletterDismissBtn) {
-        newsletterDismissBtn.addEventListener('click', function () {
-            newsletterDismissBtn.disabled = true;
-            var body = new URLSearchParams();
-            body.set(muruFpToken, '1');
-            fetch('index.php?option=com_muruguard&task=scanner.dismissnewsletter', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: body.toString(),
-            }).then(function (res) {
-                return res.json().catch(function () { return null; });
-            }).then(function (data) {
-                if (!data || data.ok !== true) {
-                    newsletterDismissBtn.disabled = false;
-                    return;
-                }
-                if (newsletterBanner) newsletterBanner.remove();
-            }).catch(function () {
-                newsletterDismissBtn.disabled = false;
-            });
-        });
-    }
-    // Settings and Support are mutually exclusive with each other AND
-    // with the dashboard content -- opening either closes the other one
-    // first, so at most one of the three is ever visible.
+    // Settings is mutually exclusive with the dashboard content --
+    // opening it closes the other one first, so at most one of the two
+    // is ever visible.
     function hideAllPanels() {
         if (mainContent) mainContent.classList.add('hidden');
         if (settingsPanel) settingsPanel.classList.add('hidden');
-        if (supportPanel) supportPanel.classList.add('hidden');
-        if (newsletterBanner) newsletterBanner.classList.add('hidden');
         if (versionBadgeWrap) versionBadgeWrap.classList.add('hidden');
         if (settingsBtn) { settingsBtn.classList.remove('muru-settings-open'); settingsBtn.setAttribute('aria-pressed', 'false'); }
-        if (supportBtn) { supportBtn.classList.remove('muru-settings-open'); supportBtn.setAttribute('aria-pressed', 'false'); }
     }
     function openSettings() {
         if (!settingsPanel) return;
@@ -2599,35 +2549,19 @@ $severityBadge = [
     function closeSettings() {
         hideAllPanels();
         if (mainContent) mainContent.classList.remove('hidden');
-        if (newsletterBanner) newsletterBanner.classList.remove('hidden');
-        if (versionBadgeWrap) versionBadgeWrap.classList.remove('hidden');
-    }
-    function openSupport() {
-        if (!supportPanel) return;
-        hideAllPanels();
-        supportPanel.classList.remove('hidden');
-        if (supportBtn) { supportBtn.classList.add('muru-settings-open'); supportBtn.setAttribute('aria-pressed', 'true'); }
-    }
-    function closeSupport() {
-        hideAllPanels();
-        if (mainContent) mainContent.classList.remove('hidden');
-        if (newsletterBanner) newsletterBanner.classList.remove('hidden');
         if (versionBadgeWrap) versionBadgeWrap.classList.remove('hidden');
     }
     if (settingsBtn) settingsBtn.addEventListener('click', openSettings);
     var cronBadge = document.getElementById('muru-cron-status-badge');
     if (cronBadge) cronBadge.addEventListener('click', openSettings);
     if (settingsBack) settingsBack.addEventListener('click', closeSettings);
-    if (supportBtn) supportBtn.addEventListener('click', openSupport);
-    if (supportBack) supportBack.addEventListener('click', closeSupport);
 
     // Land on the right panel when arriving from the left sidebar's
-    // Dashboard/Settings/Support submenu (see MuruguardViewScanner::
-    // addSubmenu()) -- server-rendered, so this only ever matches what
-    // Joomla itself already decided the active panel is.
+    // Dashboard/Settings submenu (see MuruguardViewScanner::addSubmenu())
+    // -- server-rendered, so this only ever matches what Joomla itself
+    // already decided the active panel is.
     var initialPanel = <?= json_encode($this->activePanel) ?>;
     if (initialPanel === 'settings') { openSettings(); }
-    else if (initialPanel === 'support') { openSupport(); }
 
     // ── Settings sub-tabs (Site Protection / IP Access List / Scheduled
     //    Scanning / Pro / Setup Guide) ──────────────────────────────
@@ -2754,6 +2688,9 @@ $severityBadge = [
         var issuesBtn = e.target.closest('.muru-code-issues-btn');
         if (issuesBtn) { muruOpenCodeModal(issuesBtn); return; }
 
+        var askAiBtn = e.target.closest('.muru-ask-ai-btn');
+        if (askAiBtn) { muruAskAi(askAiBtn); return; }
+
         var copyBtn = e.target.closest('.muru-copy-btn');
         if (copyBtn) { muruCopyPath(copyBtn); return; }
 
@@ -2867,6 +2804,58 @@ function muruCloseCodeModal() {
     var modal = document.getElementById('muru-modal');
     modal.classList.remove('muru-show');
     document.body.style.overflow = '';
+}
+
+/**
+ * Reuses the same #muru-modal shell as Code Issues above -- opens it
+ * immediately with a loading state, then fills in the AI's reply (or an
+ * error) once the fetch resolves. Only ever sends the path, confidence,
+ * and the reason text already shown on this row -- never the file's own
+ * content (see askai()'s own docblock server-side).
+ */
+function muruAskAi(btn) {
+    var modal  = document.getElementById('muru-modal');
+    var badge  = document.getElementById('muru-modal-badge');
+    var pathEl = document.getElementById('muru-modal-path');
+    var bodyEl = document.getElementById('muru-modal-body');
+
+    var path = btn.getAttribute('data-path') || '';
+    badge.textContent = '🤖 AI Check';
+    badge.className = 'medium';
+    pathEl.textContent = path;
+    bodyEl.innerHTML = '<p class="text-sm text-gray-500">Asking AI…</p>';
+    modal.classList.add('muru-show');
+    document.body.style.overflow = 'hidden';
+
+    var body = new URLSearchParams();
+    body.set(muruFpToken, '1');
+    body.set('path', path);
+    body.set('confidence', btn.getAttribute('data-confidence') || 'medium');
+    body.set('reason_summary', btn.getAttribute('data-reason-summary') || '');
+
+    fetch('index.php?option=com_muruguard&task=scanner.askai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString(),
+    }).then(function (res) {
+        return res.json().catch(function () { return null; });
+    }).then(function (data) {
+        if (!data || data.ok !== true) {
+            var err = (data && data.error) ? data.error : 'Something went wrong asking AI.';
+            bodyEl.innerHTML = '<p class="text-sm text-red-600">' + err.replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }) + '</p>';
+            return;
+        }
+        // data.text comes straight from a third-party AI provider's
+        // response -- never trusted as HTML, always inserted as plain
+        // text via a text node, never innerHTML.
+        bodyEl.textContent = '';
+        var p = document.createElement('p');
+        p.className = 'text-sm text-gray-700 whitespace-pre-line';
+        p.textContent = data.text;
+        bodyEl.appendChild(p);
+    }).catch(function () {
+        bodyEl.innerHTML = '<p class="text-sm text-red-600">Could not reach the server.</p>';
+    });
 }
 
 function muruCopyPath(btn) {

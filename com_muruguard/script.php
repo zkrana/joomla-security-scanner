@@ -114,11 +114,11 @@ class com_muruguardInstallerScript
      * Components that DO show one there (SP Page Builder's own Settings/
      * Pages/... submenu is the example this was modelled on) have
      * multiple #__menu rows sharing that same parent_id. This adds
-     * "Dashboard", "MuRu Settings", and "Support" as children of the
-     * auto-created "MuRu Guard" item -- Dashboard is listed explicitly
-     * (not left implicit via the parent's own link) since that's what's
-     * actually expected here, matching every other multi-item Joomla
-     * admin submenu.
+     * "Dashboard" and "MuRu Settings" as children of the auto-created
+     * "MuRu Guard" item -- Dashboard is listed explicitly (not left
+     * implicit via the parent's own link) since that's what's actually
+     * expected here, matching every other multi-item Joomla admin
+     * submenu.
      *
      * Uses Joomla's own Table\Menu class -- #__menu is a nested-set tree
      * (lft/rgt columns shared by EVERY admin menu item on the whole
@@ -128,9 +128,9 @@ class com_muruguardInstallerScript
      * is checked PER ITEM (by exact link, not just "does the parent have
      * any children at all") so a later update can add a newly-introduced
      * item -- like Dashboard here, added after some sites already had
-     * Settings/Support from an earlier release -- without duplicating
-     * rows that already exist, and never touches any menu item other
-     * than this component's own children.
+     * Settings from an earlier release -- without duplicating rows that
+     * already exist, and never touches any menu item other than this
+     * component's own children.
      */
     protected function addAdminSubmenuItems(): void
     {
@@ -213,8 +213,21 @@ class com_muruguardInstallerScript
             $children = [
                 ['title' => 'Dashboard',     'link' => 'index.php?option=com_muruguard&view_panel=dashboard', 'position' => 'first-child'],
                 ['title' => 'MuRu Settings', 'link' => 'index.php?option=com_muruguard&view_panel=settings',  'position' => 'last-child'],
-                ['title' => 'Support',       'link' => 'index.php?option=com_muruguard&view_panel=support',   'position' => 'last-child'],
             ];
+
+            // The "Support" child item (and the view_panel=support page it
+            // pointed at) was removed -- an existing install updating from
+            // an earlier release still has that row, which would now be a
+            // dead link (the template no longer renders that panel at
+            // all). Clean it up unconditionally rather than leaving it as
+            // permanent clutter for anyone who installed it before this
+            // version.
+            $db->setQuery(
+                $db->getQuery(true)
+                    ->delete($db->quoteName('#__menu'))
+                    ->where($db->quoteName('parent_id') . ' = ' . (int) $parentMenu->id)
+                    ->where($db->quoteName('link') . ' = ' . $db->quote('index.php?option=com_muruguard&view_panel=support'))
+            )->execute();
 
             // The per-item idempotency check below only creates a row if
             // one doesn't already exist -- it never renames an existing

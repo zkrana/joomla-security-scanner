@@ -466,6 +466,111 @@ public function scan()
     }
 
     /**
+     * Saves the three AI provider configs (API key + model name each)
+     * and which one is the default -- used only by the per-row "Ask AI"
+     * action on a scan finding (see MuruguardHelper::askAi()). A key/
+     * model field left BLANK on submit clears that provider's stored
+     * value (unlike a masked-secret field elsewhere might treat blank as
+     * "leave unchanged") -- this form always shows the real current
+     * value already (same as cron_token elsewhere on this page), so
+     * there's no ambiguity to preserve.
+     */
+    public function saveaisettings()
+    {
+        Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
+        \MuruguardHelper::requireAdminAccess();
+
+        $app   = Factory::getApplication();
+        $input = $app->input;
+
+        $openaiKey   = trim($input->getString('ai_openai_key', ''));
+        $openaiModel = trim($input->getString('ai_openai_model', ''));
+        $claudeKey   = trim($input->getString('ai_claude_key', ''));
+        $claudeModel = trim($input->getString('ai_claude_model', ''));
+        $geminiKey   = trim($input->getString('ai_gemini_key', ''));
+        $geminiModel = trim($input->getString('ai_gemini_model', ''));
+        $defaultProvider = $input->getCmd('ai_default_provider', '');
+
+        $hasProvider = [
+            'openai' => $openaiKey !== '' && $openaiModel !== '',
+            'claude' => $claudeKey !== '' && $claudeModel !== '',
+            'gemini' => $geminiKey !== '' && $geminiModel !== '',
+        ];
+        if ($defaultProvider !== '' && (!isset($hasProvider[$defaultProvider]) || !$hasProvider[$defaultProvider])) {
+            $app->enqueueMessage(Text::_('COM_MURUGUARD_AI_NEEDS_KEY_AND_MODEL'), 'error');
+            $this->setRedirect($this->settingsRedirectUrl());
+            return;
+        }
+
+        /** @var MuruguardModelScanner $model */
+        $model = $this->getModel('Scanner');
+        $model->saveAiSettings([
+            'ai_openai_key'   => $openaiKey,
+            'ai_openai_model' => $openaiModel,
+            'ai_claude_key'   => $claudeKey,
+            'ai_claude_model' => $claudeModel,
+            'ai_gemini_key'   => $geminiKey,
+            'ai_gemini_model' => $geminiModel,
+            'ai_default_provider' => $defaultProvider,
+        ]);
+
+        $app->enqueueMessage(Text::_('COM_MURUGUARD_SETTINGS_SAVED_MSG'), 'message');
+        $this->setRedirect($this->settingsRedirectUrl());
+    }
+
+    /**
+     * Runs the configured default AI provider against one scan finding's
+     * already-computed detection reasoning -- never the file's own raw
+     * content, only the path (for context) and the reason text already
+     * shown on that row (see the "Ask AI" button in default.php), so
+     * this never sends a customer's actual source code off to a third-
+     * party API without them separately choosing to paste it themselves.
+     * Fetch-only, same JSON-response reasoning as markfalsepositive().
+     */
+    public function askai()
+    {
+        Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
+        \MuruguardHelper::requireEditAccess();
+
+        $app   = Factory::getApplication();
+        $input = $app->input;
+
+        $path          = $input->getString('path', '');
+        $confidence    = $input->getCmd('confidence', 'medium');
+        $reasonSummary = $input->getString('reason_summary', '', 'raw');
+
+        $cfgParams = ComponentHelper::getParams('com_muruguard');
+        $provider  = (string) $cfgParams->get('ai_default_provider', '');
+
+        $providerKeys = [
+            'openai' => ['ai_openai_key', 'ai_openai_model'],
+            'claude' => ['ai_claude_key', 'ai_claude_model'],
+            'gemini' => ['ai_gemini_key', 'ai_gemini_model'],
+        ];
+
+        header('Content-Type: application/json; charset=utf-8');
+
+        if (!isset($providerKeys[$provider])) {
+            echo json_encode(['ok' => false, 'error' => Text::_('COM_MURUGUARD_AI_NOT_CONFIGURED')]);
+            $app->close();
+        }
+
+        [$keyParam, $modelParam] = $providerKeys[$provider];
+        $apiKey = (string) $cfgParams->get($keyParam, '');
+        $model  = (string) $cfgParams->get($modelParam, '');
+
+        $prompt = "You are assisting an admin reviewing a Joomla security scanner's finding.\n"
+            . "File: {$path}\n"
+            . "Confidence: {$confidence}\n"
+            . "Detected reason: {$reasonSummary}\n\n"
+            . "In 3-5 short sentences: assess whether this looks like a genuine security threat or a likely false positive, and suggest what the admin should do next. Be direct and practical.";
+
+        $result = \MuruguardHelper::askAi($provider, $apiKey, $model, $prompt);
+        echo json_encode($result);
+        $app->close();
+    }
+
+    /**
      * Every Settings-saving action redirects here instead of a bare
      * 'index.php?option=com_muruguard' -- that used to drop the admin
      * back on the Dashboard panel entirely, and even when it did include
@@ -479,7 +584,7 @@ public function scan()
     private function settingsRedirectUrl(): string
     {
         $tab = Factory::getApplication()->input->getCmd('settings_tab', '');
-        $validTabs = ['protection', 'iplist', 'scheduled', 'guide'];
+        $validTabs = ['protection', 'iplist', 'scheduled', 'ai', 'guide'];
         $tab = in_array($tab, $validTabs, true) ? $tab : 'protection';
         return 'index.php?option=com_muruguard&view_panel=settings&settings_tab=' . $tab;
     }
@@ -775,53 +880,6 @@ public function scan()
         // click, same class of bug as savesettings()/saveshieldsettings()
         // before they were fixed to use settingsRedirectUrl().
         $this->setRedirect($this->settingsRedirectUrl());
-    }
-
-    /** Submits the dashboard's "get security alerts & updates" banner. Edit access only -- same bar as changing any other Settings-adjacent option. */
-    public function subscribenewsletter()
-    {
-        Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
-        \MuruguardHelper::requireEditAccess();
-
-        $app   = Factory::getApplication();
-        $name  = $app->input->getString('newsletter_name', '');
-        $email = $app->input->getString('newsletter_email', '');
-
-        /** @var MuruguardModelScanner $model */
-        $model = $this->getModel('Scanner');
-        if ($model->subscribeToNewsletter($name, $email)) {
-            $app->enqueueMessage(Text::_('COM_MURUGUARD_NEWSLETTER_SUBSCRIBED_MSG'), 'message');
-        } else {
-            $app->enqueueMessage(Text::_('COM_MURUGUARD_NEWSLETTER_FAILED_MSG'), 'error');
-        }
-
-        $this->setRedirect('index.php?option=com_muruguard');
-    }
-
-    /**
-     * Dismisses the newsletter banner without subscribing -- never shown
-     * again on this site. Only ever called via fetch() from the X
-     * button's JS (see default.php), same reasoning as
-     * markfalsepositive(): a real form-POST-then-redirect round trip
-     * means whether the banner is actually gone depends on the NEXT
-     * page load re-reading the freshly-saved param correctly, and if
-     * anything else on the page reloads/re-renders around the same
-     * moment the click just looks like it silently did nothing. A small
-     * JSON response lets the button remove its own banner from the DOM
-     * immediately, with zero navigation at all.
-     */
-    public function dismissnewsletter()
-    {
-        Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
-        \MuruguardHelper::requireEditAccess();
-
-        /** @var MuruguardModelScanner $model */
-        $model = $this->getModel('Scanner');
-        $model->dismissNewsletterBanner();
-
-        header('Content-Type: application/json; charset=utf-8');
-        echo json_encode(['ok' => true]);
-        Factory::getApplication()->close();
     }
 
     /** Clears the Protection Log. Requires the same admin-level permission as changing settings, since it's destroying a security audit trail, not just tidying a scan result. */

@@ -1,13 +1,3 @@
-[![Get MuRu Guard Pro — 3 months free, no payment needed, register to redeem](docs/assets/pro-promo-banner.svg)](https://lyzerslab.com/dashboard/register)
-
-🎁 **[Register free to get MuRu Guard Pro — 3 months, no payment needed →](https://lyzerslab.com/dashboard/register)**
-
-> You review every finding yourself and decide what's real. **[MuRu Guard Pro](https://lyzerslab.com/joomla-products/muru-guard-security-scanner)** adds an AI check that verifies confirmed threats and safely deletes them for you, with false positives filtered out first.
-
-[![Get MuRu Compliance Auditor Pro — 3 months free, no payment needed, register to redeem](https://lyzerslab.com/uploads/muru-compliance-auditor-promo-banner.svg)](https://lyzerslab.com/dashboard/register)
-
-🧭 **Also from us: [MuRu Compliance Auditor](https://lyzerslab.com/joomla-products/muru-compliance-auditor)** — audits your Joomla site against the European Accessibility Act, ADA, and WCAG 2.2. Free edition does a whole-site scan, in-editor linter, and an Accessibility Statement generator; Pro adds scheduled monitoring, dated PDF audit reports, EN 301 549 / VPAT export, and a privacy & consent audit.
-
 # 🛡️ MuRu Guard Security Scanner (Joomla Extension)
 
 ![Downloads](https://img.shields.io/github/downloads/zkrana/joomla-security-scanner/total)
