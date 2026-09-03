@@ -483,32 +483,18 @@ public function scan()
         $app   = Factory::getApplication();
         $input = $app->input;
 
-        $openaiKey   = trim($input->getString('ai_openai_key', ''));
-        $openaiModel = trim($input->getString('ai_openai_model', ''));
-        $claudeKey   = trim($input->getString('ai_claude_key', ''));
-        $claudeModel = trim($input->getString('ai_claude_model', ''));
+        // Gemini only -- the one AI provider this edition offers. Saving
+        // a key and model IS the configuration; ai_default_provider is
+        // set automatically rather than needing a separate "pick a
+        // default" step (which only ever made sense when there was more
+        // than one provider to choose between).
         $geminiKey   = trim($input->getString('ai_gemini_key', ''));
         $geminiModel = trim($input->getString('ai_gemini_model', ''));
-        $defaultProvider = $input->getCmd('ai_default_provider', '');
-
-        $hasProvider = [
-            'openai' => $openaiKey !== '' && $openaiModel !== '',
-            'claude' => $claudeKey !== '' && $claudeModel !== '',
-            'gemini' => $geminiKey !== '' && $geminiModel !== '',
-        ];
-        if ($defaultProvider !== '' && (!isset($hasProvider[$defaultProvider]) || !$hasProvider[$defaultProvider])) {
-            $app->enqueueMessage(Text::_('COM_MURUGUARD_AI_NEEDS_KEY_AND_MODEL'), 'error');
-            $this->setRedirect($this->settingsRedirectUrl());
-            return;
-        }
+        $defaultProvider = ($geminiKey !== '' && $geminiModel !== '') ? 'gemini' : '';
 
         /** @var MuruguardModelScanner $model */
         $model = $this->getModel('Scanner');
         $model->saveAiSettings([
-            'ai_openai_key'   => $openaiKey,
-            'ai_openai_model' => $openaiModel,
-            'ai_claude_key'   => $claudeKey,
-            'ai_claude_model' => $claudeModel,
             'ai_gemini_key'   => $geminiKey,
             'ai_gemini_model' => $geminiModel,
             'ai_default_provider' => $defaultProvider,
@@ -542,22 +528,19 @@ public function scan()
         $cfgParams = ComponentHelper::getParams('com_muruguard');
         $provider  = (string) $cfgParams->get('ai_default_provider', '');
 
-        $providerKeys = [
-            'openai' => ['ai_openai_key', 'ai_openai_model'],
-            'claude' => ['ai_claude_key', 'ai_claude_model'],
-            'gemini' => ['ai_gemini_key', 'ai_gemini_model'],
-        ];
-
         header('Content-Type: application/json; charset=utf-8');
 
-        if (!isset($providerKeys[$provider])) {
+        // Gemini is the only provider this edition offers -- see
+        // saveaisettings() above, which is the only place
+        // ai_default_provider is ever written, and only ever writes
+        // 'gemini' or ''.
+        if ($provider !== 'gemini') {
             echo json_encode(['ok' => false, 'error' => Text::_('COM_MURUGUARD_AI_NOT_CONFIGURED')]);
             $app->close();
         }
 
-        [$keyParam, $modelParam] = $providerKeys[$provider];
-        $apiKey = (string) $cfgParams->get($keyParam, '');
-        $model  = (string) $cfgParams->get($modelParam, '');
+        $apiKey = (string) $cfgParams->get('ai_gemini_key', '');
+        $model  = (string) $cfgParams->get('ai_gemini_model', '');
 
         $prompt = "You are assisting an admin reviewing a Joomla security scanner's finding.\n"
             . "File: {$path}\n"
@@ -565,7 +548,7 @@ public function scan()
             . "Detected reason: {$reasonSummary}\n\n"
             . "In 3-5 short sentences: assess whether this looks like a genuine security threat or a likely false positive, and suggest what the admin should do next. Be direct and practical.";
 
-        $result = \MuruguardHelper::askAi($provider, $apiKey, $model, $prompt);
+        $result = \MuruguardHelper::askAi('gemini', $apiKey, $model, $prompt);
         echo json_encode($result);
         $app->close();
     }

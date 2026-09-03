@@ -172,6 +172,27 @@ class MuruguardHelper
                 // suspicious on its own -- this is a named, exact-filename
                 // IOC for this specific campaign, not a generic pattern.
                 '/^nxtest\.json$|^nxproof\.php\.json$/i',
+                // Confirmed in a real sample: a full malicious .htaccess
+                // (the PHP-reactivation-via-.json-handler payload -- see
+                // checkMaliciousHtaccessHandler()) dropped under the
+                // filename ".htaccess.json" rather than plain ".htaccess"
+                // -- slips past the exact-basename check
+                // checkMaliciousHtaccessHandler()'s own call site uses,
+                // AND isn't an executable extension itself, so nothing
+                // else in this scanner was catching it. Flagged purely on
+                // this exact filename -- no legitimate Joomla file is
+                // ever named this way.
+                '/^\.htaccess\.json$/i',
+                // .nojekyll is a marker file GitHub Pages/Jekyll reads to
+                // skip its own build step -- it has no meaning to Joomla
+                // or any web server config at all, and no legitimate
+                // Joomla install has any reason to contain one. Seen
+                // dropped alongside real webshells as an incidental
+                // artifact of whatever deployment tooling/dotfile-bundle
+                // an attacker's dropper script carries. Low severity
+                // (it's inert on its own, never executable) but worth
+                // surfacing as an anomaly.
+                '/^\.nojekyll$/i',
             ],
 
             'ROOT_SUSPICIOUS_FILENAME_REGEXES' => [
@@ -266,6 +287,64 @@ class MuruguardHelper
                     'severity' => 'medium', 'why' => 'A file whose entire content is just opcache_reset() is functionally harmless by itself, but matches a known dropper self-cleanup helper used to force PHP to immediately pick up newly-written malicious files elsewhere.'],
                 'phpkoru_encoder' => ['re' => '/\[' . 'PHP' . 'koru_Code\]|' . 'php' . 'koru' . '\.com|Aponkral\s+' . 'PHP' . 'koru/i',
                     'severity' => 'high', 'why' => 'Matches the signature markers of "' . 'PHP' . 'koru' . '", a third-party PHP obfuscation/encoding service used to hide webshells and backdoors behind chained eval(base64_decode()) calls and a __halt_compiler()-appended encoded payload block that the file reads back out of its own source at runtime. No legitimate Joomla core or extension code is ever processed through this tool.'],
+                // Confirmed in a real sample: a bare, unauthenticated file-
+                // upload webshell, its own banner text printed via
+                // php_uname() + a raw HTML form. The banner string alone
+                // is a unique, always-malicious fingerprint -- no
+                // legitimate Joomla code prints this. Built from split
+                // fragments (see phpkoru_encoder above for the same
+                // technique) so this scanner's own source doesn't contain
+                // the literal contiguous banner text and trip its own
+                // detection while explaining it.
+                'x_mrg3p5_uploader_banner' => ['re' => '/' . 'Uploader' . '\s+by\s+' . 'X-MrG3P5' . '/i',
+                    'severity' => 'high', 'why' => 'Contains the exact banner text of a known bare file-upload webshell ("' . 'Uploader' . ' by ' . 'X-MrG3P5' . '") -- no legitimate use.'],
+                // Confirmed in a real sample: a command-execution +
+                // upload webshell wrapping all output in a distinctive
+                // two-part envelope (open marker + base64 + close marker),
+                // with a second, differently-worded "ping" response when
+                // called with no parameters. Both marker strings are
+                // unique enough (an invented protocol, not real words)
+                // that matching either one alone is already conclusive --
+                // no legitimate PHP code produces this exact wrapper
+                // format.
+                'rxst_rxend_shell_wrapper' => ['re' => '/' . 'RXST' . ':.{0,20}:' . 'RXEND' . '|' . 'MATHOK' . ':\d+/i',
+                    'severity' => 'high', 'why' => 'Contains the exact output-wrapper marker (' . '"RXST' . ':..' . '.:RXEND"' . ' or "' . 'MATHOK' . ':<n>") used by a known command-execution/upload webshell family -- no legitimate use.'],
+                // Generic defacement/hack calling-card marker -- confirmed
+                // in real samples: a bare text file, random filename,
+                // whose entire content is just an attacker's handle
+                // following one of these verbs, dropped purely as proof-
+                // of-compromise with no payload at all. Same wording as
+                // DEFACEMENT_PATTERNS (used for DATABASE/template
+                // content) but as its own content signature so a plain
+                // dropped FILE with this text is also caught, not just a
+                // defaced template row.
+                //
+                // Deliberately does NOT include the plain word "owned" --
+                // confirmed real false positive: SP Page Builder's own
+                // core file (addons/form_builder/site.php) contains the
+                // completely ordinary code comment "gap between the
+                // Previous/Next buttons is owned by the parent row",
+                // which matched instantly ("owned by" is common,
+                // legitimate English -- unlike "pwned by"/"h4cked", it's
+                // nothing like a defacement marker on its own). The
+                // leetspeak variant "0wned" is kept -- that spelling
+                // doesn't occur in ordinary prose or code.
+                'hacked_by_marker_file' => ['re' => '/\b(?:hacked|h4cked|0wned|pwned|defaced)\s+by\s+[\w.\-]{2,40}\b/i',
+                    'severity' => 'high', 'why' => 'File content is a "hacked by <name>" (or 0wned/pwned/defaced-by) calling-card marker -- dropped purely as proof of compromise, not a functional payload, but conclusive evidence the site was breached.'],
+                // Generic bare-upload-shell shape, for a future variant
+                // that isn't caught by filename (the .php.json double-
+                // extension rule) or a specific banner string: the
+                // client's OWN submitted filename ($_FILES[...]['name'])
+                // used directly and unsanitized as the write destination,
+                // via either move_uploaded_file() or a plain copy() of
+                // the temp upload -- no extension allowlist, no directory
+                // restriction, no filename sanitization. A legitimate
+                // upload handler (Joomla core's own included) always
+                // generates or sanitizes the destination name; using the
+                // attacker-controlled name verbatim is the defining
+                // trait of a bare uploader shell.
+                'bare_upload_shell' => ['re' => '/(?:move_uploaded_file|copy)\s*\(\s*\$_FILES\[[^\]]+\]\[[\'"]tmp_name[\'"]\]\s*,\s*\$_FILES\[[^\]]+\]\[[\'"]name[\'"]\]\s*\)/i',
+                    'severity' => 'medium', 'why' => 'Saves an uploaded file using the CLIENT-SUBMITTED filename verbatim as the destination, with no extension check, sanitization, or directory restriction visible around the call -- the defining shape of a bare, unauthenticated upload webshell. Flagged for review since a poorly-written but legitimate upload handler could theoretically look similar.'],
             ],
 
             // Checked against a LIVE incoming request (GET/POST/URI/User-Agent)
@@ -1510,15 +1589,17 @@ class MuruguardHelper
     }
 
     /**
-     * Calls whichever of the three AI providers the admin configured
-     * under Settings > AI, with a single-turn prompt, and returns its
-     * text reply. Used only by the per-row "Ask AI" action on a scan
-     * finding -- $provider/$apiKey/$model come straight from that
-     * Settings tab (see MuruguardViewScanner::$aiDefaultProvider and
-     * friends), never guessed or hardcoded. Same file_get_contents() +
-     * stream_context_create() pattern as every other outbound call in
-     * this file (see getVulnerableExtensions(), getIpGeolocation()) --
-     * no cURL dependency assumed.
+     * Calls Gemini -- the one AI provider this edition offers (see
+     * Settings > AI) -- with a single-turn prompt, and returns its text
+     * reply. Used only by the per-row "Ask AI" action on a scan finding
+     * -- $apiKey/$model come straight from that Settings tab, never
+     * guessed or hardcoded. Same file_get_contents() + stream_context_
+     * create() pattern as every other outbound call in this file (see
+     * getVulnerableExtensions(), getIpGeolocation()) -- no cURL
+     * dependency assumed. $provider is kept as a parameter (rather than
+     * dropped) purely so this signature doesn't need to change again if
+     * a second provider is ever reintroduced; only 'gemini' is
+     * implemented today.
      *
      * Returns ['ok' => true, 'text' => string] on success, or
      * ['ok' => false, 'error' => string] -- the error is a short,
@@ -1537,28 +1618,7 @@ class MuruguardHelper
         }
 
         try {
-            if ($provider === 'openai') {
-                $url  = 'https://api.openai.com/v1/chat/completions';
-                $body = json_encode([
-                    'model'    => $model,
-                    'messages' => [['role' => 'user', 'content' => $prompt]],
-                ]);
-                $headers = "Content-Type: application/json\r\nAuthorization: Bearer {$apiKey}\r\n";
-                $extract = function (array $data) {
-                    return $data['choices'][0]['message']['content'] ?? null;
-                };
-            } elseif ($provider === 'claude') {
-                $url  = 'https://api.anthropic.com/v1/messages';
-                $body = json_encode([
-                    'model'      => $model,
-                    'max_tokens' => 1024,
-                    'messages'   => [['role' => 'user', 'content' => $prompt]],
-                ]);
-                $headers = "Content-Type: application/json\r\nx-api-key: {$apiKey}\r\nanthropic-version: 2023-06-01\r\n";
-                $extract = function (array $data) {
-                    return $data['content'][0]['text'] ?? null;
-                };
-            } elseif ($provider === 'gemini') {
+            if ($provider === 'gemini') {
                 $url  = 'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($model) . ':generateContent?key=' . rawurlencode($apiKey);
                 $body = json_encode([
                     'contents' => [['parts' => [['text' => $prompt]]]],
@@ -2941,7 +3001,16 @@ class MuruguardHelper
         // there's no second dot to split on. Included here so a .profile
         // dropped as a disguised backdoor (see checkRootLevelDotfile())
         // actually gets its content inspected, not silently skipped.
-        $textLikeExts = ['php', 'phtml', 'php3', 'php4', 'php5', 'php7', 'phar', 'pht', 'js', 'html', 'htm', 'txt', 'css', 'xml', 'gif', 'png', 'jpg', 'jpeg', 'profile', 'htaccess'];
+        // 'json' added so a webshell/marker dropped with a plain .json
+        // extension (not just the .php.json double-extension case, which
+        // was already caught by SUSPICIOUS_FILENAME_REGEXES on filename
+        // alone) still gets its CONTENT inspected too -- real confirmed
+        // samples: bare "hacked by <name>" defacement markers, and the
+        // malicious .htaccess.json payload (see checkMaliciousHtaccess
+        // Handler()). Legitimate JSON (language files, manifests,
+        // composer.json, ...) never matches any signature below, so this
+        // adds coverage with no new false-positive surface.
+        $textLikeExts = ['php', 'phtml', 'php3', 'php4', 'php5', 'php7', 'phar', 'pht', 'js', 'html', 'htm', 'txt', 'css', 'xml', 'json', 'gif', 'png', 'jpg', 'jpeg', 'profile', 'htaccess'];
         if (!in_array($ext, $textLikeExts, true) && $ext !== '') return false;
         $contents = @file_get_contents($path);
         if ($contents === false || $contents === '') return false;

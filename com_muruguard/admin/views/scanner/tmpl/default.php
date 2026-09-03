@@ -659,40 +659,31 @@ if (!empty($criticalVulns)):
                 <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2 mb-1">🤖 <?= Text::_('COM_MURUGUARD_AI_HEADING') ?></h3>
                 <p class="text-xs text-gray-500 mb-5 max-w-2xl"><?= Text::_('COM_MURUGUARD_AI_DESC') ?></p>
 
-                <?php
-                $aiProviders = [
-                    'openai' => ['label' => 'ChatGPT (OpenAI)', 'key' => $this->aiOpenaiKey, 'model' => $this->aiOpenaiModel, 'placeholder' => 'e.g. gpt-4o-mini'],
-                    'claude' => ['label' => 'Claude (Anthropic)', 'key' => $this->aiClaudeKey, 'model' => $this->aiClaudeModel, 'placeholder' => 'e.g. claude-3-5-haiku-20241022'],
-                    'gemini' => ['label' => 'Gemini (Google)', 'key' => $this->aiGeminiKey, 'model' => $this->aiGeminiModel, 'placeholder' => 'e.g. gemini-2.0-flash'],
-                ];
-                ?>
-
-                <div class="space-y-4">
-                    <?php foreach ($aiProviders as $providerId => $p): ?>
-                    <div class="border border-gray-200 rounded-xl p-4">
-                        <label class="flex items-center gap-2 mb-3 cursor-pointer w-fit">
-                            <input type="radio" name="ai_default_provider" value="<?= $providerId ?>" <?= $this->aiDefaultProvider === $providerId ? 'checked' : '' ?> style="accent-color:#4338ca">
-                            <span class="text-sm font-bold text-gray-800"><?= htmlspecialchars($p['label']) ?></span>
-                            <?php if ($this->aiDefaultProvider === $providerId): ?>
-                                <span class="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700"><?= Text::_('COM_MURUGUARD_AI_DEFAULT_BADGE') ?></span>
-                            <?php endif; ?>
-                        </label>
-                        <div class="grid sm:grid-cols-2 gap-3">
-                            <div>
-                                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1"><?= Text::_('COM_MURUGUARD_AI_API_KEY_LABEL') ?></label>
-                                <input type="password" name="ai_<?= $providerId ?>_key" value="<?= htmlspecialchars($p['key']) ?>"
-                                       placeholder="<?= Text::_('COM_MURUGUARD_AI_API_KEY_PLACEHOLDER') ?>"
-                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
-                            </div>
-                            <div>
-                                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1"><?= Text::_('COM_MURUGUARD_AI_MODEL_LABEL') ?></label>
-                                <input type="text" name="ai_<?= $providerId ?>_model" value="<?= htmlspecialchars($p['model']) ?>"
-                                       placeholder="<?= htmlspecialchars($p['placeholder']) ?>"
-                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
-                            </div>
+                <!-- Gemini only -- the one AI provider this edition offers, so
+                     there's nothing to "pick as default": saving a key and
+                     model here IS the configuration, no separate radio/
+                     default-provider step needed. -->
+                <div class="border border-gray-200 rounded-xl p-4">
+                    <div class="flex items-center gap-2 mb-3">
+                        <span class="text-sm font-bold text-gray-800">✨ Gemini (Google)</span>
+                        <?php if ($this->aiGeminiKey !== '' && $this->aiGeminiModel !== ''): ?>
+                            <span class="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700"><?= Text::_('COM_MURUGUARD_AI_DEFAULT_BADGE') ?></span>
+                        <?php endif; ?>
+                    </div>
+                    <div class="grid sm:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1"><?= Text::_('COM_MURUGUARD_AI_API_KEY_LABEL') ?></label>
+                            <input type="password" name="ai_gemini_key" value="<?= htmlspecialchars($this->aiGeminiKey) ?>"
+                                   placeholder="<?= Text::_('COM_MURUGUARD_AI_API_KEY_PLACEHOLDER') ?>"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1"><?= Text::_('COM_MURUGUARD_AI_MODEL_LABEL') ?></label>
+                            <input type="text" name="ai_gemini_model" value="<?= htmlspecialchars($this->aiGeminiModel) ?>"
+                                   placeholder="e.g. gemini-2.5-flash"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
                         </div>
                     </div>
-                    <?php endforeach; ?>
                 </div>
 
                 <p class="text-[11px] text-gray-400 mt-4"><?= Text::_('COM_MURUGUARD_AI_NOTE') ?></p>
@@ -1670,7 +1661,7 @@ function muru_mark_safe_button(string $category, string $identifier, array $reas
  *  only actually renders a preview when the file's CURRENT on-disk
  *  content still has a pattern this scanner can auto-repair -- it never
  *  shows a preview for something Clean can't actually fix. */
-function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $showCheckbox = true, ?array $registeredTemplates = null, bool $canEdit = false, int $rowIndex = 0, bool $aiConfigured = false): void {
+function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $showCheckbox = true, ?array $registeredTemplates = null, bool $canEdit = false, int $rowIndex = 0): void {
     $pathDir  = dirname($f['rel']);
     $pathBase = basename($f['rel']);
     $isProtectedEntry = \MuruguardHelper::isProtectedEntryPath($f['rel'], \MuruguardHelper::getSignatures(), $f['abs'] ?? null, $registeredTemplates);
@@ -1734,14 +1725,12 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
                     data-reasons="<?= $reasonsJson ?>">
                 🧬 <?= Text::_('COM_MURUGUARD_CODE_ISSUES_BTN') ?><?= count($reasonsList) > 1 ? ' (' . count($reasonsList) . ')' : '' ?><?= $diffHtml !== null ? ' + 🔍 ' . Text::_('COM_MURUGUARD_PREVIEW_LABEL') : '' ?>
             </button>
-            <?php if ($aiConfigured): ?>
             <button type="button" class="muru-ask-ai-btn inline-flex items-center gap-1 px-2.5 py-1 mt-1.5 rounded-lg text-[11px] font-bold bg-violet-100 text-violet-700 hover:bg-violet-200 transition-colors"
                     data-path="<?= htmlspecialchars($f['rel']) ?>"
                     data-confidence="<?= htmlspecialchars($f['confidence']) ?>"
                     data-reason-summary="<?= htmlspecialchars(\MuruguardHelper::shortReasonLabel($reasonsList)) ?>">
                 🤖 <?= Text::_('COM_MURUGUARD_ASK_AI_BTN') ?>
             </button>
-            <?php endif; ?>
         </td>
         <td class="px-4 py-3 text-xs text-gray-500"><?= \MuruguardHelper::humanSize($f['size']) ?></td>
         <td class="px-4 py-3 text-xs text-gray-400"><?= $f['mtime'] ? date('Y-m-d H:i',$f['mtime']) : '—' ?></td>
@@ -1800,7 +1789,7 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-50" id="muru-files-tbody">
-                <?php $muruDeletableIdx = 0; foreach ($deletableFindings as $f): muru_render_file_row($f, false, $this->canDelete, $registeredTemplates, $this->canEdit, $muruDeletableIdx++, $this->aiConfigured); endforeach; ?>
+                <?php $muruDeletableIdx = 0; foreach ($deletableFindings as $f): muru_render_file_row($f, false, $this->canDelete, $registeredTemplates, $this->canEdit, $muruDeletableIdx++); endforeach; ?>
                 </tbody>
             </table>
         </div>
@@ -1866,7 +1855,7 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-50" id="muru-cleanable-tbody">
-                <?php $muruCleanableIdx = 0; foreach ($cleanableFindings as $f): muru_render_file_row($f, true, $this->canEdit, $registeredTemplates, $this->canEdit, $muruCleanableIdx++, $this->aiConfigured); endforeach; ?>
+                <?php $muruCleanableIdx = 0; foreach ($cleanableFindings as $f): muru_render_file_row($f, true, $this->canEdit, $registeredTemplates, $this->canEdit, $muruCleanableIdx++); endforeach; ?>
                 </tbody>
             </table>
         </div>
@@ -2257,6 +2246,15 @@ $severityBadge = [
 </div><!-- #muruguard-root -->
 
 <script>
+// Declared here, OUTSIDE the IIFE below, so both the "Mark as Safe"
+// handlers inside it AND muruAskAi() further down this same file (a
+// separate top-level function, outside the IIFE's scope) can both see
+// it -- a `var` declared inside a function is scoped to that function
+// only, never just "the rest of this <script> tag". Was previously
+// declared inside the IIFE, which left muruAskAi() unable to see it at
+// all (ReferenceError: muruFpToken is not defined) the moment Ask AI
+// was actually clicked.
+var muruFpToken = <?= json_encode(\Joomla\CMS\Session\Session::getFormToken()) ?>;
 (function () {
     // Re-parent fixed-position elements to <body> so they truly cover the
     // viewport / anchor to the real top-right corner. Joomla's admin
@@ -2357,8 +2355,8 @@ $severityBadge = [
     // visibly navigates the browser -- reads as "getting kicked back to
     // a different page" even when the tab/state is correctly restored
     // afterward. No reload means nothing that can look like a redirect,
-    // full stop.
-    var muruFpToken = <?= json_encode(\Joomla\CMS\Session\Session::getFormToken()) ?>;
+    // full stop. (muruFpToken itself is declared once, outside this IIFE
+    // -- see the top of this <script> tag.)
 
     // Mirrors muru_section_open()'s PHP markup exactly (count>0 = red
     // pill with the number, count=0 = green checkmark) so a live

@@ -69,10 +69,6 @@ class MuruguardViewScanner extends HtmlView
     // pre-filled with the real value, same admin-only trust boundary as
     // the rest of this page -- rather than inventing a separate masked-
     // secret system this codebase doesn't otherwise have.
-    public string $aiOpenaiKey = '';
-    public string $aiOpenaiModel = '';
-    public string $aiClaudeKey = '';
-    public string $aiClaudeModel = '';
     public string $aiGeminiKey = '';
     public string $aiGeminiModel = '';
     public string $aiDefaultProvider = '';
@@ -170,20 +166,15 @@ class MuruguardViewScanner extends HtmlView
         // AI Integration -- see MuruguardHelper::askAi() for how these are
         // actually used (only ever server-side, on the per-row "Ask AI"
         // action).
-        $this->aiOpenaiKey      = (string) $cfgParams->get('ai_openai_key', '');
-        $this->aiOpenaiModel    = (string) $cfgParams->get('ai_openai_model', '');
-        $this->aiClaudeKey      = (string) $cfgParams->get('ai_claude_key', '');
-        $this->aiClaudeModel    = (string) $cfgParams->get('ai_claude_model', '');
         $this->aiGeminiKey      = (string) $cfgParams->get('ai_gemini_key', '');
         $this->aiGeminiModel    = (string) $cfgParams->get('ai_gemini_model', '');
+        // Gemini is the only provider this edition offers, so
+        // ai_default_provider is only ever 'gemini' or '' (see
+        // MuruguardControllerScanner::saveaisettings()) -- kept as a
+        // stored param rather than derived here purely so askai()'s
+        // check stays a simple, cheap param read on every "Ask AI" click.
         $this->aiDefaultProvider = (string) $cfgParams->get('ai_default_provider', '');
-        if ($this->aiDefaultProvider === 'openai') {
-            $this->aiConfigured = $this->aiOpenaiKey !== '' && $this->aiOpenaiModel !== '';
-        } elseif ($this->aiDefaultProvider === 'claude') {
-            $this->aiConfigured = $this->aiClaudeKey !== '' && $this->aiClaudeModel !== '';
-        } elseif ($this->aiDefaultProvider === 'gemini') {
-            $this->aiConfigured = $this->aiGeminiKey !== '' && $this->aiGeminiModel !== '';
-        }
+        $this->aiConfigured = $this->aiDefaultProvider === 'gemini' && $this->aiGeminiKey !== '' && $this->aiGeminiModel !== '';
 
         $this->backendAuthEnabled     = (bool) $cfgParams->get('backend_auth_enabled', 0);
         $this->backendAuthUsername    = (string) $cfgParams->get('backend_auth_username', '');

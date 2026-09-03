@@ -8,6 +8,21 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [3.4.0] - 2026-09-03
+
+### Added
+
+* **New malware detections**, confirmed against real dropped samples: a bare file-upload webshell's exact banner text ("Uploader by X-MrG3P5"), a command-execution/upload webshell's distinctive output-wrapper markers, generic "hacked by &lt;name&gt;" defacement calling-card text files, the `.htaccess.json` filename (a malicious PHP-reactivation `.htaccess` payload dropped under a `.json`-suffixed name to dodge the exact-`.htaccess`-basename check), and the out-of-place `.nojekyll` marker file. Plain `.json` files are now content-scanned too (previously skipped unless double-extensioned like `.php.json`).
+
+### Changed
+
+* **AI Integration simplified to Gemini only.** Settings > AI now offers just Google Gemini (free API key from Google AI Studio) instead of a three-provider (ChatGPT/Claude/Gemini) picker. Gemini is used automatically the moment a key and model are saved -- no separate "set as default" step. The 🤖 Ask AI button now shows on every Suspicious/Cleanable Files row unconditionally (previously hidden until a provider was configured) and explains how to set one up if clicked before adding a key.
+
+### Fixed
+
+* **False positive: the "hacked by" defacement-marker signature matched ordinary English.** Confirmed on a real site: SP Page Builder's own core file (`addons/form_builder/site.php`) contains the harmless code comment "gap ... is owned by the parent row", which the new signature's "owned by" branch matched instantly. Removed the bare word "owned" from that signature (kept the leetspeak variant "0wned", which doesn't occur in ordinary prose) -- "hacked by"/"pwned by"/"0wned by"/"defaced by" all still catch real defacement markers.
+* **"Ask AI" throwing `ReferenceError: muruFpToken is not defined` on click.** A pre-existing bug, unrelated to the changes above: the CSRF token variable was declared inside a different JavaScript closure than the one the Ask AI button's click handler runs in, so clicking it always failed once the click handler actually ran, on every version that shipped this feature.
+
 ## [3.2.3] - 2026-09-02
 
 ### Added
