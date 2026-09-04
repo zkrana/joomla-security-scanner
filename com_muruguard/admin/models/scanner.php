@@ -649,6 +649,213 @@ class MuruguardModelScanner extends BaseDatabaseModel
         $this->cleanCache('_system');
     }
 
+    /** Toggles plg_system_muruguardshield's Admin Lockdown gate (see checkAdminLockdownGate() in that plugin -- blocks the extension installer and new-backend-user creation while on). */
+    public function saveAdminLockdownSetting(bool $enabled): void
+    {
+        $this->saveHardeningParams(['harden_lock_admin_actions' => $enabled ? 1 : 0]);
+    }
+
+    /** Returns the ids of Joomla's own "Super Users"/"Super User" group(s). */
+    private function getSuperUserGroupIds(): array
+    {
+        $db = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->select('id')
+            ->from($db->quoteName('#__usergroups'))
+            ->where($db->quoteName('title') . ' IN (' . $db->quote('Super Users') . ',' . $db->quote('Super User') . ')');
+        $db->setQuery($query);
+        return array_map('intval', $db->loadColumn() ?: []);
+    }
+
+    /**
+     * Takes (or refreshes) the Protected User snapshot -- every current
+     * Super User's sensitive fields, kept solely so
+     * checkAndRevertProtectedUsers() has a known-good baseline to revert
+     * to. Refreshing wipes the 'alerted' dedup map too -- an admin who
+     * just reviewed and accepted the current state shouldn't immediately
+     * get a fresh alert next check for a difference against the OLD
+     * baseline that no longer exists.
+     */
+    public function snapshotProtectedUsers(): array
+    {
+        $db = $this->getDatabase();
+        $groupIds = $this->getSuperUserGroupIds();
+        $users = [];
+        if (!empty($groupIds)) {
+            $query = $db->getQuery(true)
+                ->select('DISTINCT u.id, u.username, u.email, u.password, u.block')
+                ->from($db->quoteName('#__users', 'u'))
+                ->join('INNER', $db->quoteName('#__user_usergroup_map', 'm') . ' ON ' . $db->quoteName('m.user_id') . ' = ' . $db->quoteName('u.id'))
+                ->where($db->quoteName('m.group_id') . ' IN (' . implode(',', $groupIds) . ')');
+            $db->setQuery($query);
+            foreach ($db->loadAssocList() ?: [] as $row) {
+                $users[(string) $row['id']] = [
+                    'username' => $row['username'],
+                    'email'    => $row['email'],
+                    'password' => $row['password'],
+                    'block'    => (int) $row['block'],
+                ];
+            }
+        }
+        $state = ['takenAt' => time(), 'users' => $users, 'alerted' => []];
+        MuruguardHelper::saveProtectedUsersState($state);
+        return ['count' => count($users), 'takenAt' => $state['takenAt']];
+    }
+
+    /** For the Settings panel -- how many users are currently protected and when the snapshot was last taken/refreshed. */
+    public function getProtectedUsersStatus(): array
+    {
+        $state = MuruguardHelper::loadProtectedUsersState();
+        if ($state === null) return ['hasSnapshot' => false, 'count' => 0, 'takenAt' => null];
+        return ['hasSnapshot' => true, 'count' => count($state['users'] ?? []), 'takenAt' => $state['takenAt'] ?? null];
+    }
+
+    /**
+     * Compares every snapshotted Super User's CURRENT row against the
+     * baseline and reacts. Blocked/demoted -- AUTO-REVERTED (neither is
+     * something the legitimate owner of an ACTIVE account plausibly does
+     * to themselves). Email/password changed, or the account deleted --
+     * logged/alerted ONLY, never auto-reverted (all three are things a
+     * real admin plausibly does through completely normal means, and
+     * re-materializing a deleted row risks reusing an id Joomla has
+     * since handed to someone else). Each unresolved issue is only ever
+     * alerted on the FIRST check that observes it -- see the 'alerted'
+     * dedup map -- so a scheduled-check cron doesn't re-email the same
+     * still-open problem every single run.
+     *
+     * @return string[] Human-readable descriptions of every NEWLY-seen issue this run (empty if nothing new).
+     */
+    public function checkAndRevertProtectedUsers(): array
+    {
+        $state = MuruguardHelper::loadProtectedUsersState();
+        if ($state === null || empty($state['users'])) return [];
+
+        $db = $this->getDatabase();
+        $superUserGroupIds = $this->getSuperUserGroupIds();
+        $alerted = $state['alerted'] ?? [];
+        $newIssues = [];
+        $stateChanged = false;
+
+        foreach ($state['users'] as $id => $baseline) {
+            $id = (int) $id;
+
+            $query = $db->getQuery(true)
+                ->select('id, username, email, password, block')
+                ->from($db->quoteName('#__users'))
+                ->where($db->quoteName('id') . ' = ' . $id);
+            $db->setQuery($query);
+            $current = $db->loadAssoc();
+
+            $label = $baseline['username'] . ' (id ' . $id . ')';
+
+            if ($current === null) {
+                $key = "{$id}:deleted";
+                if (($alerted[$key] ?? null) !== '1') {
+                    $newIssues[] = "Protected Super User {$label} was DELETED. Not automatically restored -- review immediately.";
+                    $alerted[$key] = '1';
+                    $stateChanged = true;
+                }
+                continue;
+            }
+
+            if (isset($alerted["{$id}:deleted"])) {
+                unset($alerted["{$id}:deleted"]);
+                $stateChanged = true;
+            }
+
+            if ((int) $current['block'] !== (int) $baseline['block'] && (int) $current['block'] === 1) {
+                $key = "{$id}:block";
+                if (($alerted[$key] ?? null) !== '1') {
+                    $newIssues[] = "Protected Super User {$label} was BLOCKED -- automatically unblocked.";
+                    $alerted[$key] = '1';
+                    $stateChanged = true;
+                }
+                try {
+                    $upd = $db->getQuery(true)->update($db->quoteName('#__users'))
+                        ->set($db->quoteName('block') . ' = 0')
+                        ->where($db->quoteName('id') . ' = ' . $id);
+                    $db->setQuery($upd)->execute();
+                } catch (\Throwable $e) { /* non-fatal -- still alerted above */ }
+            } elseif ((int) $current['block'] === (int) $baseline['block'] && isset($alerted["{$id}:block"])) {
+                unset($alerted["{$id}:block"]);
+                $stateChanged = true;
+            }
+
+            if (!empty($superUserGroupIds)) {
+                $gq = $db->getQuery(true)
+                    ->select('COUNT(*)')
+                    ->from($db->quoteName('#__user_usergroup_map'))
+                    ->where($db->quoteName('user_id') . ' = ' . $id)
+                    ->where($db->quoteName('group_id') . ' IN (' . implode(',', $superUserGroupIds) . ')');
+                $db->setQuery($gq);
+                $stillSuperUser = ((int) $db->loadResult()) > 0;
+
+                if (!$stillSuperUser) {
+                    $key = "{$id}:demoted";
+                    if (($alerted[$key] ?? null) !== '1') {
+                        $newIssues[] = "Protected Super User {$label} was REMOVED from the Super Users group -- automatically restored.";
+                        $alerted[$key] = '1';
+                        $stateChanged = true;
+                    }
+                    try {
+                        $insQuery = $db->getQuery(true)
+                            ->insert($db->quoteName('#__user_usergroup_map'))
+                            ->columns([$db->quoteName('user_id'), $db->quoteName('group_id')])
+                            ->values($id . ', ' . (int) $superUserGroupIds[0]);
+                        $db->setQuery($insQuery)->execute();
+                    } catch (\Throwable $e) { /* non-fatal -- still alerted above, and a duplicate-key failure here means it's actually fine */ }
+                } elseif (isset($alerted["{$id}:demoted"])) {
+                    unset($alerted["{$id}:demoted"]);
+                    $stateChanged = true;
+                }
+            }
+
+            if ($current['email'] !== $baseline['email']) {
+                $key = "{$id}:email";
+                if (($alerted[$key] ?? null) !== $current['email']) {
+                    $newIssues[] = "Protected Super User {$label} email changed from \"{$baseline['email']}\" to \"{$current['email']}\" -- NOT auto-reverted (could be a legitimate change), review immediately.";
+                    $alerted[$key] = $current['email'];
+                    $stateChanged = true;
+                }
+            } elseif (isset($alerted["{$id}:email"])) {
+                unset($alerted["{$id}:email"]);
+                $stateChanged = true;
+            }
+
+            if ($current['password'] !== $baseline['password']) {
+                $key = "{$id}:password";
+                if (($alerted[$key] ?? null) !== $current['password']) {
+                    $newIssues[] = "Protected Super User {$label} password changed -- NOT auto-reverted (could be a legitimate reset), review immediately.";
+                    $alerted[$key] = $current['password'];
+                    $stateChanged = true;
+                }
+            } elseif (isset($alerted["{$id}:password"])) {
+                unset($alerted["{$id}:password"]);
+                $stateChanged = true;
+            }
+        }
+
+        if ($stateChanged) {
+            $state['alerted'] = $alerted;
+            MuruguardHelper::saveProtectedUsersState($state);
+        }
+
+        return $newIssues;
+    }
+
+    /**
+     * Toggles Protected User Snapshot & Auto-Revert. Turning it ON for
+     * the first time (no snapshot exists yet) takes an initial snapshot
+     * immediately.
+     */
+    public function saveProtectedUsersSetting(bool $enabled): void
+    {
+        $this->saveHardeningParams(['protected_users_enabled' => $enabled ? 1 : 0]);
+        if ($enabled && !MuruguardHelper::loadProtectedUsersState()) {
+            $this->snapshotProtectedUsers();
+        }
+    }
+
     /**
      * MuRu Shield Hardening: activates the /administrator HTTP Basic
      * Auth gate. Only ever persists username + a bcrypt hash + an

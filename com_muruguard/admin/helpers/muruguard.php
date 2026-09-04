@@ -883,6 +883,129 @@ class MuruguardHelper
     }
 
     /**
+     * Protected-user snapshot storage -- same stub-protected-.php pattern
+     * as every other data file here, except this one is more sensitive
+     * than any other: it holds password HASHES for every currently-
+     * designated Super User, kept solely to detect and revert tampering.
+     * Never exported, never rendered in any view, never logged in full.
+     */
+    private static function protectedUsersStateFilePath(): string
+    {
+        return JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/protected-users-state.php';
+    }
+
+    /** Reads back the protected-user snapshot written by saveProtectedUsersState(), or null if none has ever been taken. */
+    public static function loadProtectedUsersState(): ?array
+    {
+        $path = self::protectedUsersStateFilePath();
+        if (!is_file($path)) return null;
+        $decoded = json_decode(self::stripDataFileStub((string) @file_get_contents($path)), true);
+        return is_array($decoded) ? $decoded : null;
+    }
+
+    /** Overwrites the protected-user snapshot state file. */
+    public static function saveProtectedUsersState(array $state): void
+    {
+        @file_put_contents(self::protectedUsersStateFilePath(), self::dataFileStubPrefix() . json_encode($state));
+    }
+
+    /**
+     * "Test a request" -- runs a hypothetical URL/IP/User-Agent through
+     * every request-level Shield check THIS EDITION ACTUALLY HAS, using
+     * the exact same pure functions the live gate calls, so it can never
+     * quietly drift out of sync with real traffic. Never writes to the
+     * attack log, never blocks anything, never mutates stored state.
+     *
+     * Scoped to this edition's real feature set -- Referrer Blocking and
+     * the Spamhaus public blocklist don't exist in Free (no
+     * isKnownBadReferrer()/isIpOnPublicBlocklist() here), so unlike
+     * Pro's version this never claims to test either.
+     *
+     * A supplied IP does still trigger real GeoIP lookups and reads real
+     * logged brute-force attempts for that IP -- disclosed per-check via
+     * each result's 'detail' text.
+     *
+     * @return array<int, array{label:string, tested:bool, verdict:string, detail:string}>
+     */
+    public static function testFirewallRequest(string $testUrl, string $userAgent, string $ip, $params): array
+    {
+        $checks = [];
+        $ip = trim($ip);
+
+        $urlParts = @parse_url(trim($testUrl)) ?: [];
+        $uri = ($urlParts['path'] ?? '/') . (isset($urlParts['query']) ? '?' . $urlParts['query'] : '');
+        $get = [];
+        if (isset($urlParts['query'])) parse_str($urlParts['query'], $get);
+
+        if ($ip !== '') {
+            $ipListResult = self::checkIpList($ip);
+            if ($ipListResult === 'allow') {
+                $checks[] = ['label' => 'Manual IP Allow/Block List', 'tested' => true, 'verdict' => 'allow-override', 'detail' => 'This IP is on the manual allow list -- every other check is bypassed entirely for it, so none of them were run.'];
+                return $checks;
+            }
+            if ($ipListResult === 'block') {
+                $checks[] = ['label' => 'Manual IP Allow/Block List', 'tested' => true, 'verdict' => 'block', 'detail' => 'This IP is on the manual block list -- blocked immediately, ahead of every other check, so none of them were run.'];
+                return $checks;
+            }
+            $checks[] = ['label' => 'Manual IP Allow/Block List', 'tested' => true, 'verdict' => 'no-match', 'detail' => 'No manual allow/block entry for this IP.'];
+        } else {
+            $checks[] = ['label' => 'Manual IP Allow/Block List', 'tested' => false, 'verdict' => 'not-tested', 'detail' => 'Supply a test IP to check this.'];
+        }
+
+        if (!$ip) {
+            $checks[] = ['label' => 'Brute-Force Login Block', 'tested' => false, 'verdict' => 'not-tested', 'detail' => 'Supply a test IP to check this.'];
+        } elseif (!$params->get('shield_block_bruteforce', 0)) {
+            $checks[] = ['label' => 'Brute-Force Login Block', 'tested' => false, 'verdict' => 'not-tested', 'detail' => 'This check is currently turned off.'];
+        } else {
+            $threshold = (int) $params->get('shield_bruteforce_threshold', 5);
+            $window = (int) $params->get('shield_bruteforce_window', 15);
+            $exceeded = self::isBruteForceThresholdExceeded($ip, $threshold, $window);
+            $checks[] = [
+                'label' => 'Brute-Force Login Block', 'tested' => true, 'verdict' => $exceeded ? 'block' : 'allow',
+                'detail' => $exceeded
+                    ? "This IP has real logged failed backend logins over the {$threshold} threshold within the last {$window} minutes right now -- would be blocked."
+                    : "Based on real logged attempts (not simulated): this IP has not exceeded {$threshold} failed backend logins within {$window} minutes.",
+            ];
+        }
+
+        if (!$ip) {
+            $checks[] = ['label' => 'Country Block', 'tested' => false, 'verdict' => 'not-tested', 'detail' => 'Supply a test IP to check this.'];
+        } elseif (!$params->get('shield_block_countries', 0)) {
+            $checks[] = ['label' => 'Country Block', 'tested' => false, 'verdict' => 'not-tested', 'detail' => 'This check is currently turned off.'];
+        } else {
+            $blockedCountries = (string) $params->get('shield_blocked_countries', '');
+            $country = self::lookupCountryForIp($ip);
+            $blocked = $blockedCountries !== '' && self::isCountryBlocked($country, $blockedCountries);
+            $checks[] = [
+                'label' => 'Country Block', 'tested' => true, 'verdict' => $blocked ? 'block' : 'allow',
+                'detail' => $country === null
+                    ? 'Could not resolve a country for this IP (private/reserved range, or the lookup failed) -- never blocks on a failed lookup.'
+                    : ($blocked ? "Resolved to {$country}, which is on the blocked-countries list." : 'Resolved to ' . ($country ?: 'an unrecognized country') . ', not on the blocked-countries list.'),
+            ];
+        }
+
+        $match = self::scanRequestForAttack($get, [], $uri, $userAgent);
+        if ($match === null) {
+            $checks[] = ['label' => 'Request Pattern / User-Agent Matching', 'tested' => true, 'verdict' => 'allow', 'detail' => 'No known attack pattern found in this URL/query or User-Agent.'];
+        } else {
+            $isUaRule = $match['rule'] === 'known_scanner_user_agent';
+            $toggleOn = $isUaRule ? (bool) $params->get('shield_block_useragents', 0) : (bool) $params->get('shield_block_patterns', 0);
+            $wouldBlock = $match['block_eligible'] && $toggleOn;
+            $suffix = !$toggleOn
+                ? ' (' . ($isUaRule ? 'User-Agent Blocking' : 'Pattern Blocking') . ' is currently off, so this would only be logged, not blocked)'
+                : (!$match['block_eligible'] ? ' (this signature is log-only by design, never blocking)' : ' -- would be blocked');
+            $checks[] = [
+                'label' => $isUaRule ? 'User-Agent Blocking' : 'Request Pattern Matching',
+                'tested' => true,
+                'verdict' => $wouldBlock ? 'block' : 'flagged-not-blocking',
+                'detail' => $match['why'] . ' Matched: "' . $match['matched_text'] . '".' . $suffix,
+            ];
+        }
+
+        return $checks;
+    }
+
+    /**
      * One-time upgrade migration: com_muruguard versions before this fix
      * stored this same data as a plain, unprotected *.json file at
      * $legacyPath. If that file still exists and the new stub-protected

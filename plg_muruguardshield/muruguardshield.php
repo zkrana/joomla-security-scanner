@@ -23,6 +23,7 @@ defined('_JEXEC') or die;
 use Joomla\CMS\Factory;
 use Joomla\CMS\Plugin\CMSPlugin;
 use Joomla\CMS\Component\ComponentHelper;
+use Joomla\CMS\Language\Text;
 
 class plgSystemMuruguardshield extends CMSPlugin
 {
@@ -42,6 +43,11 @@ class plgSystemMuruguardshield extends CMSPlugin
         }
         try {
             $this->runShieldCheck();
+        } catch (\Throwable $e) {
+            // Fail open, silently -- see class docblock.
+        }
+        try {
+            $this->checkAdminLockdownGate();
         } catch (\Throwable $e) {
             // Fail open, silently -- see class docblock.
         }
@@ -401,6 +407,84 @@ class plgSystemMuruguardshield extends CMSPlugin
         if ($shouldBlock) {
             $this->rejectRequest();
         }
+    }
+
+    /**
+     * Admin Lockdown -- an explicit opt-in toggle (off by default, same
+     * as every other Shield gate) that blocks the two backend actions an
+     * attacker who already has SOME admin access (a compromised session,
+     * a webshell reached far enough to forge a request) would use to
+     * turn that foothold into something durable: installing a brand new
+     * malicious extension, or creating a fresh Super User account of
+     * their own that survives a cleanup of whatever got them in.
+     *
+     * Deliberately does NOT touch com_joomlaupdate (Joomla's own core-
+     * version updater) -- blocking that would actively work against
+     * site security by preventing a genuine core patch from landing.
+     * "Disable the installer" here means the *extension* installer only.
+     *
+     * Deliberately does NOT touch editing an existing user (including
+     * the logged-in admin's own profile) -- only the CREATE path. Uses
+     * the exact same `id` request var Joomla's own FormController::
+     * save() reads to decide new-vs-edit (confirmed against the
+     * installed Joomla core source, libraries/src/MVC/Controller/
+     * FormController.php -- $recordId = $this->input->getInt($urlVar)
+     * where $urlVar defaults to the table's key name, 'id' for
+     * #__users -- NOT $_POST['jform']['id'], which FormController
+     * overwrites with this same value before it ever reaches the model).
+     */
+    private function checkAdminLockdownGate(): void
+    {
+        $app = Factory::getApplication();
+        if (!$app->isClient('administrator')) return;
+
+        $params = ComponentHelper::getParams('com_muruguard');
+        if (!$params->get('harden_lock_admin_actions', 0)) return;
+
+        $input = $app->input;
+        $option = $input->getCmd('option', '');
+
+        $blockInstaller = ($option === 'com_installer');
+
+        $blockNewUser = false;
+        if ($option === 'com_users') {
+            $task = $input->getCmd('task', '');
+            if (in_array($task, ['user.save', 'user.apply', 'user.save2copy'], true)) {
+                $blockNewUser = ($input->getInt('id', 0) === 0);
+            }
+        }
+
+        if (!$blockInstaller && !$blockNewUser) return;
+
+        $ip = \MuruguardHelper::resolveClientIp($input->server, (string) $params->get('shield_trusted_proxy_header', ''));
+        \MuruguardHelper::recordAttackLogEntry([
+            'type'       => 'admin_lockdown',
+            'ip'         => $ip,
+            'time'       => time(),
+            'blocked'    => true,
+            'rule'       => $blockInstaller ? 'installer_locked' : 'new_user_locked',
+            'severity'   => 'medium',
+            'why'        => $blockInstaller
+                ? 'The Joomla extension installer is locked down (MuRu Guard Settings > Site Protection > Admin Lockdown).'
+                : 'Creating a new backend user is locked down (MuRu Guard Settings > Site Protection > Admin Lockdown).',
+            'matched'    => $option . ($blockNewUser ? '&task=' . $input->getCmd('task', '') : ''),
+            'uri'        => mb_substr((string) $input->server->get('REQUEST_URI', '', 'string'), 0, 300),
+            'user_agent' => mb_substr((string) $input->server->get('HTTP_USER_AGENT', '', 'string'), 0, 200),
+        ]);
+
+        // A logged-in admin hitting this is far more likely to be the
+        // site owner themselves (forgot the toggle was on) than an
+        // actual attacker, since it only fires once inside an already-
+        // authenticated backend session -- so this explains itself and
+        // sends them back, rather than the bare 403 the public-facing
+        // gates above use against real unauthenticated attack traffic.
+        $app->enqueueMessage(
+            $blockInstaller
+                ? Text::_('PLG_SYSTEM_MURUGUARDSHIELD_LOCKDOWN_INSTALLER_MSG')
+                : Text::_('PLG_SYSTEM_MURUGUARDSHIELD_LOCKDOWN_NEWUSER_MSG'),
+            'warning'
+        );
+        $app->redirect('index.php');
     }
 
     /** Plain-text 403 and an immediate, unconditional stop -- deliberately not the site's own error template, which could itself trigger more application code to run. */

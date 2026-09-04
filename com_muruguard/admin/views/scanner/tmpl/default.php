@@ -879,6 +879,91 @@ if (!empty($criticalVulns)):
         </form>
         <?php endif; ?>
 
+        <!-- Admin Lockdown -->
+        <form action="<?= Route::_('index.php?option=com_muruguard&task=scanner.saveadminlockdown') ?>" method="post">
+            <?= HTMLHelper::_('form.token') ?>
+            <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-5">
+                <div class="flex items-center justify-between gap-4">
+                    <div>
+                        <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">🔒 <?= Text::_('COM_MURUGUARD_ADMIN_LOCKDOWN_LABEL') ?></h3>
+                        <p class="text-xs text-gray-500 mt-1 max-w-xl"><?= Text::_('COM_MURUGUARD_ADMIN_LOCKDOWN_DESC') ?></p>
+                    </div>
+                    <label class="muru-switch flex-shrink-0">
+                        <input type="checkbox" name="harden_lock_admin_actions" value="1" <?= $this->hardenLockAdminActions ? 'checked' : '' ?>>
+                        <span class="muru-switch-track"><span class="muru-switch-thumb"></span></span>
+                    </label>
+                </div>
+                <button type="submit" class="inline-flex items-center gap-1.5 px-5 py-2 mt-4 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm">
+                    💾 <?= Text::_('COM_MURUGUARD_SAVE_SETTINGS_BTN') ?>
+                </button>
+            </div>
+        </form>
+
+        <!-- Protected User Snapshot & Auto-Revert -->
+        <form action="<?= Route::_('index.php?option=com_muruguard&task=scanner.saveprotectedusers') ?>" method="post">
+            <?= HTMLHelper::_('form.token') ?>
+            <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-5">
+                <div class="flex items-center justify-between gap-4">
+                    <div>
+                        <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">👤 <?= Text::_('COM_MURUGUARD_PROTECTED_USERS_LABEL') ?></h3>
+                        <p class="text-xs text-gray-500 mt-1 max-w-xl"><?= Text::_('COM_MURUGUARD_PROTECTED_USERS_DESC') ?></p>
+                        <p class="text-xs text-gray-400 mt-1">
+                            <?= $this->protectedUsersStatus['hasSnapshot']
+                                ? Text::sprintf('COM_MURUGUARD_PROTECTED_USERS_STATUS_SNAPSHOT', $this->protectedUsersStatus['count'], HTMLHelper::_('date', (int) $this->protectedUsersStatus['takenAt'], Text::_('DATE_FORMAT_LC5')))
+                                : Text::_('COM_MURUGUARD_PROTECTED_USERS_STATUS_NONE') ?>
+                        </p>
+                    </div>
+                    <label class="muru-switch flex-shrink-0">
+                        <input type="checkbox" name="protected_users_enabled" value="1" <?= $this->protectedUsersEnabled ? 'checked' : '' ?>>
+                        <span class="muru-switch-track"><span class="muru-switch-thumb"></span></span>
+                    </label>
+                </div>
+                <button type="submit" class="inline-flex items-center gap-1.5 px-5 py-2 mt-4 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm">
+                    💾 <?= Text::_('COM_MURUGUARD_SAVE_SETTINGS_BTN') ?>
+                </button>
+            </div>
+        </form>
+        <form action="<?= Route::_('index.php?option=com_muruguard&task=scanner.snapshotprotectedusers') ?>" method="post" class="-mt-3 mb-5">
+            <?= HTMLHelper::_('form.token') ?>
+            <button type="submit"
+                    class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-gray-300 rounded-lg text-xs font-semibold text-gray-700 bg-white hover:bg-gray-50 transition-colors shadow-sm">
+                📸 <?= Text::_('COM_MURUGUARD_PROTECTED_USERS_SNAPSHOT_BTN') ?>
+            </button>
+            <span class="text-xs text-gray-400 ml-2"><?= Text::_('COM_MURUGUARD_PROTECTED_USERS_SNAPSHOT_DESC') ?></span>
+        </form>
+
+        <!-- Test a Request -->
+        <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-5">
+            <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2 mb-1">🧪 <?= Text::_('COM_MURUGUARD_TEST_REQUEST_TITLE') ?></h3>
+            <p class="text-xs text-gray-500 mb-4 max-w-xl"><?= Text::_('COM_MURUGUARD_TEST_REQUEST_DESC') ?></p>
+
+            <div class="grid sm:grid-cols-2 gap-4">
+                <div class="sm:col-span-2">
+                    <label class="block text-xs font-bold text-gray-600 mb-1.5" for="muru-test-url"><?= Text::_('COM_MURUGUARD_TEST_REQUEST_URL_LABEL') ?></label>
+                    <input type="text" id="muru-test-url" placeholder="/index.php?option=com_users&task=user.save"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1.5" for="muru-test-ip"><?= Text::_('COM_MURUGUARD_TEST_REQUEST_IP_LABEL') ?></label>
+                    <input type="text" id="muru-test-ip" placeholder="203.0.113.7"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
+                    <p class="text-[11px] text-gray-400 mt-1"><?= Text::_('COM_MURUGUARD_TEST_REQUEST_IP_HINT') ?></p>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1.5" for="muru-test-ua"><?= Text::_('COM_MURUGUARD_TEST_REQUEST_UA_LABEL') ?></label>
+                    <input type="text" id="muru-test-ua" placeholder="sqlmap/1.7"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
+                </div>
+            </div>
+
+            <button type="button" id="muru-test-request-btn"
+                    class="inline-flex items-center gap-1.5 px-5 py-2 mt-4 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50">
+                🧪 <?= Text::_('COM_MURUGUARD_TEST_REQUEST_BTN') ?>
+            </button>
+
+            <div id="muru-test-request-results" class="mt-4 space-y-2"></div>
+        </div>
+
         <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-5">
             <div class="mb-4">
                 <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">🚧 <?= Text::_('COM_MURUGUARD_IPLIST_TITLE') ?></h3>
@@ -2933,4 +3018,83 @@ function muruguardShowOverlay() {
         }, 200);
     }, 2200);
 }
+
+// ── Settings > Site Protection > "Test a request" ───────────────
+// Read-only preview: posts whatever's typed into the URL/IP/User-Agent
+// fields to scanner.testfirewallrequest, which runs it through the same
+// checks the live gate uses without ever writing to the attack log or
+// blocking anything, then renders one row per check underneath the
+// button.
+(function () {
+    var btn = document.getElementById('muru-test-request-btn');
+    var resultsEl = document.getElementById('muru-test-request-results');
+    if (!btn || !resultsEl) return;
+
+    var testToken = <?= json_encode(\Joomla\CMS\Session\Session::getFormToken()) ?>;
+    var verdictStyles = {
+        'block': 'bg-red-50 text-red-700 border-red-200',
+        'flagged-not-blocking': 'bg-amber-50 text-amber-700 border-amber-200',
+        'allow': 'bg-emerald-50 text-emerald-700 border-emerald-200',
+        'allow-override': 'bg-emerald-50 text-emerald-700 border-emerald-200',
+        'no-match': 'bg-gray-50 text-gray-600 border-gray-200',
+        'not-tested': 'bg-gray-50 text-gray-400 border-gray-200',
+    };
+    var verdictLabels = {
+        'block': <?= json_encode(Text::_('COM_MURUGUARD_TEST_REQUEST_VERDICT_BLOCK')) ?>,
+        'flagged-not-blocking': <?= json_encode(Text::_('COM_MURUGUARD_TEST_REQUEST_VERDICT_FLAGGED')) ?>,
+        'allow': <?= json_encode(Text::_('COM_MURUGUARD_TEST_REQUEST_VERDICT_ALLOW')) ?>,
+        'allow-override': <?= json_encode(Text::_('COM_MURUGUARD_TEST_REQUEST_VERDICT_ALLOW')) ?>,
+        'no-match': <?= json_encode(Text::_('COM_MURUGUARD_TEST_REQUEST_VERDICT_ALLOW')) ?>,
+        'not-tested': <?= json_encode(Text::_('COM_MURUGUARD_TEST_REQUEST_VERDICT_SKIPPED')) ?>,
+    };
+
+    btn.addEventListener('click', function () {
+        btn.disabled = true;
+        resultsEl.innerHTML = '<p class="text-xs text-gray-400">' + <?= json_encode(Text::_('COM_MURUGUARD_TEST_REQUEST_RUNNING')) ?> + '</p>';
+
+        var body = new URLSearchParams();
+        body.set('test_url', document.getElementById('muru-test-url').value);
+        body.set('test_ip', document.getElementById('muru-test-ip').value);
+        body.set('test_useragent', document.getElementById('muru-test-ua').value);
+        body.set(testToken, '1');
+
+        fetch('index.php?option=com_muruguard&task=scanner.testfirewallrequest', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: body.toString(),
+        }).then(function (res) { return res.json(); }).then(function (data) {
+            btn.disabled = false;
+            if (!data || !data.ok) {
+                resultsEl.innerHTML = '<p class="text-xs text-red-600">' + <?= json_encode(Text::_('COM_MURUGUARD_TEST_REQUEST_FAILED')) ?> + '</p>';
+                return;
+            }
+            resultsEl.innerHTML = '';
+            data.checks.forEach(function (c) {
+                var style = verdictStyles[c.verdict] || verdictStyles['no-match'];
+                var label = verdictLabels[c.verdict] || c.verdict;
+                // c.detail can echo back attacker-shaped text an admin
+                // typed into the test fields -- built with textContent,
+                // never innerHTML, so a test input crafted to include
+                // markup can't execute against the admin's own session.
+                var row = document.createElement('div');
+                row.className = 'flex items-start gap-3 px-3 py-2 rounded-lg border text-xs ' + style;
+                var verdictSpan = document.createElement('span');
+                verdictSpan.className = 'font-bold uppercase tracking-wide shrink-0 mt-px';
+                verdictSpan.textContent = label;
+                var detailSpan = document.createElement('span');
+                var labelStrong = document.createElement('span');
+                labelStrong.className = 'font-semibold';
+                labelStrong.textContent = c.label + ':';
+                detailSpan.appendChild(labelStrong);
+                detailSpan.appendChild(document.createTextNode(' ' + c.detail));
+                row.appendChild(verdictSpan);
+                row.appendChild(detailSpan);
+                resultsEl.appendChild(row);
+            });
+        }).catch(function () {
+            btn.disabled = false;
+            resultsEl.innerHTML = '<p class="text-xs text-red-600">' + <?= json_encode(Text::_('COM_MURUGUARD_TEST_REQUEST_FAILED')) ?> + '</p>';
+        });
+    });
+})();
 </script>

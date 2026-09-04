@@ -363,9 +363,52 @@ public function scan()
             $emailed = $this->sendScheduledAlertEmail($alertEmail, $result['newFindings'], $result['newCount']);
         }
 
+        // Protected User Snapshot & Auto-Revert -- deliberately independent
+        // of the full scan above: runs every time this action is hit,
+        // regardless of newCount/isFirstRun, and only alerts on each
+        // issue's FIRST sighting -- see checkAndRevertProtectedUsers()'s
+        // own docblock for the alert-dedup reasoning.
+        $protectedUserIssues = [];
+        if ((bool) $params->get('protected_users_enabled', 0)) {
+            try {
+                $protectedUserIssues = $model->checkAndRevertProtectedUsers();
+                if (!empty($protectedUserIssues) && $alertEmail !== '') {
+                    $this->sendProtectedUserAlertEmail($alertEmail, $protectedUserIssues);
+                }
+            } catch (\Throwable $e) {
+                // Never let this itself break the scheduled check response.
+            }
+        }
+
         $status = $result['isFirstRun'] ? 'baseline recorded' : 'ok';
-        echo "MuRu Guard: {$status}, total={$result['totalCount']} new={$result['newCount']} emailed=" . ($emailed ? 'yes' : 'no') . "\n";
+        echo "MuRu Guard: {$status}, total={$result['totalCount']} new={$result['newCount']} emailed=" . ($emailed ? 'yes' : 'no') . " protectedUsers=" . count($protectedUserIssues) . "\n";
         $app->close();
+    }
+
+    /**
+     * Sends the Protected User alert -- one or more plain-language lines
+     * describing every NEWLY-seen issue this run. Never throws -- same
+     * reasoning as every other scheduled-check mail send.
+     */
+    private function sendProtectedUserAlertEmail(string $to, array $issues): bool
+    {
+        try {
+            $app = Factory::getApplication();
+            $siteName = (string) $app->get('sitename', 'your Joomla site');
+            $mailer = Factory::getMailer();
+            $mailer->setSender([$app->get('mailfrom'), $app->get('fromname')]);
+            $mailer->addRecipient($to);
+            $count = count($issues);
+            $mailer->setSubject("[MuRu Guard] Protected Super User " . ($count === 1 ? 'change' : 'changes') . " on {$siteName}");
+            $mailer->isHtml(false);
+            $body = "MuRu Guard's Protected User Snapshot detected the following on {$siteName}:\n\n"
+                . implode("\n", array_map(fn($i) => "- {$i}", $issues))
+                . "\n\n" . \Joomla\CMS\Uri\Uri::root() . 'administrator/index.php?option=com_muruguard';
+            $mailer->setBody($body);
+            return (bool) $mailer->Send();
+        } catch (\Throwable $e) {
+            return false;
+        }
     }
 
     /**
@@ -627,6 +670,80 @@ public function scan()
 
         $app->enqueueMessage(Text::_('COM_MURUGUARD_SETTINGS_SAVED_MSG'), 'message');
         $this->setRedirect($this->settingsRedirectUrl());
+    }
+
+    /** Saves the Admin Lockdown toggle (see plg_system_muruguardshield's checkAdminLockdownGate()). */
+    public function saveadminlockdown()
+    {
+        Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
+        \MuruguardHelper::requireAdminAccess();
+
+        $enabled = (bool) Factory::getApplication()->input->getInt('harden_lock_admin_actions', 0);
+
+        /** @var MuruguardModelScanner $model */
+        $model = $this->getModel('Scanner');
+        $model->saveAdminLockdownSetting($enabled);
+
+        Factory::getApplication()->enqueueMessage(Text::_('COM_MURUGUARD_SETTINGS_SAVED_MSG'), 'message');
+        $this->setRedirect($this->settingsRedirectUrl());
+    }
+
+    /** Saves the Protected User Snapshot & Auto-Revert toggle -- see MuruguardModelScanner::saveProtectedUsersSetting() for the auto-snapshot-on-first-enable behavior. */
+    public function saveprotectedusers()
+    {
+        Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
+        \MuruguardHelper::requireAdminAccess();
+
+        $enabled = (bool) Factory::getApplication()->input->getInt('protected_users_enabled', 0);
+
+        /** @var MuruguardModelScanner $model */
+        $model = $this->getModel('Scanner');
+        $model->saveProtectedUsersSetting($enabled);
+
+        Factory::getApplication()->enqueueMessage(Text::_('COM_MURUGUARD_SETTINGS_SAVED_MSG'), 'message');
+        $this->setRedirect($this->settingsRedirectUrl());
+    }
+
+    /** "Take/refresh snapshot now" button -- re-captures every current Super User's state as the new baseline and clears any still-open alert dedup entries. */
+    public function snapshotprotectedusers()
+    {
+        Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
+        \MuruguardHelper::requireAdminAccess();
+
+        /** @var MuruguardModelScanner $model */
+        $model = $this->getModel('Scanner');
+        $result = $model->snapshotProtectedUsers();
+
+        Factory::getApplication()->enqueueMessage(
+            Text::sprintf('COM_MURUGUARD_PROTECTED_USERS_SNAPSHOT_TAKEN_MSG', $result['count']),
+            'message'
+        );
+        $this->setRedirect($this->settingsRedirectUrl());
+    }
+
+    /**
+     * "Test a request" -- previews what Shield WOULD do with a
+     * hypothetical request, without it ever having happened. Every check
+     * this calls is the exact same function plg_system_muruguardshield's
+     * live runShieldCheck() calls, scoped to this edition's actual
+     * feature set (see MuruguardHelper::testFirewallRequest()).
+     */
+    public function testfirewallrequest()
+    {
+        Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
+        \MuruguardHelper::requireAdminAccess();
+
+        $input = Factory::getApplication()->input;
+        $result = \MuruguardHelper::testFirewallRequest(
+            $input->getString('test_url', ''),
+            $input->getString('test_useragent', ''),
+            $input->getString('test_ip', ''),
+            ComponentHelper::getParams('com_muruguard')
+        );
+
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['ok' => true, 'checks' => $result]);
+        Factory::getApplication()->close();
     }
 
     /**

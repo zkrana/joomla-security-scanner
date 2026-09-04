@@ -49,6 +49,9 @@ class MuruguardViewScanner extends HtmlView
     public $shieldBlockUserAgents = false;
     public $shieldBlockCountries = false;
     public $shieldBlockedCountries = '';
+    public bool $hardenLockAdminActions = false;
+    public bool $protectedUsersEnabled = false;
+    public array $protectedUsersStatus = ['hasSnapshot' => false, 'count' => 0, 'takenAt' => null];
     public array $ipList = [];
     public array $falsePositives = [];
     public int $attackLogArchiveCount = 0;
@@ -160,6 +163,12 @@ class MuruguardViewScanner extends HtmlView
         $this->shieldBlockUserAgents = (bool) $cfgParams->get('shield_block_useragents', 0);
         $this->shieldBlockCountries  = (bool) $cfgParams->get('shield_block_countries', 0);
         $this->shieldBlockedCountries = (string) $cfgParams->get('shield_blocked_countries', '');
+        $this->hardenLockAdminActions = (bool) $cfgParams->get('harden_lock_admin_actions', 0);
+        $this->protectedUsersEnabled  = (bool) $cfgParams->get('protected_users_enabled', 0);
+        $protectedUsersState         = MuruguardHelper::loadProtectedUsersState();
+        $this->protectedUsersStatus   = $protectedUsersState !== null
+            ? ['hasSnapshot' => true, 'count' => count($protectedUsersState['users'] ?? []), 'takenAt' => $protectedUsersState['takenAt'] ?? null]
+            : ['hasSnapshot' => false, 'count' => 0, 'takenAt' => null];
         $this->ipList                = MuruguardHelper::getIpList();
         $this->falsePositives        = MuruguardHelper::getFalsePositives();
 

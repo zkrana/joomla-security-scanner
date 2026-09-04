@@ -14,7 +14,9 @@ Everything on this page is **free and always will be** — full scanning, cleanu
 |---|---|
 | 🧬 **File Integrity Monitoring** | Catches what signature scanning can't: a backdoor hand-inserted into a file you already trust. Baseline every file once, then get alerted the instant any of them silently changes |
 | 🧱 **Active Web Application Firewall** | Blocks generic SQL injection, XSS, local/remote file inclusion, and command-injection patterns in incoming requests -- broader than Protection Mode's webshell-specific checks, which stay on regardless and are checked first |
-| 🤖 **Smart AI Assistant** | A chat-based assistant, right inside the admin panel, that reads/searches/fixes your Joomla project's code on request |
+| 🤖 **Smart AI Assistant** | A chat-based assistant, right inside the admin panel, that reads/searches/fixes your Joomla project's code on request -- bring your own Claude, GPT, Gemini, OpenRouter, or custom-endpoint key |
+| ⏪ **Backup & Restore (TimeMachine)** | Every AI-driven or bulk repair action is automatically snapshotted first -- pin a snapshot to keep it forever, or roll any single change back with one click if a fix wasn't what you expected |
+| 🛫 **Autopilot Mode** | A scheduled scan's near-zero-false-positive findings get an independent AI check before anything is touched; only a confirmed verdict leads to a (still fully restorable) removal -- no human needed to review the obvious cases |
 | 🚩 **Fleet Dashboard** | Monitor every licensed site's scan status from one place |
 | 📡 **Fleet bulk actions** | Trigger a remote re-scan or push a hardening config change across every licensed site from the Fleet Dashboard, instead of logging into each site's admin individually |
 | 🔔 **Instant Alerts** | Slack/Discord/Telegram notifications the moment a scheduled scan -- or a File Integrity Monitoring check -- finds something new |
@@ -58,6 +60,7 @@ In June 2026, a critical unauthenticated RCE was disclosed in SP Page Builder ve
 |---|---|
 | ⏱️ **Chunked, resumable scanning (new)** | A scan no longer runs inside one blocking request. It's broken into small pieces (one directory area, the database check, etc. at a time), each bounded to a fixed time budget, with a real progress bar in the browser -- so a large site's scan can never come back as a bare "500 - Whoops" from hitting a host's execution-time limit, regardless of site size |
 | 🛡️ **Protection Mode** | A companion plugin checks **every request to the site in real time** — not just when you open the scanner — for webshell interaction, the SPPB `uploadCustomIcon` RCE, known malware-drop filenames, path-traversal probes, and brute-force login attempts, with independent opt-in switches to actually block high-confidence matches and brute-force IPs. Everything detected shows up in a sectioned **Protection Log** (IP, time, rule, severity, blocked/logged-only), and every toggle here is disabled until the companion Shield plugin is actually installed and enabled, so a setting can never look active while doing nothing. See [🛡️ Protection Mode](#-protection-mode-real-time-attack-blocking) below |
+| 🔐 **Admin Lockdown, Protected Users & Test a Request (new)** | Blocks the extension installer and new-backend-user creation while on; snapshots every Super User and auto-reverts a blocked/demoted account (email/password changes and deletions are alerted, never silently reverted); and a read-only "Test a Request" tool previews what Shield would do with a given URL/IP/User-Agent before you flip any blocking switch on. See [🔐 Admin Lockdown, Protected Users & Test a Request](#-admin-lockdown-protected-users--test-a-request) below |
 | 🗂 Filesystem scan | Walks `media/`, `images/`, `templates/`, `tmp/`, `cache/`, the SPPB and JCE component directories, core Joomla entry points, and the webroot itself |
 | 🧬 Content signatures | Flags known webshell patterns (`eval(base64_decode(...))`, `assert($_POST...)`, `gsocket`, generic shells like c99/r57/WSO), stream-wrapper payload loading (`zip://`, `phar://`, `compress.zlib://`), `chr()`-from-byte-array decoding, string-lookup obfuscation, self-replicating dropper logic, and `<head>`-tag script injection |
 | 🚪 Core entry-point integrity | Checks `index.php`, `administrator/index.php`, `api/index.php`, and `includes/app.php` for any code executing *before* Joomla's `_JEXEC` bootstrap — the exact pattern used by real-world "prepended payload" infections |
@@ -164,6 +167,16 @@ On-demand scanning finds an infection *after* it's already happened. Protection 
 All three switches are **off by default**. Already-authenticated, non-guest admin sessions are exempt from request-pattern blocking, so a legitimate action can never trip a false block and lock you out of your own site — brute-force blocking has no such exemption, since it only ever targets pre-authentication login attempts.
 
 > ⚠️ If your site sits behind a reverse proxy or CDN that doesn't forward the real client IP, every visitor can appear as one IP to this plugin — check that your setup forwards `REMOTE_ADDR` correctly before relying on brute-force blocking in production.
+
+---
+
+## 🔐 Admin Lockdown, Protected Users & Test a Request
+
+Three newer additions under **Components → MuRu Guard → ⚙️ Settings → 🛡️ Protection**, all off by default:
+
+- **Admin Lockdown** — blocks the Joomla extension installer and creating new backend users while on, so a compromised admin session can't turn itself into a new malicious extension or a fresh Super User account. Never blocks Joomla's own core updates or editing an existing user, including your own profile — turn it off before you legitimately install/update something, then back on when you're done.
+- **Protected User Snapshot & Auto-Revert** — snapshots every current Super User and watches for tampering on every scheduled check. A protected account getting blocked or removed from the Super Users group is reverted automatically; an email or password change, or the account being deleted outright, is alerted immediately but never auto-reverted, since any of those can just as easily be something you did yourself. A **"Take/refresh snapshot now"** button lets you accept a legitimate change as the new baseline instead of getting alerted on it again.
+- **Test a Request** — a read-only preview: paste a URL, IP, or User-Agent and see exactly what Shield would do with it — blocked, flagged, or allowed, and why — before you turn any blocking switch on at all. Runs through the exact same checks the live gate uses; never writes to the attack log or affects real traffic. A supplied IP does still trigger a real GeoIP lookup and reads its real logged login attempts, since there's no way to preview a live network lookup without making it.
 
 ---
 
