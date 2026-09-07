@@ -8,6 +8,12 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [3.6.1] - 2026-09-07
+
+### Fixed
+
+* **`Class 'MuruguardHelper' not found` fatal on scheduled/webcron scans**, reported from a live site. The com_ajax bridge that lets an external cron caller trigger a scheduled scan (`plg_muruguardshield`, bump to 1.3.2) only loaded the controller class, never the model or helper it actually depends on -- it runs outside Joomla's normal component dispatch, so it can't rely on the autoloading that dispatch normally sets up. Every scheduled scan run through a real cron job hit this. Also fixed: Admin Lockdown's block silently no-op'd (instead of actually blocking) on a request where nothing else earlier in the same page load had already loaded the helper.
+
 ## [3.6.0] - 2026-09-07
 
 ### Added

@@ -234,9 +234,30 @@ class plgSystemMuruguardshield extends CMSPlugin
      */
     public function onAjaxMuruguardshield()
     {
-        $controllerPath = JPATH_ADMINISTRATOR . '/components/com_muruguard/controllers/scanner.php';
-        if (!is_file($controllerPath)) return; // component not installed -- nothing to bridge to
+        // This bridge deliberately runs OUTSIDE Joomla's normal
+        // option=com_muruguard dispatch (that's the whole point -- see
+        // the docblock above), which means the legacy MVC autoloading
+        // Joomla normally wires up for a component's own model/controller
+        // classes when IT dispatches them is never registered here.
+        // require_once-ing the controller file alone isn't enough:
+        // scheduledcheck() below does `new MuruguardModelScanner()`, and
+        // that class' own file was never required by anything in this
+        // chain. Confirmed real, reported from a live site: this
+        // surfaced as an uncaught "Class ... not found" fatal on every
+        // scheduled cron hit -- and unlike every check in
+        // onAfterInitialise() above, this method has no enclosing
+        // try/catch, so the fatal was fully visible instead of failing
+        // open silently. Load every class this call chain needs
+        // explicitly, in dependency order, rather than depending on
+        // ambient autoloading that only exists on the request shape this
+        // bridge exists specifically to NOT go through.
+        if (!$this->loadShieldHelper()) return; // component not installed -- nothing to bridge to
 
+        $modelPath = JPATH_ADMINISTRATOR . '/components/com_muruguard/models/scanner.php';
+        $controllerPath = JPATH_ADMINISTRATOR . '/components/com_muruguard/controllers/scanner.php';
+        if (!is_file($modelPath) || !is_file($controllerPath)) return;
+
+        require_once $modelPath;
         require_once $controllerPath;
         if (!class_exists('MuruguardControllerScanner')) return;
 
@@ -455,6 +476,16 @@ class plgSystemMuruguardshield extends CMSPlugin
         }
 
         if (!$blockInstaller && !$blockNewUser) return;
+
+        // Every other check in this file guards with loadShieldHelper()
+        // before its first MuruguardHelper:: use -- this one didn't,
+        // which is a real (if silent) bug: onAfterInitialise() wraps this
+        // call in try/catch(\Throwable), so a "Class not found" here
+        // fails open silently rather than fataling visibly, but it still
+        // means Admin Lockdown never actually blocked anything on a
+        // request where nothing else in the SAME page load happened to
+        // load the helper first.
+        if (!$this->loadShieldHelper()) return;
 
         $ip = \MuruguardHelper::resolveClientIp($input->server, (string) $params->get('shield_trusted_proxy_header', ''));
         \MuruguardHelper::recordAttackLogEntry([
