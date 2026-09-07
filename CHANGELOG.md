@@ -8,6 +8,13 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [3.6.0] - 2026-09-07
+
+### Added
+
+* **New malware detections**, confirmed against real dropped samples reported from a live incident: exact SHA-256 matches for a 421-byte "X9 Tools" bare file-upload webshell and a 6.5MB heavily-obfuscated PHP backdoor, plus a content-pattern signature for the "X9 Tools" webshell's self-branding and Telegram contact handle (catches re-obfuscated variants of it, not just the exact sample). The known-hash check runs independently of `max_file_scan_size` -- an oversized sample like the 6.5MB one no longer silently skips scanning just for being bigger than the usual scan window.
+* **Newsletter opt-in banner restored.** The dismissible "Get security alerts & updates" dashboard banner (name + email, posts to the same opt-in pipeline as the main site's own signup form) is back after being removed in 3.2.3.
+
 ## [3.5.0] - 2026-09-04
 
 ### Added

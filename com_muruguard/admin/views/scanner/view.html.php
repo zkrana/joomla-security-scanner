@@ -63,6 +63,7 @@ class MuruguardViewScanner extends HtmlView
     public string $componentVersion = '';
     public string $activePanel = 'dashboard';
     public string $activeSettingsTab = 'general';
+    public bool $newsletterBannerDismissed = false;
 
     // AI Integration -- an admin-supplied API key + model name for each of
     // three providers, one picked as the default. Used only for the
@@ -171,6 +172,10 @@ class MuruguardViewScanner extends HtmlView
             : ['hasSnapshot' => false, 'count' => 0, 'takenAt' => null];
         $this->ipList                = MuruguardHelper::getIpList();
         $this->falsePositives        = MuruguardHelper::getFalsePositives();
+        // Covers both an explicit dismissal and a successful subscription
+        // (subscribeToNewsletter() sets this same flag on success) --
+        // either way, the banner has nothing left to ask this site for.
+        $this->newsletterBannerDismissed = (bool) $cfgParams->get('newsletter_banner_dismissed', 0);
 
         // AI Integration -- see MuruguardHelper::askAi() for how these are
         // actually used (only ever server-side, on the per-row "Ask AI"

@@ -596,6 +596,53 @@ public function scan()
         $app->close();
     }
 
+    /** Submits the dashboard's "get security alerts & updates" banner. Edit access only -- same bar as changing any other Settings-adjacent option. */
+    public function subscribenewsletter()
+    {
+        Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
+        \MuruguardHelper::requireEditAccess();
+
+        $app   = Factory::getApplication();
+        $name  = $app->input->getString('newsletter_name', '');
+        $email = $app->input->getString('newsletter_email', '');
+
+        /** @var MuruguardModelScanner $model */
+        $model = $this->getModel('Scanner');
+        if ($model->subscribeToNewsletter($name, $email)) {
+            $app->enqueueMessage(Text::_('COM_MURUGUARD_NEWSLETTER_SUBSCRIBED_MSG'), 'message');
+        } else {
+            $app->enqueueMessage(Text::_('COM_MURUGUARD_NEWSLETTER_FAILED_MSG'), 'error');
+        }
+
+        $this->setRedirect('index.php?option=com_muruguard');
+    }
+
+    /**
+     * Dismisses the newsletter banner without subscribing -- never shown
+     * again on this site. Only ever called via fetch() from the X
+     * button's JS (see default.php), same reasoning as
+     * markfalsepositive(): a real form-POST-then-redirect round trip
+     * means whether the banner is actually gone depends on the NEXT
+     * page load re-reading the freshly-saved param correctly, and if
+     * anything else on the page reloads/re-renders around the same
+     * moment the click just looks like it silently did nothing. A small
+     * JSON response lets the button remove its own banner from the DOM
+     * immediately, with zero navigation at all.
+     */
+    public function dismissnewsletter()
+    {
+        Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
+        \MuruguardHelper::requireEditAccess();
+
+        /** @var MuruguardModelScanner $model */
+        $model = $this->getModel('Scanner');
+        $model->dismissNewsletterBanner();
+
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['ok' => true]);
+        Factory::getApplication()->close();
+    }
+
     /**
      * Every Settings-saving action redirects here instead of a bare
      * 'index.php?option=com_muruguard' -- that used to drop the admin

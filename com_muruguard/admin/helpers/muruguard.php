@@ -345,6 +345,42 @@ class MuruguardHelper
                 // trait of a bare uploader shell.
                 'bare_upload_shell' => ['re' => '/(?:move_uploaded_file|copy)\s*\(\s*\$_FILES\[[^\]]+\]\[[\'"]tmp_name[\'"]\]\s*,\s*\$_FILES\[[^\]]+\]\[[\'"]name[\'"]\]\s*\)/i',
                     'severity' => 'medium', 'why' => 'Saves an uploaded file using the CLIENT-SUBMITTED filename verbatim as the destination, with no extension check, sanitization, or directory restriction visible around the call -- the defining shape of a bare, unauthenticated upload webshell. Flagged for review since a poorly-written but legitimate upload handler could theoretically look similar.'],
+                // Confirmed in a real, reported sample: a compact (421-byte)
+                // bare file-upload webshell dropped into
+                // media/com_sppagebuilder/assets/iconfont/<random>/fonts/,
+                // self-branded with this exact banner text and a Telegram
+                // handle -- both unique enough that either alone is
+                // conclusive. Built from split fragments (see
+                // phpkoru_encoder above for the same technique) so this
+                // scanner's own source doesn't contain the literal
+                // contiguous marker text.
+                'x9_tools_uploader_banner' => ['re' => '/' . 'X9' . '\s*Tools|t\.me\/' . 'ExpSX9' . '/i',
+                    'severity' => 'high', 'why' => 'Contains the exact self-branding ("' . 'X9 Tools' . '") or Telegram contact handle ("t.me/' . 'ExpSX9' . '") of a known bare file-upload webshell -- no legitimate use.'],
+            ],
+
+            // Exact SHA-256 matches for specific, confirmed-malicious
+            // samples reported from real incidents -- independent of, and
+            // stronger than, every pattern-based CONTENT_SIGNATURES check
+            // above (a byte-for-byte match, not a heuristic), and checked
+            // by scanFileContent() BEFORE its max_file_scan_size cap so a
+            // large sample can't just slip past by being bigger than the
+            // usual scan window. Add a new entry here whenever a specific
+            // sample's exact hash is known, alongside (not instead of) a
+            // content-pattern signature above for its general shape --
+            // the hash catches this exact file even if it doesn't match
+            // any regex; the pattern catches a re-obfuscated variant of it
+            // that no longer matches this exact hash.
+            'KNOWN_MALWARE_HASHES' => [
+                // 421-byte "X9 Tools" bare file-upload webshell -- see
+                // x9_tools_uploader_banner above for the same sample's
+                // content-pattern signature.
+                '8e63ceece948371d5afa8a925a1d4933d244cd4310d1bbeb88593999806bc94e' => 'X9 Tools upload webshell',
+                // 6.5MB heavily-obfuscated PHP backdoor, reported dropped
+                // as mailerClass/class.php at the webroot -- well over the
+                // default 2MB max_file_scan_size, which is exactly why
+                // this needs a hash check independent of that cap rather
+                // than relying on the regex content-signature pass alone.
+                'aff513c1b6508b7fb1d93e3265695b30620f65ab75a2e30c24c21f50c8cbf9c3' => 'Obfuscated PHP backdoor (mailerClass/class.php sample)',
             ],
 
             // Checked against a LIVE incoming request (GET/POST/URI/User-Agent)
@@ -1708,6 +1744,42 @@ class MuruguardHelper
             return $data['advisories'];
         } catch (\Throwable $e) {
             return null;
+        }
+    }
+
+    private const NEWSLETTER_OPT_IN_URL = 'https://lyzerslab.com/api/optin';
+
+    /**
+     * Submits the "get security alerts & updates" dashboard banner's
+     * name/email to the same public opt-in endpoint the main site's own
+     * newsletter form posts to -- same NewsletterOptIn table, same admin
+     * notification/welcome-email flow, just tagged with a distinct
+     * 'source' so an admin reviewing subscribers can tell this one came
+     * from a Free install rather than the website. No auth needed: this
+     * is a server-side PHP call, not a browser request, so there's no
+     * CORS concern, and the endpoint itself is already public/unauthenticated.
+     */
+    public static function submitNewsletterOptIn(string $name, string $email): bool
+    {
+        $email = trim($email);
+        if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) return false;
+
+        $payload = json_encode(['name' => trim($name), 'email' => $email, 'source' => 'muruguard-free']);
+        try {
+            $context = stream_context_create(['http' => [
+                'method'        => 'POST',
+                'header'        => "Content-Type: application/json\r\n",
+                'content'       => $payload,
+                'timeout'       => 5,
+                'ignore_errors' => true,
+            ]]);
+            $response = @file_get_contents(self::NEWSLETTER_OPT_IN_URL, false, $context);
+            if ($response === false) return false;
+
+            $data = json_decode($response, true);
+            return is_array($data) && !empty($data['success']);
+        } catch (\Throwable $e) {
+            return false;
         }
     }
 
@@ -3117,7 +3189,27 @@ class MuruguardHelper
     /** Runs content-signature + polyglot checks. Used in both scan modes. */
     public static function scanFileContent(string $path, string $ext, array $sig, int $maxSize, array &$reasons): bool
     {
-        if (!is_file($path) || @filesize($path) === false || @filesize($path) > $maxSize) return false;
+        if (!is_file($path)) return false;
+
+        // Known-bad-hash check -- deliberately runs BEFORE the
+        // max_file_scan_size cap below and regardless of extension.
+        // hash_file() streams the file rather than loading it into
+        // memory, so it's cheap even on a sample well over that cap --
+        // unlike the regex content-signature pass further down, which IS
+        // capped for performance. Real gap this closes: a 6.5MB
+        // obfuscated backdoor (see KNOWN_MALWARE_HASHES in
+        // getSignatures()) would otherwise skip every check below
+        // entirely on the default 2MB cap.
+        $flagged = false;
+        if (!empty($sig['KNOWN_MALWARE_HASHES'])) {
+            $knownHash = @hash_file('sha256', $path);
+            if ($knownHash !== false && isset($sig['KNOWN_MALWARE_HASHES'][$knownHash])) {
+                $flagged = true;
+                $reasons[] = 'Known malware match: SHA-256 matches a confirmed malicious sample (' . $sig['KNOWN_MALWARE_HASHES'][$knownHash] . ') -- an exact byte-for-byte match, not a heuristic guess.';
+            }
+        }
+
+        if (@filesize($path) === false || @filesize($path) > $maxSize) return $flagged;
         // 'profile' and 'htaccess' aren't real extensions -- PHP's
         // pathinfo() treats everything after the leading dot in a bare
         // dotfile name (.profile, .htaccess) as its "extension" since
@@ -3134,11 +3226,9 @@ class MuruguardHelper
         // composer.json, ...) never matches any signature below, so this
         // adds coverage with no new false-positive surface.
         $textLikeExts = ['php', 'phtml', 'php3', 'php4', 'php5', 'php7', 'phar', 'pht', 'js', 'html', 'htm', 'txt', 'css', 'xml', 'json', 'gif', 'png', 'jpg', 'jpeg', 'profile', 'htaccess'];
-        if (!in_array($ext, $textLikeExts, true) && $ext !== '') return false;
+        if (!in_array($ext, $textLikeExts, true) && $ext !== '') return $flagged;
         $contents = @file_get_contents($path);
-        if ($contents === false || $contents === '') return false;
-
-        $flagged = false;
+        if ($contents === false || $contents === '') return $flagged;
 
         // A legitimate image (especially a phone photo) can be several MB
         // of mostly-compressed, high-entropy pixel data. Scanning that

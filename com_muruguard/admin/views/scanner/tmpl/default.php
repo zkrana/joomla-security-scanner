@@ -1304,6 +1304,37 @@ if (!empty($criticalVulns)):
 </div>
 <?php endif; ?>
 
+<?php if (!$this->newsletterBannerDismissed): ?>
+<!-- Newsletter opt-in banner -- optional, dismissible, never shown again
+     once dismissed or subscribed (see newsletter_banner_dismissed in
+     component params). Posts to the dashboard's public opt-in endpoint,
+     same table/flow as the main site's own newsletter signup. -->
+<div id="muru-newsletter-banner" class="anim-in flex flex-wrap items-center justify-between gap-3
+            bg-gradient-to-r from-indigo-50 to-violet-50 border border-indigo-200 rounded-xl px-5 py-3 mb-6 shadow-sm">
+    <div class="min-w-[220px]">
+        <p class="text-sm font-semibold text-gray-800">📬 <?= Text::_('COM_MURUGUARD_NEWSLETTER_TITLE') ?></p>
+        <p class="text-xs text-gray-500 mt-0.5"><?= Text::_('COM_MURUGUARD_NEWSLETTER_DESC') ?></p>
+    </div>
+    <div class="flex items-center gap-2 flex-wrap">
+        <form action="index.php?option=com_muruguard&task=scanner.subscribenewsletter" method="post" class="flex flex-wrap items-center gap-2" style="margin:0">
+            <?= HTMLHelper::_('form.token') ?>
+            <input type="text" name="newsletter_name" placeholder="<?= Text::_('COM_MURUGUARD_NEWSLETTER_NAME_PLACEHOLDER') ?>"
+                   class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-indigo-400 w-36">
+            <input type="email" name="newsletter_email" required placeholder="<?= Text::_('COM_MURUGUARD_NEWSLETTER_EMAIL_PLACEHOLDER') ?>"
+                   class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-indigo-400 w-52">
+            <button type="submit"
+                    class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-indigo-200
+                           rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700
+                           transition-colors shadow-sm hover:shadow whitespace-nowrap">
+                <?= Text::_('COM_MURUGUARD_NEWSLETTER_SUBSCRIBE_BTN') ?>
+            </button>
+        </form>
+        <button type="button" id="muru-newsletter-dismiss-btn" title="<?= Text::_('COM_MURUGUARD_NEWSLETTER_DISMISS') ?>" aria-label="<?= Text::_('COM_MURUGUARD_NEWSLETTER_DISMISS') ?>"
+                class="text-gray-400 hover:text-gray-600 hover:bg-white/60 rounded-lg p-1.5 transition-colors">✕</button>
+    </div>
+</div>
+<?php endif; ?>
+
 <!-- Wrapper toggled off when the Settings panel is open -- see the
      #muru-settings-btn handler further down. Wraps BOTH the pre-scan
      gate and the post-scan results below, so Settings works regardless
@@ -2608,18 +2639,53 @@ var muruFpToken = <?= json_encode(\Joomla\CMS\Session\Session::getFormToken()) ?
     var settingsBack  = document.getElementById('muru-settings-back');
     var settingsPanel = document.getElementById('muru-settings-panel');
     var mainContent   = document.getElementById('muru-main-content');
-    // Lives OUTSIDE #muru-main-content (see its own comment further up),
-    // so opening Settings never hid it the way the rest of the dashboard
-    // content does -- confirmed real: it kept showing up at the bottom of
-    // the Settings panel, which makes no sense for a scan-scoped version
-    // badge.
+    // Both live OUTSIDE #muru-main-content (see their own comments further
+    // up), so opening Settings never hid them the way the rest of the
+    // dashboard content does -- confirmed real: they kept showing up at
+    // the bottom of the Settings panel, which makes no sense for a
+    // "welcome to the dashboard" banner or a scan-scoped version badge.
     var versionBadgeWrap = document.getElementById('muru-version-badge-wrap');
+    var newsletterBanner = document.getElementById('muru-newsletter-banner');
+    // Fetch-only dismiss, same no-reload reasoning as markfalsepositive()
+    // above (and reuses its same session form token, muruFpToken -- it's
+    // just Session::getFormToken(), valid for any POST on this page, not
+    // specific to the false-positive flow despite the variable name).
+    // Removing the banner from the DOM only on a CONFIRMED successful
+    // response is what makes this reliably match server state, instead
+    // of a form-POST-then-redirect round trip where whether the banner
+    // is actually gone depends on the NEXT full page load re-reading the
+    // freshly-saved param -- indistinguishable from "the click did
+    // nothing" if anything else on the page reloads around the same time.
+    var newsletterDismissBtn = document.getElementById('muru-newsletter-dismiss-btn');
+    if (newsletterDismissBtn) {
+        newsletterDismissBtn.addEventListener('click', function () {
+            newsletterDismissBtn.disabled = true;
+            var body = new URLSearchParams();
+            body.set(muruFpToken, '1');
+            fetch('index.php?option=com_muruguard&task=scanner.dismissnewsletter', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: body.toString(),
+            }).then(function (res) {
+                return res.json().catch(function () { return null; });
+            }).then(function (data) {
+                if (!data || data.ok !== true) {
+                    newsletterDismissBtn.disabled = false;
+                    return;
+                }
+                if (newsletterBanner) newsletterBanner.remove();
+            }).catch(function () {
+                newsletterDismissBtn.disabled = false;
+            });
+        });
+    }
     // Settings is mutually exclusive with the dashboard content --
     // opening it closes the other one first, so at most one of the two
     // is ever visible.
     function hideAllPanels() {
         if (mainContent) mainContent.classList.add('hidden');
         if (settingsPanel) settingsPanel.classList.add('hidden');
+        if (newsletterBanner) newsletterBanner.classList.add('hidden');
         if (versionBadgeWrap) versionBadgeWrap.classList.add('hidden');
         if (settingsBtn) { settingsBtn.classList.remove('muru-settings-open'); settingsBtn.setAttribute('aria-pressed', 'false'); }
     }
@@ -2632,6 +2698,7 @@ var muruFpToken = <?= json_encode(\Joomla\CMS\Session\Session::getFormToken()) ?
     function closeSettings() {
         hideAllPanels();
         if (mainContent) mainContent.classList.remove('hidden');
+        if (newsletterBanner) newsletterBanner.classList.remove('hidden');
         if (versionBadgeWrap) versionBadgeWrap.classList.remove('hidden');
     }
     if (settingsBtn) settingsBtn.addEventListener('click', openSettings);

@@ -531,6 +531,28 @@ class MuruguardModelScanner extends BaseDatabaseModel
         $this->cleanCache('_system');
     }
 
+    /** Dismisses the "get security alerts & updates" dashboard banner without subscribing. */
+    public function dismissNewsletterBanner(): void
+    {
+        $this->saveHardeningParams(['newsletter_banner_dismissed' => 1]);
+    }
+
+    /**
+     * Submits the banner's name/email to the dashboard's public opt-in
+     * endpoint (see MuruguardHelper::submitNewsletterOptIn()) and, only on
+     * success, marks the banner as both subscribed and dismissed so it
+     * never shows again -- a failed submission leaves it showing so the
+     * admin can retry, rather than silently losing the lead.
+     */
+    public function subscribeToNewsletter(string $name, string $email): bool
+    {
+        $ok = \MuruguardHelper::submitNewsletterOptIn($name, $email);
+        if ($ok) {
+            $this->saveHardeningParams(['newsletter_subscribed' => 1, 'newsletter_banner_dismissed' => 1]);
+        }
+        return $ok;
+    }
+
     /** How many rows the scan-result file lists (Suspicious/Cleanable) show per page before pagination kicks in -- purely a display preference, same storage/save pattern as the other settings above. */
     /**
      * Saves the three AI provider configs + which one is the default --
