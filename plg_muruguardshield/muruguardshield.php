@@ -478,6 +478,17 @@ class plgSystemMuruguardshield extends CMSPlugin
         // authenticated backend session -- so this explains itself and
         // sends them back, rather than the bare 403 the public-facing
         // gates above use against real unauthenticated attack traffic.
+        //
+        // CMSPlugin does NOT auto-load a plugin's own language file --
+        // these two Text::_() calls are the only user-facing strings this
+        // whole plugin ever shows (everything else is a silent block or a
+        // log entry), so this was never exercised before Admin Lockdown
+        // existed. Without this, Text::_() has nothing loaded to resolve
+        // the key against and just echoes the raw language key back
+        // ("PLG_SYSTEM_MURUGUARDSHIELD_LOCKDOWN_INSTALLER_MSG") instead of
+        // the actual message -- confirmed real, reported from a live site.
+        $this->loadLanguage();
+
         $app->enqueueMessage(
             $blockInstaller
                 ? Text::_('PLG_SYSTEM_MURUGUARDSHIELD_LOCKDOWN_INSTALLER_MSG')
