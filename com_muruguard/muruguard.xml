@@ -36,6 +36,6 @@
     </administration>
 
     <updateservers>
-        <server type="extension" priority="1" name="MuRu Guard Security Scanner">https://lyzerslab.com/api/joomla-update/free</server>
+        <server type="extension" priority="1" name="MuRu Guard Security Scanner">https://store.lyzerslab.com/api/joomla-update/free</server>
     </updateservers>
 </extension>

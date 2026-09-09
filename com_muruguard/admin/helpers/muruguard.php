@@ -1676,7 +1676,7 @@ class MuruguardHelper
     // if nothing has ever been cached).
     // ------------------------------------------------------------------
 
-    private const VULN_FEED_URL = 'https://lyzerslab.com/api/vuln-feed';
+    private const VULN_FEED_URL = 'https://store.lyzerslab.com/api/vuln-feed';
     private const VULN_FEED_MAX_AGE = 86400; // 24h
 
     private static function vulnFeedCacheFilePath(): string
@@ -1747,7 +1747,7 @@ class MuruguardHelper
         }
     }
 
-    private const NEWSLETTER_OPT_IN_URL = 'https://lyzerslab.com/api/optin';
+    private const NEWSLETTER_OPT_IN_URL = 'https://store.lyzerslab.com/api/optin';
 
     /**
      * Submits the "get security alerts & updates" dashboard banner's
