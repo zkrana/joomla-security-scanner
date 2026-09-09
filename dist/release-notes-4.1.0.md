@@ -1,0 +1,7 @@
+
+### Added
+
+* **Periodic homepage watch**, independent of a full scan. On every scheduled check, fetches the live homepage and checks it's reachable, not defaced, and not showing an SEO-spam injection -- alerts by email only on an actual state *transition* (site goes down/comes back, gets defaced/is cleaned up, spam appears/disappears), never on every single cron hit for a condition already reported. Toggle it from Settings > Monitoring & Cleanup.
+* **Configuration import/export.** Export your Shield/hardening/alerting/Fleet/Autopilot settings as a JSON file from Settings > Monitoring & Cleanup -- useful as a backup or to copy the same setup to another site. Deliberately a narrow, hand-maintained allowlist of feature toggles: no secret this extension stores (license key, AI/API keys, cron token, backend password) is ever included, and a hand-edited or malicious import file can't smuggle one in either -- unrecognized keys are silently skipped and reported.
+* **One-click core-file restore from checksum baseline.** Any finding flagged by the existing core-file checksum check now offers a "Restore this file from the official Joomla release" button. Fetches the exact release tag matching your installed Joomla version from the official `joomla/joomla-cms` source, verifies its SHA-256 against this scanner's own bundled, pre-verified checksum manifest before writing anything, and always backs up the current file first regardless of whether it was tampered.
+
