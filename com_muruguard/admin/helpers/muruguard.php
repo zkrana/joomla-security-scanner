@@ -151,6 +151,26 @@ class MuruguardHelper
                 // execute as PHP anyway (see checkMaliciousHtaccessHandler()).
                 // No legitimate file is ever named this way -- always malicious.
                 '/\.php(?:\.json)+$/i',
+                // Same disguise, ".inc" variant: ".inc" is a legacy PHP
+                // include-file extension many servers are configured to
+                // execute as PHP, so a dropper renamed foo.inc.json (or
+                // .inc.json.json) is the exact same ".json handler + non-
+                // .php name" bypass as .php.json above, paired with the
+                // same malicious .htaccess. Deliberately ONLY the
+                // .inc.json shape -- ".inc.php" (settings.inc.php,
+                // config.inc.php, ...) is a completely normal, ubiquitous
+                // legitimate name and is NOT matched here.
+                '/\.inc(?:\.json)+$/i',
+                // Webshell-kit dropper naming seen in a real infection
+                // (a "file manager" kit that also drops apply_f2.png /
+                // archive_f2.png / blank.png UI assets and [stories] /
+                // [szablon] bracketed folders): the actual payloads land
+                // as bob_<random>.<phpext>[.json], e.g. bob_9ystk.php.json,
+                // bob_9ystk.inc.json, bob_goci9.phtml.json. The .json ones
+                // are already covered by the double-extension rules above;
+                // this adds the bare bob_<random>.<phpext> case and pins
+                // the exact "bob_" kit name as its own IOC.
+                '/^bob_[a-z0-9]{3,12}\.(?:php|phtml|phar|pht|php[3-7]|inc)(?:\.json)*$/i',
                 // "kill.gif"/"kill.png" -- a recognized attacker calling-card
                 // filename, dropped as a marker/flag file (sometimes empty,
                 // sometimes a tiny webshell) rather than a real image. Flagged
@@ -567,10 +587,17 @@ class MuruguardHelper
             // leftover copy from before that rebrand is the same source,
             // so it gets the same exemptions.
             'SELF_CONTENT_SIGNATURE_EXEMPTIONS' => [
+                // x9_tools_uploader_banner: the CONTENT_SIGNATURES entry's
+                // own 'why' text and the nearby known-hash comment spell
+                // out the literal brand string "X9 Tools" (with a space),
+                // which its own /X9\s*Tools/i regex then matches when this
+                // helper file is scanned as text. Self-referential false
+                // positive only -- the actual regex is still fully live
+                // against every other file.
                 'administrator/components/com_muruguard/helpers/muruguard.php' =>
-                    ['eval_encoded_blob', 'gsocket_indicator', 'xss_report_payload', 'webshell_generic', 'secure_local_marker', 'stream_wrapper_payload'],
+                    ['eval_encoded_blob', 'gsocket_indicator', 'xss_report_payload', 'webshell_generic', 'secure_local_marker', 'stream_wrapper_payload', 'x9_tools_uploader_banner'],
                 'administrator/components/com_sppbscan/helpers/muruguard.php' =>
-                    ['eval_encoded_blob', 'gsocket_indicator', 'xss_report_payload', 'webshell_generic', 'secure_local_marker', 'stream_wrapper_payload'],
+                    ['eval_encoded_blob', 'gsocket_indicator', 'xss_report_payload', 'webshell_generic', 'secure_local_marker', 'stream_wrapper_payload', 'x9_tools_uploader_banner'],
                 'administrator/components/com_muruguard/models/scanner.php' =>
                     ['xss_report_payload', 'secure_local_marker'],
                 'administrator/components/com_sppbscan/models/scanner.php' =>
