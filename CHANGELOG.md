@@ -8,6 +8,18 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [3.6.3] - 2026-09-10
+
+### Fixed
+
+* **Self-scan false positive:** MuRu Guard flagged its own `helpers/muruguard.php` as high severity for the `x9_tools_uploader_banner` content signature. The signature's own explanation text and a nearby comment contain the literal brand string it looks for, so the file matched itself. Added a narrow, per-file, per-signature exemption (the regex stays fully active against every other file).
+
+### Added
+
+* **New disguised-payload filename detections**, from a real "file manager" webshell kit:
+  * `*.inc.json` (and `.inc.json.json`) — the `.inc` counterpart of the already-caught `.php.json` bypass, where a server executes `.inc`/`.json` as PHP via a dropped `.htaccess`. `*.inc.php` (a normal include-file name) is deliberately not matched.
+  * `bob_<random>.<phpext>[.json]` — the kit's payload naming (`bob_9ystk.php.json`, `bob_goci9.phtml.json`, `bob_9ystk.inc.json`, bare `bob_x1a.php`, …).
+
 ## [3.6.2] - 2026-09-09
 
 ### Changed
