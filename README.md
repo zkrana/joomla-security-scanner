@@ -2,7 +2,11 @@
 
 ![Downloads](https://img.shields.io/github/downloads/zkrana/joomla-security-scanner/total)
 
-> 🆕 **We've released a Joomla 3 version of MuRu Guard Pro.** Still on Joomla 3.9/3.10 and can't update SP Page Builder, Helix, EasyStore, or SP Property Finder to a patched release? The Joomla 3 edition brings the same scanning engine plus a real-time shield that blocks the disclosed unauthenticated SQLi/RCE/path-traversal exploits in those un-updatable versions. **[Log in or register at the store to get it →](https://store.lyzerslab.com/dashboard/login)**
+<a href="https://store.lyzerslab.com/dashboard/login">
+  <img width="100%" alt="MuRu Guard Pro is now available for Joomla 3 — log in or register at the store to get it" src="https://capsule-render.vercel.app/api?type=waving&color=0:F97316,100:6366F1&height=190&section=header&text=MuRu%20Guard%20Pro%20is%20now%20on%20Joomla%203!&fontSize=34&fontColor=ffffff&animation=fadeIn&fontAlignY=36&desc=Stuck%20on%20SP%20Page%20Builder%2C%20Helix%2C%20EasyStore%20or%20SP%20Property%20Finder%3F%20Log%20in%20or%20register%20at%20the%20store%20to%20get%20it%20%E2%86%92&descAlignY=58&descSize=18" />
+</a>
+
+🆕 New: a dedicated **Joomla 3 edition of MuRu Guard Pro** — the same scanning engine plus a real-time shield that blocks disclosed unauthenticated SQLi/RCE/path-traversal exploits in un-updatable SP Page Builder, Helix, EasyStore, and SP Property Finder versions. **[Log in or register at the store to get it →](https://store.lyzerslab.com/dashboard/login)**
 
 **Download**: grab the latest installable zip from the [`dist/`](dist) folder in this repo — built the same way a tagged release normally would, just published here directly. `com_muruguard-X.Y.Z.zip` is the scanner component; `plg_muruguardshield-X.Y.Z.zip` is its optional companion real-time protection plugin.
 
