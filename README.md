@@ -2,6 +2,8 @@
 
 ![Downloads](https://img.shields.io/github/downloads/zkrana/joomla-security-scanner/total)
 
+> 🆕 **We've released a Joomla 3 version of MuRu Guard Pro.** Still on Joomla 3.9/3.10 and can't update SP Page Builder, Helix, EasyStore, or SP Property Finder to a patched release? The Joomla 3 edition brings the same scanning engine plus a real-time shield that blocks the disclosed unauthenticated SQLi/RCE/path-traversal exploits in those un-updatable versions. **[Log in or register at the store to get it →](https://store.lyzerslab.com/dashboard/login)**
+
 **Download**: grab the latest installable zip from the [`dist/`](dist) folder in this repo — built the same way a tagged release normally would, just published here directly. `com_muruguard-X.Y.Z.zip` is the scanner component; `plg_muruguardshield-X.Y.Z.zip` is its optional companion real-time protection plugin.
 
 ---
@@ -34,7 +36,7 @@ A Joomla extension that detects and helps remove malware left behind by the **SP
 
 Installs like any other Joomla extension. Runs inside the Joomla administrator, behind Joomla's own authentication and ACL — no separate access key, no public-facing scanner file, nothing to remember to delete afterward.
 
-**Requirements**: Joomla 4 or 5. Joomla 3 is not supported (this extension is built entirely on Joomla's namespaced `Joomla\CMS\*` API, which Joomla 3 doesn't have).
+**Requirements**: Joomla 4 or 5. This free edition is built entirely on Joomla's namespaced `Joomla\CMS\*` API, which Joomla 3 doesn't have — Joomla 3 sites are covered by the separate **MuRu Guard Pro (Joomla 3 edition)** linked above instead.
 
 **Privacy**: scanning and cleanup run entirely on your own server against your own files — no results, file paths, or matched code are ever sent anywhere. The only outbound calls this free edition ever makes are Joomla's own standard "Check for Updates" mechanism (so you're notified of new versions, exactly like any other extension) and, if you explicitly submit the optional newsletter form in the admin panel, that one submission. Nothing else, ever, without you initiating it.
 
