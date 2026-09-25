@@ -14,6 +14,8 @@
 
 ## ⭐ Want more? MuRu Guard Pro
 
+📋 **[Pro Changelog & Road Map →](https://store.lyzerslab.com/changelog-roadmap)** — what shipped in each Pro release and what's coming next.
+
 Everything on this page is **free and always will be** — full scanning, cleanup, and Protection Mode, no restrictions. **MuRu Guard Pro** adds a paid layer on top, for site owners who want more:
 
 | | |
