@@ -8,7 +8,13 @@
 
 🆕 New: a dedicated **Joomla 3 edition of MuRu Guard Pro** — the same scanning engine plus a real-time shield that blocks disclosed unauthenticated SQLi/RCE/path-traversal exploits in un-updatable SP Page Builder, Helix, EasyStore, and SP Property Finder versions. **[Log in or register at the store to get it →](https://store.lyzerslab.com/dashboard/login)**
 
-**Download**: grab the latest installable zip from the [`dist/`](dist) folder in this repo — built the same way a tagged release normally would, just published here directly. `com_muruguard-X.Y.Z.zip` is the scanner component; `plg_muruguardshield-X.Y.Z.zip` is its optional companion real-time protection plugin.
+## Get it on the Joomla Extensions Directory
+
+MuRu Guard is now listed on the official Joomla Extensions Directory, and every release is available there too:
+
+👉 <https://extensions.joomla.org/index.php?option=com_jed&view=extension&layout=default&id=17785&Itemid=145>
+
+**Download**: grab the latest installable zip from the [`dist/`](dist) folder in this repo — built the same way a tagged release normally would, just published here directly. `pkg_muruguard-X.Y.Z.zip` installs everything (scanner component + Shield plugin) in one go; `com_muruguard-X.Y.Z.zip` is the scanner component alone and `plg_muruguardshield-X.Y.Z.zip` its optional companion real-time protection plugin.
 
 ---
 
@@ -42,9 +48,16 @@ A Joomla extension that detects and helps remove malware left behind by the **SP
 
 Installs like any other Joomla extension. Runs inside the Joomla administrator, behind Joomla's own authentication and ACL — no separate access key, no public-facing scanner file, nothing to remember to delete afterward.
 
-**Requirements**: Joomla 4 or 5. This free edition is built entirely on Joomla's namespaced `Joomla\CMS\*` API, which Joomla 3 doesn't have — Joomla 3 sites are covered by the separate **MuRu Guard Pro (Joomla 3 edition)** linked above instead.
+**Requirements**: Joomla 3.10 or newer. Joomla 3 installs need PHP 7.4+; Joomla 4, 5, and 6 need PHP 8.1+. (On Joomla 3 the scheduled-scan webcron URL points at the site frontend instead of `/administrator`, because Joomla 3's com_ajax is frontend-only — everything else works the same on all versions.)
 
-**Privacy**: scanning and cleanup run entirely on your own server against your own files — no results, file paths, or matched code are ever sent anywhere. The only outbound calls this free edition ever makes are Joomla's own standard "Check for Updates" mechanism (so you're notified of new versions, exactly like any other extension) and, if you explicitly submit the optional newsletter form in the admin panel, that one submission. Nothing else, ever, without you initiating it.
+**Privacy**: scanning and cleanup run entirely on your own server against your own files — no results, file paths, or matched code are ever sent anywhere. The admin page itself loads zero third-party assets (all styling ships inside the package, no CDN). The only outbound connections this free edition ever makes are:
+
+- **Joomla update checks** — the standard "Check for Updates" mechanism for the component and the Shield plugin, exactly like any other extension.
+- **Vulnerability-advisory feed** — a public advisory list fetched server-side at most once every 24 hours (cached locally; a plain download that sends nothing about your site) to power the "known vulnerable extensions" warning.
+- **Newsletter opt-in** — only if you explicitly submit the optional name/email form in the admin panel.
+- **Ask AI** — only if you configure your own Gemini API key *and* click the per-finding "Ask AI" button; it sends just the file path and the already-shown detection reason to Google's Generative Language API, never your file contents.
+- **Country blocking lookups** — only if you explicitly enable country blocking (off by default); each unique visitor IP is looked up once via ip-api.com and cached indefinitely, failing open if unreachable.
+- **Hardening self-tests** — when activating Backend Access / Emergency Mode, the server requests its own URLs to verify the password gate before treating it as active (same-site traffic, no third party).
 
 Need Help? <a href="https://www.linkedin.com/in/zkranadevs/">Reach Me</a> or Email me at <a href="mailto:zkranao@gmail.com">zkranao@gmail.com</a>
 
@@ -86,20 +99,23 @@ In June 2026, a critical unauthenticated RCE was disclosed in SP Page Builder ve
 
 ## 📦 Installation
 
-This ships as **two** standard Joomla extension packages — no manual file uploads, no key generation, no separate URL to protect:
+This ships as standard Joomla extension packages — no manual file uploads, no key generation, no separate URL to protect:
 
+- **`pkg_muruguard`** — one bundle that installs both of the below in a single upload. Easiest option.
 - **`com_muruguard`** — the scanner component itself. Required.
 - **`plg_muruguardshield`** — the companion real-time Protection Mode plugin. Optional, but install it too if you want live attack/brute-force blocking, not just on-demand scanning — see [🛡️ Protection Mode](#-protection-mode-real-time-attack-blocking) below.
 
-### 1. Download the packages
+### 1. Download the package
 
-> ⚠️ **Releases are currently down** (see the notice at the top of this page) — grab **both** `com_muruguard-X.X.X.zip` and `plg_muruguardshield-X.X.X.zip` from the [`dist/`](dist) folder in this repo instead of the Releases page, until that's fixed.
+> ⚠️ **Releases are currently down** (see the notice at the top of this page) — grab the installable zip(s) from the [`dist/`](dist) folder in this repo instead of the Releases page, until that's fixed.
+
+Easiest: download the single **`pkg_muruguard-X.X.X.zip`** — it installs both the component and the Shield plugin in one go. Prefer installing them separately? Grab **`com_muruguard-X.X.X.zip`** (required) and optionally **`plg_muruguardshield-X.X.X.zip`** (real-time Protection Mode) instead.
 
 ### 2. Install via the Joomla administrator
 
 1. Log into your Joomla administrator as a Super User.
 2. Go to **System → Import → Extensions** (or **System → Manage → Install** on Joomla versions from 4.x.x to latest).
-3. Upload `com_muruguard-X.X.X.zip` first, then `plg_muruguardshield-X.X.X.zip` (or point Joomla at either one via **Install from Folder / URL**).
+3. Upload `pkg_muruguard-X.X.X.zip` (or the individual zips — component first, then the plugin — or point Joomla at any of them via **Install from Folder / URL**).
 4. Once installed, the scanner appears under **Components → MuRu Guard** in the admin sidebar.
 5. If you installed the plugin, enable it under **System → Manage → Plugins**, search "MuRu Guard Shield", and toggle it on. It does nothing until enabled here *and* until Protection Mode is turned on from the scanner's own Settings panel — see below.
 

@@ -33,20 +33,23 @@ jobs:
             echo "::warning::Tag is v$tag_version but muruguard.xml <version> is $manifest_version -- update the manifest before releasing."
           fi
 
-      - name: Build installable zip
-        run: |
-          mkdir -p dist
-          cd com_muruguard
-          zip -r "../dist/com_muruguard-${{ steps.version.outputs.version }}.zip" . -x ".*"
-          cd ..
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: none
 
-      - name: Verify manifest sits at zip root
+      - name: Extract plugin version from manifest
+        id: plugin_version
+        run: echo "version=$(grep -oPm1 '(?<=<version>)[^<]+' plg_muruguardshield/muruguardshield.xml)" >> "$GITHUB_OUTPUT"
+
+      - name: Build installable zips
         run: |
-          zip_file="dist/com_muruguard-${{ steps.version.outputs.version }}.zip"
-          if ! unzip -l "$zip_file" | grep -qE '^\s*[0-9]+.*\smuruguard\.xml$'; then
-            echo "::error::muruguard.xml is not at the root of the built zip. Joomla install will fail."
-            exit 1
-          fi
+          chmod +x scripts/build.sh
+          # --skip-css: CI has no tailwindcss toolchain; the committed
+          # media/css/muruguard.css is the source of truth and the static
+          # checks inside build.sh verify it covers every used class.
+          scripts/build.sh --skip-css
 
       - name: Extract release notes from CHANGELOG.md
         run: |
@@ -72,7 +75,10 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/com_muruguard-${{ steps.version.outputs.version }}.zip
+          files: |
+            dist/com_muruguard-${{ steps.version.outputs.version }}.zip
+            dist/plg_muruguardshield-${{ steps.plugin_version.outputs.version }}.zip
+            dist/pkg_muruguard-${{ steps.version.outputs.version }}.zip
           body_path: dist/release-notes.md
 
       - name: Upload release to the Lyzerslab dashboard

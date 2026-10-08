@@ -20,6 +20,30 @@
 
 defined('_JEXEC') or die;
 
+// Joomla 3 compatibility aliases -- a tiny inline copy of the relevant
+// entries from the component's helpers/compat.php, kept inline (rather
+// than requiring that file) because this plugin must also load --
+// inertly -- without the component installed at all. Only the three
+// names this file itself references; everything the component helper
+// needs is aliased by compat.php when loadShieldHelper() pulls it in.
+// Guarded per alias so running after (or before) compat.php is a no-op
+// instead of a "Cannot declare class" warning -- and re-checked after
+// loading the original, since Joomla 3's own loader may materialise its
+// own alias for the same name as a side effect (see compat.php).
+if (defined('JVERSION') && version_compare(JVERSION, '4.0', '<')) {
+    $muruguardShieldAliases = [
+        'Joomla\\CMS\\Factory'              => 'JFactory',
+        'Joomla\\CMS\\Plugin\\CMSPlugin'    => 'JPlugin',
+        'Joomla\\CMS\\Component\\ComponentHelper' => 'JComponentHelper',
+    ];
+    foreach ($muruguardShieldAliases as $alias => $original) {
+        if (!class_exists($alias, false) && class_exists($original) && !class_exists($alias, false)) {
+            class_alias($original, $alias);
+        }
+    }
+    unset($muruguardShieldAliases, $alias, $original);
+}
+
 use Joomla\CMS\Factory;
 use Joomla\CMS\Plugin\CMSPlugin;
 use Joomla\CMS\Component\ComponentHelper;
@@ -27,6 +51,45 @@ use Joomla\CMS\Language\Text;
 
 class plgSystemMuruguardshield extends CMSPlugin
 {
+    /**
+     * True when $app is the administrator application. Same two-method
+     * probe as MuruguardCompat::isAdminClient(), duplicated here (rather
+     * than called) because this plugin file must stand alone without the
+     * component installed -- see the alias block at the top of this file.
+     *
+     * @param object $app Joomla application object (either platform).
+     */
+    private static function isAdminClient($app): bool
+    {
+        if (is_object($app) && method_exists($app, 'isClient')) {
+            return (bool) $app->isClient('administrator');
+        }
+        if (is_object($app) && method_exists($app, 'isAdmin')) {
+            // Joomla 3's name for the same check.
+            return (bool) $app->isAdmin();
+        }
+
+        return false;
+    }
+
+    /**
+     * The current user object. Same branch as
+     * MuruguardCompat::getUser(), duplicated here for the same
+     * standalone reason as isAdminClient() above.
+     *
+     * @return object
+     */
+    private static function getCurrentUser()
+    {
+        $app = Factory::getApplication();
+        if (method_exists($app, 'getIdentity')) {
+            return $app->getIdentity();
+        }
+
+        // Joomla 3, which has no getIdentity().
+        return \JFactory::getUser();
+    }
+
     /**
      * Fires on every request, before routing. Every code path below is
      * wrapped in a try/catch that swallows any Throwable -- this plugin
@@ -89,7 +152,7 @@ class plgSystemMuruguardshield extends CMSPlugin
         // Mode (which reuses the exact same credentials -- see
         // MuruguardHardeningHelper::activateEmergencyMode()) extends that
         // to every request on the site.
-        $isAdminClient = method_exists($app, 'isClient') && $app->isClient('administrator');
+        $isAdminClient = self::isAdminClient($app);
         if (!$emergencyModeEnabled && !$isAdminClient) return;
 
         // Same file MuruguardHardeningHelper::writeHtpasswd() writes and
@@ -231,6 +294,13 @@ class plgSystemMuruguardshield extends CMSPlugin
      * 403 alike) -- this method's only job is getting the request to
      * it at all; every actual authorization and response decision still
      * lives in exactly the one place it always has.
+     *
+     * Joomla 3 note: com_ajax there is a frontend-only component, and the
+     * Joomla 3 administrator sends every signed-out visitor to the login
+     * screen before com_ajax ever runs -- so on Joomla 3 the webcron URL
+     * Settings shows points at the site frontend
+     * (index.php?option=com_ajax&...) instead of /administrator. This
+     * bridge method itself is identical on both platforms.
      */
     public function onAjaxMuruguardshield()
     {
@@ -361,7 +431,8 @@ class plgSystemMuruguardshield extends CMSPlugin
         // match is still recorded (marked not-blocked), so this exemption
         // can't become a silent blind spot for an attacker who happens to
         // hold a low-privilege authenticated account.
-        $user = $app->getIdentity();
+        // getIdentity() is Joomla 4-only (Joomla 3: JFactory::getUser()).
+        $user = self::getCurrentUser();
         $isAdminExempt = (bool) ($user && !$user->guest && $user->authorise('core.login.admin'));
 
         // Country block -- independent of, and checked before, pattern
@@ -457,7 +528,8 @@ class plgSystemMuruguardshield extends CMSPlugin
     private function checkAdminLockdownGate(): void
     {
         $app = Factory::getApplication();
-        if (!$app->isClient('administrator')) return;
+        // isClient() is Joomla 4-only (Joomla 3: isAdmin()).
+        if (!self::isAdminClient($app)) return;
 
         $params = ComponentHelper::getParams('com_muruguard');
         if (!$params->get('harden_lock_admin_actions', 0)) return;

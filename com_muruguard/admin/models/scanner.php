@@ -7,11 +7,11 @@
 
 defined('_JEXEC') or die;
 
-use Joomla\CMS\MVC\Model\BaseDatabaseModel;
 use Joomla\CMS\Factory;
 use Joomla\CMS\Component\ComponentHelper;
 use Joomla\CMS\Language\Text;
 
+require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/compat.php';
 require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/muruguard.php';
 
 /**
@@ -26,7 +26,9 @@ class MuruguardScanChunkTimeout extends \RuntimeException
 {
 }
 
-class MuruguardModelScanner extends BaseDatabaseModel
+// Base class from helpers/compat.php: the native BaseDatabaseModel on
+// Joomla 4+, JModelLegacy plus a getDatabase() polyfill on Joomla 3.
+class MuruguardModelScanner extends MuruguardCompatDatabaseModel
 {
     protected string $root;
     protected array $fileFindings = [];
@@ -194,7 +196,7 @@ class MuruguardModelScanner extends BaseDatabaseModel
      */
     protected function selectedAreas(): array
     {
-        return (array) Factory::getApplication()->getSession()->get('muruguard.scan_areas', []);
+        return (array) MuruguardCompat::getSession()->get('muruguard.scan_areas', []);
     }
 
     /** True if $key was selected (or if nothing was explicitly selected). */
@@ -210,7 +212,7 @@ class MuruguardModelScanner extends BaseDatabaseModel
 
     public function getFileFindings(): array
     {
-        $session = Factory::getApplication()->getSession();
+        $session = MuruguardCompat::getSession();
         $forceRescan = Factory::getApplication()->input->getBool('rescan', false);
 
         if (!$forceRescan) {
@@ -237,7 +239,7 @@ class MuruguardModelScanner extends BaseDatabaseModel
     /** True if a scan result is already sitting in the session cache. */
     public function hasCachedScan(): bool
     {
-        $cached = Factory::getApplication()->getSession()->get('muruguard.filefindings');
+        $cached = MuruguardCompat::getSession()->get('muruguard.filefindings');
         return is_array($cached);
     }
 
@@ -247,7 +249,7 @@ class MuruguardModelScanner extends BaseDatabaseModel
      */
     public function runScan(): int
     {
-        $session = Factory::getApplication()->getSession();
+        $session = MuruguardCompat::getSession();
         $this->scanFilesystem();
         $now = time();
         $session->set('muruguard.filefindings', $this->fileFindings);
@@ -477,7 +479,7 @@ class MuruguardModelScanner extends BaseDatabaseModel
             // view renders identically regardless of which path produced
             // them -- chunking only changes HOW the scan runs, never the
             // shape of its output.
-            $session = Factory::getApplication()->getSession();
+            $session = MuruguardCompat::getSession();
             $session->set('muruguard.filefindings', $progress['findings']);
             $session->set('muruguard.filefindings_time', time());
             $this->fileFindings = $progress['findings'];
@@ -507,28 +509,15 @@ class MuruguardModelScanner extends BaseDatabaseModel
      */
     public function saveScheduledSettings(bool $enabled, string $token, string $email): void
     {
-        $table = new \Joomla\CMS\Table\Extension($this->getDatabase());
-        if (!$table->load(['element' => 'com_muruguard', 'type' => 'component'])) return;
-
-        $params = json_decode((string) $table->params, true);
-        if (!is_array($params)) $params = [];
-        $params['cron_enabled'] = $enabled ? 1 : 0;
-        $params['cron_token'] = $token;
-        $params['alert_email'] = $email;
-        $table->params = json_encode($params);
-        $table->store();
-        // ComponentHelper::getComponents() (what every ComponentHelper::
-        // getParams('com_muruguard') call in this codebase reads through)
-        // caches the ENTIRE component registry, params blob included, in
-        // the '_system' cache group when Joomla's own system caching is
-        // enabled. Writing straight to the #__extensions row via
-        // Table::store() never invalidates that cache on its own -- so
-        // the write itself succeeds, but the NEXT page load can still
-        // read back the stale pre-write params, making the change look
-        // like it silently reverted. Real reported bug: the newsletter
-        // banner's dismissal (saved this same way) reappeared after
-        // every reload despite dismissing it successfully each time.
-        $this->cleanCache('_system');
+        // Persistence -- including the Joomla 3 query path and the Joomla
+        // 4+ '_system' cache invalidation -- lives in
+        // saveHardeningParams(), so every settings save shares the one
+        // version branch instead of each repeating it.
+        $this->saveHardeningParams([
+            'cron_enabled' => $enabled ? 1 : 0,
+            'cron_token'   => $token,
+            'alert_email'  => $email,
+        ]);
     }
 
     /** Dismisses the "get security alerts & updates" dashboard banner without subscribing. */
@@ -572,26 +561,8 @@ class MuruguardModelScanner extends BaseDatabaseModel
         $allowed = [25, 50, 100, 250, 500];
         if (!in_array($itemsPerPage, $allowed, true)) $itemsPerPage = 50;
 
-        $table = new \Joomla\CMS\Table\Extension($this->getDatabase());
-        if (!$table->load(['element' => 'com_muruguard', 'type' => 'component'])) return;
-
-        $params = json_decode((string) $table->params, true);
-        if (!is_array($params)) $params = [];
-        $params['items_per_page'] = $itemsPerPage;
-        $table->params = json_encode($params);
-        $table->store();
-        // ComponentHelper::getComponents() (what every ComponentHelper::
-        // getParams('com_muruguard') call in this codebase reads through)
-        // caches the ENTIRE component registry, params blob included, in
-        // the '_system' cache group when Joomla's own system caching is
-        // enabled. Writing straight to the #__extensions row via
-        // Table::store() never invalidates that cache on its own -- so
-        // the write itself succeeds, but the NEXT page load can still
-        // read back the stale pre-write params, making the change look
-        // like it silently reverted. Real reported bug: the newsletter
-        // banner's dismissal (saved this same way) reappeared after
-        // every reload despite dismissing it successfully each time.
-        $this->cleanCache('_system');
+        // Same shared persistence as saveScheduledSettings() above.
+        $this->saveHardeningParams(['items_per_page' => $itemsPerPage]);
     }
 
     /**
@@ -610,18 +581,6 @@ class MuruguardModelScanner extends BaseDatabaseModel
         bool $blockCountries = false,
         string $blockedCountries = ''
     ): void {
-        $table = new \Joomla\CMS\Table\Extension($this->getDatabase());
-        if (!$table->load(['element' => 'com_muruguard', 'type' => 'component'])) return;
-
-        $params = json_decode((string) $table->params, true);
-        if (!is_array($params)) $params = [];
-        $params['shield_enabled'] = $enabled ? 1 : 0;
-        $params['shield_block_patterns'] = $blockPatterns ? 1 : 0;
-        $params['shield_block_bruteforce'] = $blockBruteForce ? 1 : 0;
-        $params['shield_bruteforce_threshold'] = max(2, min(50, $threshold));
-        $params['shield_bruteforce_window'] = max(1, min(1440, $window));
-        $params['shield_block_useragents'] = $blockUserAgents ? 1 : 0;
-        $params['shield_block_countries'] = $blockCountries ? 1 : 0;
         // Normalise to a clean, de-duplicated, comma-separated list of
         // 2-letter codes -- whatever stray formatting an admin pastes in
         // (extra spaces, lowercase, trailing commas) still works.
@@ -629,25 +588,29 @@ class MuruguardModelScanner extends BaseDatabaseModel
             fn($c) => strtoupper(trim($c)),
             explode(',', $blockedCountries)
         ), fn($c) => preg_match('/^[A-Z]{2}$/', $c)));
-        $params['shield_blocked_countries'] = implode(',', $codes);
-        $table->params = json_encode($params);
-        $table->store();
-        // ComponentHelper::getComponents() (what every ComponentHelper::
-        // getParams('com_muruguard') call in this codebase reads through)
-        // caches the ENTIRE component registry, params blob included, in
-        // the '_system' cache group when Joomla's own system caching is
-        // enabled. Writing straight to the #__extensions row via
-        // Table::store() never invalidates that cache on its own -- so
-        // the write itself succeeds, but the NEXT page load can still
-        // read back the stale pre-write params, making the change look
-        // like it silently reverted. Real reported bug: the newsletter
-        // banner's dismissal (saved this same way) reappeared after
-        // every reload despite dismissing it successfully each time.
-        $this->cleanCache('_system');
+        // Same shared persistence as saveScheduledSettings() above.
+        $this->saveHardeningParams([
+            'shield_enabled'             => $enabled ? 1 : 0,
+            'shield_block_patterns'      => $blockPatterns ? 1 : 0,
+            'shield_block_bruteforce'    => $blockBruteForce ? 1 : 0,
+            'shield_bruteforce_threshold' => max(2, min(50, $threshold)),
+            'shield_bruteforce_window'   => max(1, min(1440, $window)),
+            'shield_block_useragents'    => $blockUserAgents ? 1 : 0,
+            'shield_block_countries'     => $blockCountries ? 1 : 0,
+            'shield_blocked_countries'   => implode(',', $codes),
+        ]);
     }
 
     private function saveHardeningParams(array $set): void
     {
+        // Joomla\CMS\Table\Extension does not exist on Joomla 3 (and
+        // Joomla 3 has no persistent component-registry cache needing a
+        // cleanCache()), so that platform takes the plain-query path.
+        if (!MuruguardCompat::isJoomla4()) {
+            $this->saveHardeningParamsJoomla3($set);
+            return;
+        }
+
         $table = new \Joomla\CMS\Table\Extension($this->getDatabase());
         if (!$table->load(['element' => 'com_muruguard', 'type' => 'component'])) return;
         $params = json_decode((string) $table->params, true);
@@ -669,6 +632,42 @@ class MuruguardModelScanner extends BaseDatabaseModel
         // banner's dismissal (saved this same way) reappeared after
         // every reload despite dismissing it successfully each time.
         $this->cleanCache('_system');
+    }
+
+    /**
+     * Joomla 3 path for saveHardeningParams(): the exact same
+     * read-params-blob / merge-keys / write-params-blob cycle as the
+     * Joomla 4+ Table::store() path above, expressed as plain
+     * SELECT/UPDATE queries against #__extensions (same table, same
+     * columns on both platforms). No cleanCache(): Joomla 3's
+     * JComponentHelper keeps component params in a per-request static
+     * only, so the next page load re-reads the row and the stale-cache
+     * bug the Joomla 4+ path guards against cannot occur here.
+     */
+    private function saveHardeningParamsJoomla3(array $set): void
+    {
+        $db = $this->getDatabase();
+        $where = [
+            $db->quoteName('element') . ' = ' . $db->quote('com_muruguard'),
+            $db->quoteName('type') . ' = ' . $db->quote('component'),
+        ];
+        $db->setQuery(
+            $db->getQuery(true)
+                ->select($db->quoteName('params'))
+                ->from($db->quoteName('#__extensions'))
+                ->where($where)
+        );
+        $params = json_decode((string) $db->loadResult(), true);
+        if (!is_array($params)) $params = [];
+        foreach ($set as $key => $value) {
+            $params[$key] = $value;
+        }
+        $db->setQuery(
+            $db->getQuery(true)
+                ->update($db->quoteName('#__extensions'))
+                ->set($db->quoteName('params') . ' = ' . $db->quote(json_encode($params)))
+                ->where($where)
+        )->execute();
     }
 
     /** Toggles plg_system_muruguardshield's Admin Lockdown gate (see checkAdminLockdownGate() in that plugin -- blocks the extension installer and new-backend-user creation while on). */
@@ -1223,7 +1222,11 @@ class MuruguardModelScanner extends BaseDatabaseModel
 
                 // known-malicious filename pattern (location-independent, runs both modes --
                 // malware doesn't respect the upload-vs-code folder distinction)
-                if (!$isDir && !$isKnownSafeEntry) {
+                // Known Joomla 3 core files (com_privacy's request.xml.php
+                // controller, ...) skip the filename IOCs -- their exact
+                // names are legitimate there; content signatures below
+                // still run on them.
+                if (!$isDir && !$isKnownSafeEntry && !MuruguardHelper::isJoomla3CoreExactPath($relCheck, $sig)) {
                     // Joomla's own legacy MVC convention names a view's
                     // per-format render file view.<format>.php --
                     // view.html.php, view.xml.php, view.json.php,
@@ -1812,7 +1815,7 @@ class MuruguardModelScanner extends BaseDatabaseModel
             }
         }
 
-        Factory::getApplication()->getSession()->set('muruguard.filefindings', null);
+        MuruguardCompat::getSession()->set('muruguard.filefindings', null);
         return $flash;
     }
 
@@ -1898,7 +1901,7 @@ class MuruguardModelScanner extends BaseDatabaseModel
             $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_CLEANED', $result['removed_preview'], basename($backup), $relPath);
         }
 
-        Factory::getApplication()->getSession()->set('muruguard.filefindings', null);
+        MuruguardCompat::getSession()->set('muruguard.filefindings', null);
         return $flash;
     }
 

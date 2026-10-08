@@ -15,6 +15,9 @@ defined('_JEXEC') or die;
 use Joomla\CMS\Factory;
 use Joomla\CMS\MVC\Controller\BaseController;
 
+// Joomla 3 compatibility aliases + version branches -- first, so the
+// namespaced names below resolve on Joomla 3 too; see helpers/compat.php.
+require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/compat.php';
 require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/muruguard.php';
 require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/hardening.php';
 require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/controllers/scanner.php';

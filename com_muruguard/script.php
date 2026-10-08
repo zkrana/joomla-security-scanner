@@ -7,8 +7,26 @@
 
 defined('_JEXEC') or die;
 
+// Joomla 3 aliases for the two names this script references. Inline (see
+// helpers/compat.php for the full map): during install this file runs
+// from the extracted package, before any component path exists, so it
+// cannot require that file. Same loop shape as everywhere else, including
+// the re-check after loading the original -- Joomla 3's own loader may
+// materialise its own alias for the same name as a side effect.
+if (defined('JVERSION') && version_compare(JVERSION, '4.0', '<')) {
+    $muruguardScriptAliases = [
+        'Joomla\\CMS\\Factory'      => 'JFactory',
+        'Joomla\\CMS\\Table\\Table' => 'JTable',
+    ];
+    foreach ($muruguardScriptAliases as $alias => $original) {
+        if (!class_exists($alias, false) && class_exists($original) && !class_exists($alias, false)) {
+            class_alias($original, $alias);
+        }
+    }
+    unset($muruguardScriptAliases, $alias, $original);
+}
+
 use Joomla\CMS\Factory;
-use Joomla\CMS\Table\Asset;
 use Joomla\CMS\Table\Table;
 
 /**
@@ -24,11 +42,111 @@ use Joomla\CMS\Table\Table;
  * Class name intentionally uses the legacy "{element}InstallerScript"
  * convention (lowercase element + "InstallerScript", no base class) --
  * the one naming pattern Joomla's installer has reliably recognised
- * across 3.x/4.x/5.x, matching this project's stated cross-version
- * compatibility elsewhere.
+ * across 3.x/4.x/5.x/6.x.
  */
 class com_muruguardInstallerScript
 {
+    /**
+     * Minimum environment this component supports. Checked here (not
+     * assumed) so installing on an older Joomla/PHP fails with a clear
+     * message instead of a half-installed component and a fatal error --
+     * Joomla aborts the whole install when preflight returns false.
+     */
+    private const MIN_JOOMLA_VERSION = '3.10.0';
+    // The codebase's actual syntax floor (arrow functions, typed
+    // properties) is PHP 7.4, which is what Joomla 3 installs get; on
+    // Joomla 4+ the pre-existing 8.1 requirement is kept as-is.
+    private const MIN_PHP_VERSION_JOOMLA3 = '7.4.0';
+    private const MIN_PHP_VERSION_JOOMLA4 = '8.1.0';
+
+    public function preflight($type, $parent)
+    {
+        if (!in_array($type, ['install', 'update'], true)) {
+            return true;
+        }
+
+        if (defined('JVERSION') && version_compare(JVERSION, self::MIN_JOOMLA_VERSION, '<')) {
+            Factory::getApplication()->enqueueMessage(
+                sprintf(
+                    'MuRu Guard requires Joomla %s or newer (this site runs Joomla %s). The extension was not installed.',
+                    self::MIN_JOOMLA_VERSION,
+                    JVERSION
+                ),
+                'error'
+            );
+            return false;
+        }
+
+        $minPhp = (defined('JVERSION') && version_compare(JVERSION, '4.0', '<'))
+            ? self::MIN_PHP_VERSION_JOOMLA3
+            : self::MIN_PHP_VERSION_JOOMLA4;
+        if (version_compare(PHP_VERSION, $minPhp, '<')) {
+            Factory::getApplication()->enqueueMessage(
+                sprintf(
+                    'MuRu Guard requires PHP %s or newer (this server runs PHP %s). The extension was not installed.',
+                    $minPhp,
+                    PHP_VERSION
+                ),
+                'error'
+            );
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Joomla removes the manifest's own top-level <menu> item itself on
+     * uninstall, but the Dashboard / MuRu Settings children added by
+     * addAdminSubmenuItems() are this script's own rows -- without this
+     * they would be left behind as orphaned menu items pointing at a
+     * component that no longer exists.
+     */
+    public function uninstall($parent)
+    {
+        try {
+            $db = self::getDb();
+            $links = [
+                'index.php?option=com_muruguard&view_panel=dashboard',
+                'index.php?option=com_muruguard&view_panel=settings',
+                // Legacy items from earlier releases -- same cleanup the
+                // update path does in addAdminSubmenuItems(), so an old
+                // install uninstalled directly never leaves these behind.
+                'index.php?option=com_muruguard&view_panel=support',
+            ];
+            $quoted = array_map([$db, 'quote'], $links);
+            $db->setQuery(
+                $db->getQuery(true)
+                    ->delete($db->quoteName('#__menu'))
+                    ->where($db->quoteName('client_id') . ' = 1')
+                    ->where($db->quoteName('link') . ' IN (' . implode(',', $quoted) . ')')
+            )->execute();
+            Table::getInstance('Menu')->rebuild();
+        } catch (\Throwable $e) {
+            // Never let menu cleanup break the uninstall itself.
+        }
+    }
+
+    /**
+     * Factory::getDbo() is deprecated since Joomla 4.3 (the container's
+     * DatabaseInterface is the supported path on 4.x/5.x/6.x), so prefer
+     * that and only fall back to the legacy call where no container
+     * exists -- which on Joomla 3 is always, since the container path is
+     * unavailable there.
+     */
+    private static function getDb()
+    {
+        if (method_exists(Factory::class, 'getContainer')) {
+            try {
+                return Factory::getContainer()->get(\Joomla\Database\DatabaseInterface::class);
+            } catch (\Throwable $e) {
+                // Fall through to the legacy call below.
+            }
+        }
+
+        return Factory::getDbo();
+    }
+
     public function postflight($type, $parent)
     {
         if (!in_array($type, ['install', 'update'], true)) {
@@ -64,7 +182,7 @@ class com_muruguardInstallerScript
     private function applyDefaultAclRules(): void
     {
         try {
-            $db = Factory::getDbo();
+            $db = self::getDb();
             $query = $db->getQuery(true)
                 ->select($db->quoteName(['id', 'rules']))
                 ->from($db->quoteName('#__assets'))
@@ -97,8 +215,12 @@ class com_muruguardInstallerScript
                 'core.edit'   => ['6' => 0, '7' => 0],
             ];
 
-            $asset = new Asset($db);
-            if ($asset->load((int) $row->id)) {
+            // getInstance() rather than `new Asset($db)`: the
+            // Joomla\CMS\Table\Asset class does not exist on Joomla 3,
+            // while Table::getInstance('Asset') resolves to the right
+            // table class on every platform (JTableAsset there).
+            $asset = Table::getInstance('Asset');
+            if ($asset && $asset->load((int) $row->id)) {
                 $asset->rules = json_encode($defaultRules);
                 $asset->store();
             }
@@ -135,7 +257,7 @@ class com_muruguardInstallerScript
     protected function addAdminSubmenuItems(): void
     {
         try {
-            $db = Factory::getDbo();
+            $db = self::getDb();
 
             // Joomla's own installer can, on some reinstall-the-same-version
             // update paths, insert a SECOND fresh top-level #__menu row for

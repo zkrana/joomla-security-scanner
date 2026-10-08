@@ -12,6 +12,10 @@
 
 defined('_JEXEC') or die;
 
+// Joomla 3 compatibility aliases + version branches -- must load before
+// any Joomla\CMS reference below; see helpers/compat.php.
+require_once __DIR__ . '/compat.php';
+
 use Joomla\CMS\Factory;
 use Joomla\CMS\Language\Text;
 use Joomla\CMS\Uri\Uri;
@@ -29,7 +33,9 @@ class MuruguardHelper
      */
     public static function requireManageAccess(): void
     {
-        $user = Factory::getApplication()->getIdentity();
+        // getIdentity() is Joomla 4-only (Joomla 3: JFactory::getUser())
+        // -- the compat helper picks the right one per platform.
+        $user = MuruguardCompat::getUser();
 
         if ($user->guest || (int) $user->id <= 0) {
             throw new \Joomla\CMS\Exception\NotAllowed(Text::_('JERROR_ALERTNOAUTHOR'), 403);
@@ -62,7 +68,8 @@ class MuruguardHelper
     {
         self::requireManageAccess();
 
-        $user = Factory::getApplication()->getIdentity();
+        // getIdentity() is Joomla 4-only -- see requireManageAccess().
+        $user = MuruguardCompat::getUser();
         if (!$user->authorise($action, 'com_muruguard')) {
             throw new \Joomla\CMS\Exception\NotAllowed(Text::_('JERROR_ALERTNOAUTHOR'), 403);
         }
@@ -91,7 +98,8 @@ class MuruguardHelper
 
     private static function can(string $action): bool
     {
-        $user = Factory::getApplication()->getIdentity();
+        // getIdentity() is Joomla 4-only -- see requireManageAccess().
+        $user = MuruguardCompat::getUser();
         return !$user->guest && (int) $user->id > 0 && (bool) $user->authorise($action, 'com_muruguard');
     }
 
@@ -783,6 +791,48 @@ class MuruguardHelper
                 'templates/system' => [
                     'index.php', 'error.php', 'error.full.php', 'fatal.php', 'offline.php', 'component.php', 'web.config',
                 ],
+            ],
+
+            // Same map as above, but for Joomla 3.10's core -- which ships
+            // DIFFERENT loose files in cli/ and bin/ than Joomla 4+
+            // (verified against a live 3.10.10 tree: cli/ holds the legacy
+            // cron/indexer/session-gc scripts instead of joomla.php, and
+            // bin/ holds the Platform keychain CLI). checkCoreMasquerade()
+            // picks this map on Joomla 3 and the one above on 4+, so each
+            // platform keeps a tight, truthful "clean install" list instead
+            // of a merged one that would miss a real dropper on the other.
+            'CORE_LOOSE_FILE_ALLOWLIST_JOOMLA3' => [
+                'libraries' => [
+                    'classmap.php', 'cms.php', 'import.php', 'import.legacy.php', 'loader.php',
+                ],
+                'cli' => [
+                    'deletefiles.php', 'finder_indexer.php', 'garbagecron.php',
+                    'sessionGc.php', 'sessionMetadataGc.php', 'update_cron.php',
+                ],
+                'bin' => ['keychain.php'],
+                'templates/system' => [
+                    'component.php', 'error.php', 'index.php', 'offline.php',
+                ],
+            ],
+
+            // Exact Joomla 3 core files (verified on a live 3.10.10 tree)
+            // that generic, location-independent heuristics would otherwise
+            // flag -- consulted via isJoomla3CoreExactPath() ONLY on
+            // Joomla 3, never on 4+ (where these paths don't exist in core
+            // at all, so a file there stays suspicious):
+            // - com_finder's "Index" controller/model are legitimately
+            //   NAMED index.php (FinderControllerIndex/FinderModelIndex),
+            //   tripping the stray-index.php structural check;
+            // - com_privacy's format-specific request controller is
+            //   legitimately named request.xml.php, tripping the
+            //   double-extension filename pattern.
+            // Structural/filename checks only -- content signatures still
+            // run on these paths, so a backdoor dropped or injected AT one
+            // of them is still caught.
+            'JOOMLA3_CORE_EXACT_PATHS' => [
+                'administrator/components/com_finder/controllers/index.php',
+                'administrator/components/com_finder/models/index.php',
+                'administrator/components/com_privacy/controllers/request.xml.php',
             ],
         ];
     }
@@ -1678,6 +1728,13 @@ class MuruguardHelper
     {
         try {
             $context = stream_context_create(['http' => ['timeout' => 2, 'ignore_errors' => true]]);
+            // Plain http:// is deliberate, not an oversight: ip-api.com's
+            // free tier only serves HTTP (HTTPS requires a paid Pro key
+            // this extension neither has nor asks the admin for). The
+            // request carries nothing sensitive -- just the visitor IP
+            // being looked up, which is the API's entire purpose -- and
+            // the response is validated (status + 2-letter code shape)
+            // before anything is trusted or cached.
             $response = @file_get_contents("http://ip-api.com/json/{$ip}?fields=status,countryCode", false, $context);
             if ($response === false) return null;
 
@@ -1960,8 +2017,13 @@ class MuruguardHelper
         if (!$isDir) {
             $dir = strtolower(dirname($relPath));
             if ($dir === '.') $dir = '';
-            if (isset($sig['CORE_LOOSE_FILE_ALLOWLIST'][$dir])) {
-                $allowed   = array_map('strtolower', $sig['CORE_LOOSE_FILE_ALLOWLIST'][$dir]);
+            // Joomla 3.10 ships different loose cli/ and bin/ core files than
+            // 4+ (legacy cron/indexer/session-gc scripts, Platform
+            // keychain CLI) -- each platform is checked against its own
+            // truthful list, never a merged one.
+            $allowKey = MuruguardCompat::isJoomla4() ? 'CORE_LOOSE_FILE_ALLOWLIST' : 'CORE_LOOSE_FILE_ALLOWLIST_JOOMLA3';
+            if (isset($sig[$allowKey][$dir])) {
+                $allowed   = array_map('strtolower', $sig[$allowKey][$dir]);
                 $stubExts  = ['html', 'htm', 'xml', 'txt', 'ini', 'json', 'md', 'dist', 'htaccess'];
                 $baseLower = strtolower($base);
                 if (!in_array($baseLower, $allowed, true)) {
@@ -2403,10 +2465,30 @@ class MuruguardHelper
      * so a folder that shouldn't exist in any clean template at all is
      * flagged purely on where it sits, not what it contains.
      */
+    /**
+     * True when $relPath is one of the JOOMLA3_CORE_EXACT_PATHS core files
+     * AND the site actually runs Joomla 3 -- the version gate is the
+     * point: on Joomla 4+ these paths don't exist in core, so a file
+     * there must stay suspicious. Pure path predicate (no file reads),
+     * shared by the stray-index and filename-pattern exemptions.
+     */
+    public static function isJoomla3CoreExactPath(string $relPath, array $sig): bool
+    {
+        if (MuruguardCompat::isJoomla4()) return false;
+        $relPath = ltrim(str_replace('\\', '/', $relPath), '/');
+        return in_array($relPath, $sig['JOOMLA3_CORE_EXACT_PATHS'], true);
+    }
+
     public static function checkStrayIndexPhp(string $relPath, string $absPath, array $sig): ?string
     {
         $relPath = ltrim(str_replace('\\', '/', $relPath), '/');
         if (strcasecmp(basename($relPath), 'index.php') !== 0) return null;
+
+        // Joomla 3 core's legitimately code-bearing index.php files
+        // (com_finder's Index controller/model) -- same "structural check
+        // only, content signatures still run" rationale as the JCE and
+        // Dropfiles exemptions below.
+        if (self::isJoomla3CoreExactPath($relPath, $sig)) return null;
 
         foreach ($sig['TEMPLATE_FOLDER_MASQUERADE_PATTERNS'] as $re) {
             if (preg_match($re, $relPath)) {

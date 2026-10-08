@@ -7,8 +7,10 @@
 
 defined('_JEXEC') or die;
 
+use Joomla\CMS\Factory;
 use Joomla\CMS\MVC\Controller\BaseController;
 
+require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/compat.php';
 require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/muruguard.php';
 require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/controllers/scanner.php';
 
@@ -30,7 +32,11 @@ class MuruguardController extends MuruguardControllerScanner
     public function display($cachable = false, $urlparams = [])
     {
         MuruguardHelper::requireManageAccess();
-        $this->input->set('view', $this->input->getCmd('view', 'scanner'));
+        // Same input object $this->input wraps on Joomla 4+, read straight
+        // from the application instead -- Joomla 3's legacy controller
+        // does not guarantee a populated $this->input property.
+        $input = Factory::getApplication()->input;
+        $input->set('view', $input->getCmd('view', 'scanner'));
         return parent::display($cachable, $urlparams);
     }
 }

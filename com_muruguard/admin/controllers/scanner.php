@@ -13,6 +13,14 @@ use Joomla\CMS\Session\Session;
 use Joomla\CMS\Language\Text;
 use Joomla\CMS\Component\ComponentHelper;
 
+// Joomla 3 aliases first (see helpers/compat.php); the model file is
+// loaded explicitly too so getModel('Scanner') below finds an already
+// declared class on every platform instead of depending on exactly how
+// each Joomla version resolves legacy MVC include paths.
+require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/compat.php';
+require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/muruguard.php';
+require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/models/scanner.php';
+
 class MuruguardControllerScanner extends BaseController
 {
     /**
@@ -81,7 +89,8 @@ public function scan()
         if ($input->post->get('areas_submitted', 0, 'int') === 1) {
             $areas = $input->post->get('scan_areas', [], 'array');
             $areas = array_values(array_map('strval', $areas));
-            $app->getSession()->set('muruguard.scan_areas', $areas);
+            // $app->getSession() is Joomla 4-only (Joomla 3: JFactory::getSession()).
+            MuruguardCompat::getSession()->set('muruguard.scan_areas', $areas);
         }
 
         /** @var MuruguardModelScanner $model */
@@ -136,7 +145,8 @@ public function scan()
         if ($reset && $input->post->get('areas_submitted', 0, 'int') === 1) {
             $areas = $input->post->get('scan_areas', [], 'array');
             $areas = array_values(array_map('strval', $areas));
-            $app->getSession()->set('muruguard.scan_areas', $areas);
+            // $app->getSession() is Joomla 4-only (Joomla 3: JFactory::getSession()).
+            MuruguardCompat::getSession()->set('muruguard.scan_areas', $areas);
         }
 
         /** @var MuruguardModelScanner $model */
@@ -179,7 +189,8 @@ public function scan()
     {
         Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
 
-        $session = Factory::getApplication()->getSession();
+        // $app->getSession() is Joomla 4-only (Joomla 3: JFactory::getSession()).
+        $session = MuruguardCompat::getSession();
         $session->set('muruguard.filefindings', null);
         $session->set('muruguard.filefindings_time', 0);
 
@@ -386,6 +397,28 @@ public function scan()
     }
 
     /**
+     * Factory::getMailer() is the legacy path to a mailer instance; the
+     * container's MailerFactory is the supported one on 4.x/5.x/6.x.
+     * Prefer that and only fall back to the legacy call where the
+     * container (or the factory service) isn't available, so scheduled
+     * alert emails keep working regardless of which Joomla version
+     * still ships the old shortcut.
+     */
+    private function getMailerCompat()
+    {
+        if (method_exists(Factory::class, 'getContainer')) {
+            try {
+                $mailerFactory = Factory::getContainer()->get(\Joomla\CMS\Mail\MailerFactoryInterface::class);
+                return $mailerFactory->getMailer();
+            } catch (\Throwable $e) {
+                // Fall through to the legacy call below.
+            }
+        }
+
+        return Factory::getMailer();
+    }
+
+    /**
      * Sends the Protected User alert -- one or more plain-language lines
      * describing every NEWLY-seen issue this run. Never throws -- same
      * reasoning as every other scheduled-check mail send.
@@ -395,7 +428,7 @@ public function scan()
         try {
             $app = Factory::getApplication();
             $siteName = (string) $app->get('sitename', 'your Joomla site');
-            $mailer = Factory::getMailer();
+            $mailer = $this->getMailerCompat();
             $mailer->setSender([$app->get('mailfrom'), $app->get('fromname')]);
             $mailer->addRecipient($to);
             $count = count($issues);
@@ -405,7 +438,7 @@ public function scan()
                 . implode("\n", array_map(fn($i) => "- {$i}", $issues))
                 . "\n\n" . \Joomla\CMS\Uri\Uri::root() . 'administrator/index.php?option=com_muruguard';
             $mailer->setBody($body);
-            return (bool) $mailer->Send();
+            return (bool) $mailer->send();
         } catch (\Throwable $e) {
             return false;
         }
@@ -440,13 +473,13 @@ public function scan()
         $body = implode("\n", $lines);
 
         try {
-            $mailer = Factory::getMailer();
+            $mailer = $this->getMailerCompat();
             $mailer->setSender([$app->get('mailfrom'), $app->get('fromname')]);
             $mailer->addRecipient($to);
             $mailer->setSubject($subject);
             $mailer->isHtml(false);
             $mailer->setBody($body);
-            return (bool) $mailer->Send();
+            return (bool) $mailer->send();
         } catch (\Throwable $e) {
             return false;
         }
@@ -989,8 +1022,8 @@ public function scan()
             // (e.g. after a later "Run Scan") kept showing the same stale
             // pre-dismissal list, making it look like nothing happened.
             // Same cache-busting the delete/clean actions already do after
-            // their own mutations.
-            $session = $app->getSession();
+            // their own mutations. ($app->getSession() is Joomla 4-only.)
+            $session = MuruguardCompat::getSession();
             $session->set('muruguard.filefindings', null);
             $session->set('muruguard.filefindings_time', 0);
             echo json_encode(['ok' => true]);
@@ -1015,7 +1048,8 @@ public function scan()
         // Same reasoning as markfalsepositive() above -- without this, an
         // un-dismissed finding wouldn't reappear until the cache happened
         // to expire or the user manually re-scanned.
-        $session = Factory::getApplication()->getSession();
+        // ($app->getSession() is Joomla 4-only.)
+        $session = MuruguardCompat::getSession();
         $session->set('muruguard.filefindings', null);
         $session->set('muruguard.filefindings_time', 0);
 

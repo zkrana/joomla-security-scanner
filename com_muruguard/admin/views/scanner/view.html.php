@@ -13,7 +13,11 @@ use Joomla\CMS\MVC\View\HtmlView;
 use Joomla\CMS\Toolbar\ToolbarHelper;
 use Joomla\CMS\Component\ComponentHelper;
 
+require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/compat.php';
 require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/muruguard.php';
+// Loaded explicitly (same reasoning as in controllers/scanner.php) so
+// getModel('Scanner') below never depends on include-path resolution.
+require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/models/scanner.php';
 
 class MuruguardViewScanner extends HtmlView
 {
@@ -99,7 +103,8 @@ class MuruguardViewScanner extends HtmlView
         }
 
         $app     = Factory::getApplication();
-        $session = $app->getSession();
+        // $app->getSession() is Joomla 4-only (Joomla 3: JFactory::getSession()).
+        $session = MuruguardCompat::getSession();
 
         // What this specific user is authorised to DO, not just view -- the
         // template uses these to hide/disable Delete, Clean, and Settings
@@ -285,21 +290,29 @@ class MuruguardViewScanner extends HtmlView
     /**
      * Left-sidebar submenu (Dashboard / Settings), the same mechanism
      * com_content/com_banners/... and third-party components like SP
-     * Page Builder use for their own multi-page navigation.
+     * Page Builder use for their own multi-page navigation. Wrapped so a
+     * Joomla version that no longer ships the legacy sidebar helper
+     * degrades to "no sidebar entries" instead of white-screening the
+     * whole view -- the page's own in-template navigation keeps working
+     * either way.
      */
     protected function addSubmenu(): void
     {
-        \Joomla\CMS\HTML\HTMLHelper::_(
-            'sidebar.addEntry',
-            Text::_('COM_MURUGUARD_SUBMENU_DASHBOARD'),
-            'index.php?option=com_muruguard&view_panel=dashboard',
-            $this->activePanel === 'dashboard'
-        );
-        \Joomla\CMS\HTML\HTMLHelper::_(
-            'sidebar.addEntry',
-            Text::_('COM_MURUGUARD_SUBMENU_SETTINGS'),
-            'index.php?option=com_muruguard&view_panel=settings',
-            $this->activePanel === 'settings'
-        );
+        try {
+            \Joomla\CMS\HTML\HTMLHelper::_(
+                'sidebar.addEntry',
+                Text::_('COM_MURUGUARD_SUBMENU_DASHBOARD'),
+                'index.php?option=com_muruguard&view_panel=dashboard',
+                $this->activePanel === 'dashboard'
+            );
+            \Joomla\CMS\HTML\HTMLHelper::_(
+                'sidebar.addEntry',
+                Text::_('COM_MURUGUARD_SUBMENU_SETTINGS'),
+                'index.php?option=com_muruguard&view_panel=settings',
+                $this->activePanel === 'settings'
+            );
+        } catch (\Throwable $e) {
+            // Sidebar helper unavailable -- the view renders without it.
+        }
     }
 }

@@ -2,12 +2,12 @@
 <extension type="plugin" group="system" method="upgrade">
     <name>plg_system_muruguardshield</name>
     <author>ZKRANA</author>
-    <creationDate>2026-07-21</creationDate>
+    <creationDate>2026-10-04</creationDate>
     <copyright>Copyright (C) 2026 ZKRANA. All rights reserved.</copyright>
     <license>GNU General Public License version 2 or later; see LICENSE.txt</license>
     <authorEmail>zkranao@gmail.com</authorEmail>
-    <authorUrl>https://www.linkedin.com/in/zkranadevs/</authorUrl>
-    <version>1.3.2</version>
+    <authorUrl>https://store.lyzerslab.com/joomla-products/muru-guard-security-scanner</authorUrl>
+    <version>1.4.0</version>
     <description>PLG_SYSTEM_MURUGUARDSHIELD_XML_DESCRIPTION</description>
 
     <files>
@@ -21,4 +21,8 @@
         <language tag="en-GB">language/en-GB/en-GB.plg_system_muruguardshield.ini</language>
         <language tag="en-GB">language/en-GB/en-GB.plg_system_muruguardshield.sys.ini</language>
     </languages>
+
+    <updateservers>
+        <server type="extension" priority="1" name="MuRu Guard Shield">https://store.lyzerslab.com/api/joomla-update/free-shield</server>
+    </updateservers>
 </extension>

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<extension type="package" method="upgrade">
+    <name>pkg_muruguard</name>
+    <packagename>muruguard</packagename>
+    <author>ZKRANA</author>
+    <creationDate>2026-10-04</creationDate>
+    <copyright>Copyright (C) 2026 ZKRANA. All rights reserved.</copyright>
+    <license>GNU General Public License version 2 or later; see LICENSE.txt</license>
+    <authorEmail>zkranao@gmail.com</authorEmail>
+    <authorUrl>https://store.lyzerslab.com/joomla-products/muru-guard-security-scanner</authorUrl>
+    <version>4.0.0</version>
+    <description>PKG_MURUGUARD_XML_DESCRIPTION</description>
+    <files>
+        <file type="component" id="com_muruguard">com_muruguard.zip</file>
+        <file type="plugin" group="system" id="plg_system_muruguardshield">plg_muruguardshield.zip</file>
+    </files>
+
+    <languages folder="language">
+        <language tag="en-GB">en-GB/en-GB.pkg_muruguard.sys.ini</language>
+    </languages>
+
+    <updateservers>
+        <server type="extension" priority="1" name="MuRu Guard">https://store.lyzerslab.com/api/joomla-update/free</server>
+    </updateservers>
+</extension>

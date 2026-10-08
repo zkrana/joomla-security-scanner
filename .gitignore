@@ -1,7 +1,21 @@
 .DS_Store
 com_muruguard.zip
+pkg_muruguard.zip
+*.bak
+
+# Runtime data files the extension writes into its own data dir on a live
+# site (scan history, caches, logs) -- never commit these. The shipped
+# joomla_core_checksums.php and index.html are tracked explicitly, so this
+# only matches files the extension itself creates at runtime.
+com_muruguard/admin/helpers/data/scan-history.php
 com_muruguard/admin/helpers/data/scan-history.json
-scripts/
-.github/
-.gitignore
-.github/workflows/
+com_muruguard/admin/helpers/data/scan-progress.php
+com_muruguard/admin/helpers/data/geoip-cache.php
+com_muruguard/admin/helpers/data/geoip-cache.json
+com_muruguard/admin/helpers/data/vulnfeed-cache.php
+com_muruguard/admin/helpers/data/attack-log.php
+com_muruguard/admin/helpers/data/attack-log-archive.php
+com_muruguard/admin/helpers/data/login-attempts.php
+com_muruguard/admin/helpers/data/ip-list.php
+com_muruguard/admin/helpers/data/false-positives.php
+com_muruguard/admin/helpers/data/protected-users-state.php

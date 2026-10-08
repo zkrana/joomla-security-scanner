@@ -8,6 +8,43 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [4.0.0] - 2026-10-08
+
+### Added
+
+* **Single-install bundle (`pkg_muruguard`).** One package zip now installs the scanner component and the Shield plugin together -- the easiest install path, and the artifact submitted to the Joomla Extension Directory. The individual component/plugin zips are still built for anyone who prefers them.
+* **Joomla update support for the Shield plugin** (bump to 1.3.3). The plugin manifest now declares its own update server (`free-shield` feed on the store), so Shield updates are offered in-admin just like component updates. Requires the matching dashboard feed; until it is served, Joomla simply reports no plugin update available.
+* **Install preflight checks.** Installing on PHP older than 8.1 or Joomla older than 4.0 now aborts cleanly with a plain-language message instead of a half-installed component.
+* **Clean uninstall.** Uninstalling the component now removes the Dashboard / MuRu Settings submenu items the installer created, instead of leaving orphaned menu rows behind.
+* **Joomla 3.10+ support in the same package (PHP 7.4+).** The component, Shield plugin, and bundle now install and run on Joomla 3.10 alongside 4/5/6: a small compatibility layer (`admin/helpers/compat.php`) maps the namespaced Joomla API onto Joomla 3's legacy classes, with version branches for the handful of calls that genuinely differ (`getIdentity()`, `getSession()`, Extension-table params saves, the stylesheet loader, and the com_ajax webcron URL, which points at the site frontend on Joomla 3 since com_ajax is frontend-only there). New static-check sections (10-11) plus a PHP 7.4 CI lint job guard both floors. Core-file checksum verification stays heuristic-only on Joomla 3 for now (the bundled manifest covers 4.4/5.x/6.x); everything else works identically.
+* **`scripts/build.sh`.** One command rebuilds the vendored admin stylesheet (when Tailwind CSS is available) and all three `dist/` zips from the current manifests, with zip-layout verification.
+
+### Changed
+
+* **No more CDN dependency.** The admin page's styling is now a precompiled stylesheet shipped inside the package (`media/css/muruguard.css`) instead of the Tailwind Play CDN script -- the page renders identically with no network access and makes zero third-party calls on its own. Verified by an automated check that every utility class referenced in the sources has a rule in the shipped CSS.
+* **Joomla 6 compatibility hardening.** The installer script and scheduled-alert mailer now prefer the container (`DatabaseInterface` / `MailerFactory`) over the legacy `Factory::getDbo()` / `Factory::getMailer()` shortcuts, and the admin sidebar submenu degrades gracefully where the legacy sidebar helper no longer exists. Supported range is now Joomla 3.10+ (PHP 7.4+) through 6.x (PHP 8.1+ on 4+).
+* Global Configuration radio fields no longer use the Joomla 4 `radio.switcher` layout, which does not exist on Joomla 3 -- they render as standard Yes/No radios there. The component's own Settings panel is custom HTML and unaffected.
+* **Privacy statement corrected.** The README's privacy section now accurately lists every outbound connection (update checks, advisory feed, newsletter opt-in, Ask AI, country-lookup, hardening self-tests) instead of only the first two.
+* Component manifest description is now the `COM_MURUGUARD_XML_DESCRIPTION` language string, and the remaining hardcoded English strings in the vulnerabilities table moved into language files.
+* Component display name shortened to **MuRu Guard**, matching the admin menu label (silences the JED Checker menu-name note; the Manage list, menu, and install name now all agree).
+* The admin header's "Report an issue" link now opens a support ticket on the store dashboard (`store.lyzerslab.com/dashboard/support/new`) instead of a GitHub issue.
+
+### Fixed
+
+* **Bundle package (`pkg_muruguard`) uninstall.** The first bundle draft installed fine but uninstall always failed with "Package Uninstall: Missing manifest file." Root cause, confirmed against Joomla core source: Joomla derives a package's `#__extensions.element` as `pkg_` + cmd-filtered `<packagename>` (`PackageAdapter::getElement`), but stores and looks up the installed manifest by the manifest FILE's basename (`administrator/manifests/packages/<basename>`). The draft `<packagename>` ("MuRu Guard Security Suite (Free)") derived element `pkg_MuRuGuardSecuritySuiteFree` while the file on disk is `pkg_muruguard.xml` -- so uninstall could never find it. `<packagename>` is now `muruguard`, making element and filename agree (`pkg_muruguard`). A static check (`tests/static-checks.php`, also run by `scripts/build.sh` and CI) asserts this invariant, so the mismatch can never ship. The component and plugin zips were never affected -- this was package-manifest-only.
+* **JED Checker findings on the bundle package** (verified against JED Checker's own rule sources):
+  * The bundle ships `en-GB.pkg_muruguard.sys.ini`, translating its install name to **MuRu Guard** (also the exact name to use for the JED listing) instead of the raw `pkg_muruguard` key, which tripped the type-prefix error.
+  * The bundle declares an update server (required by JED), pointing at the same live `free` feed as the component; the dashboard needs to include a `pkg_muruguard` entry in that feed (see `docs/JED-SUBMISSION.md`).
+  * The translated bundle name stays within all of JED Checker's top-level name rules (no type prefix, no reserved words, ASCII, under 40 characters).
+* The remaining JED Checker notes need no change: the short "MuRu Guard" admin menu label (warning-level, deliberate), and the Encoding/JAMSS matches inside `helpers/muruguard.php`, which are the scanner's own malware-signature database and auth-header handling -- the product's subject matter, not obfuscation.
+
+* **Joomla 3 "Cannot declare class" warnings breaking scans.** Joomla 3.10's own loader materialises its core-registered forward aliases (`Joomla\CMS\Router\Route`, `HTMLHelper`, `BaseController`, `HtmlView`, `ToolbarHelper`) as a side effect of loading the legacy class -- so the compatibility layer's check-then-declare raced it and re-declared the name, emitting warnings that corrupted the chunked scan's JSON responses ("The scan couldn't continue"). Every alias loop (component, Shield plugin, installer script) now re-checks after loading the original and silently uses Joomla's identical alias instead. Covered by a static check plus a harness mode that mimics Joomla's loader behaviour.
+* **Joomla 3 core false positives removed.** Seven genuine Joomla 3.10 core files no longer flag as High on Joomla 3 sites: `cli/`'s legacy cron/indexer/session-gc scripts (`finder_indexer.php`, `sessionGc.php`, `sessionMetadataGc.php`), `bin/keychain.php`, com_finder's legitimately code-bearing `controllers/index.php` + `models/index.php` (the "Index" controller/model), and com_privacy's `controllers/request.xml.php` (format controller). Each platform is checked against its own core-file lists -- the Joomla 4+ lists stay tight, so the same paths still flag there, where they don't exist in core.
+
+**Note for local testers of the interim 3.6.4-dated bundle:** if you installed a `pkg_muruguard-3.6.4.zip` test build, its package row carries the wrong element (`pkg_MuRuGuardSecuritySuiteFree`). Fix it with one SQL statement (via phpMyAdmin or your host's database tool -- replace `xyz_` with your real table prefix, and back up first): `UPDATE xyz_extensions SET element = 'pkg_muruguard' WHERE type = 'package' AND element = 'pkg_MuRuGuardSecuritySuiteFree';` -- then install the current bundle normally (it takes the update path) or uninstall cleanly.
+
+## [Released]
+
 ## [3.6.3] - 2026-09-10
 
 ### Fixed

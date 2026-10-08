@@ -14,7 +14,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        php-version: ['8.1', '8.2', '8.3']
+        # 7.4 is the Joomla 3 floor: linting on it fails the build if
+        # PHP 8-only syntax ever slips into the shipped code.
+        php-version: ['7.4', '8.1', '8.2', '8.3']
 
     steps:
       - name: Checkout code
@@ -62,6 +64,23 @@ jobs:
             fi
           done < <(find . -type f -name '*.xml' -not -path './.git/*' -print0)
           exit $error
+
+  static-checks:
+    name: JED-readiness static checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: none
+
+      - name: Run static checks
+        run: php tests/static-checks.php
 
   phpcs:
     name: PHP CodeSniffer (PSR-12)
