@@ -32,7 +32,7 @@ Notes:
 
 MuRu Guard is now listed on the official Joomla Extensions Directory, and every release is available there too:
 
-👉 <https://extensions.joomla.org/index.php?option=com_jed&view=extension&layout=default&id=17785&Itemid=145>
+👉 <https://extensions.joomla.org/extension/muru-guard/>
 
 ## Why you can trust it
 

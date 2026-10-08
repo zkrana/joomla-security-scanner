@@ -12,7 +12,7 @@
 
 MuRu Guard is now listed on the official Joomla Extensions Directory, and every release is available there too:
 
-👉 <https://extensions.joomla.org/index.php?option=com_jed&view=extension&layout=default&id=17785&Itemid=145>
+👉 <https://extensions.joomla.org/extension/muru-guard/>
 
 **Download**: grab the latest installable zip from the [`dist/`](dist) folder in this repo — built the same way a tagged release normally would, just published here directly. `pkg_muruguard-X.Y.Z.zip` installs everything (scanner component + Shield plugin) in one go; `com_muruguard-X.Y.Z.zip` is the scanner component alone and `plg_muruguardshield-X.Y.Z.zip` its optional companion real-time protection plugin.
 
