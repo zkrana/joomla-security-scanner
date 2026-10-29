@@ -8,6 +8,36 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [4.1.0] - 2026-10-29
+
+### Security
+
+* **Country blocking no longer sends visitor IPs to a third party.** The old lookup used plain-HTTP ip-api.com (visitor IP in clear text, free tier not licensed for commercial use). Lookups now read the free DB-IP country database stored on the site, refreshed monthly by the scheduled check (or **Update now** in Settings > Site Protection). The old lookup cache is deleted on update. Without the database, country blocking fails open.
+* **Data files survive hostile input.** A visitor's User-Agent or a failed-login username with an invalid byte used to make `json_encode()` fail and silently empty the attack log or login-attempt file. All data-file writes now scrub invalid UTF-8, cap field lengths, encode before truncating, and the Shield logs a truncated User-Agent on failed logins. Oversized logs are no longer decoded into memory.
+* **Scanner no longer skips whole trees or misses padded files.** `api/`, `includes/`, `language/` and `administrator/language/` are content-scanned; known webroot files such as `configuration.php`, `.htaccess` and `.user.ini` have their content read; more executable extensions are covered (`php8`, `phtm`, `phps`, `inc`, ...); a rule that cannot finish on a very large file is retried with a higher limit and then reported for manual review instead of passing silently; invalid UTF-8 no longer hides a file from UTF-8 rules.
+* **New detections:** request data passed straight into command, eval, include, callback, file-write and backtick sinks; split-variable webshells; `.htaccess` `AddType`/`AddHandler` mapping non-PHP extensions to PHP; `auto_prepend_file` / `auto_append_file` in `.user.ini`, `php.ini` and `.htaccess`.
+* **Faster, safer request rules.** The include/URL rule was quadratic (about 13 s of CPU on 100 KB of plain text for an anonymous visitor); it and the dropped-filename rule are now linear. `sleep (tips)` in a search box is no longer treated as SQL injection. A request too large for a rule is logged for review rather than ignored.
+* **Brute-force counting groups IPv6 addresses by /64**, so rotating addresses inside one allocation no longer resets the count. Symlinked folders are only followed inside the site and never loop.
+* **Permission errors show a proper 403 page** (Joomla's `Access\Exception\NotAllowed`). A manual scan never overwrites the scheduled-scan baseline logic, and a lost baseline reports every finding as new instead of none. Two scans running at once no longer corrupt each other; settings saves are serialised.
+* **Installer:** refuses to install an older version over a newer one (from this version on); uninstall removes the `.htaccess` rules this component wrote.
+
+### Added
+
+* **PHP and PHP2Shell banner.** The Dashboard warns when the server's PHP is behind on security releases (from php.net), past its security support, or affected by PHP2Shell (CVE-2026-109618 / CVE-2026-109619).
+* **Security score with an A-F grade** and a "clean and protected" line after a clean scan, built from signals the component already has (HTTPS, Shield, Backend Access, `.htaccess` rules, vulnerable extensions, Joomla/PHP status, configuration, Super Users, exposed files, open findings).
+* **Upload lockdown** (Settings > Site Protection). One managed `.htaccess` rule that refuses every multipart upload for 1, 6, 24 or 72 hours (or until switched off), with a self-test and automatic rollback, an Nginx snippet, and a banner while it is on.
+* **What the Shield caught:** logged and blocked counts for the last 24 hours and 7 days, with the top rules.
+* **Joomla security news** from developer.joomla.org on the Dashboard.
+* **Joomla end-of-life notice** for Joomla 3 and 4, and a notice when a newer core release is available.
+* **Super User checks:** account count, guessable names such as `admin`, accounts that never logged in.
+* **Global Configuration checks:** Debug, Error Reporting, Force HTTPS, SEF URLs, FTP layer (Joomla 3).
+* **Sensitive files in the webroot** (report only): `phpinfo.php`, `.env`, `.git/`, copies of `configuration.php`, database dumps, archives.
+* **Core checksums for Joomla 3.10.10-3.10.12 and 6.0.0-6.2.0.**
+
+### Changed
+
+* Shield plugin 1.5.0: failed-login User-Agent is truncated; country lookups use the local database.
+
 ## [4.0.0] - 2026-10-08
 
 ### Added

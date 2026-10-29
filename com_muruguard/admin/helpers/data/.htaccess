@@ -1,5 +1,5 @@
 # This folder stores this component's own security-relevant scan data --
-# attack-log.php, ip-list.php, login-attempts.php, geoip-cache.php,
+# attack-log.php, ip-list.php, login-attempts.php, geoip/ (country database),
 # false-positives.php, scan-history.php -- meant to be read only by this
 # extension's own PHP code (via JPATH_ADMINISTRATOR), never served
 # directly over HTTP. index.html alone (still present, kept for defence

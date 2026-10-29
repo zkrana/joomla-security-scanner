@@ -2,7 +2,7 @@
 
 **Your Joomla site deserves a guard that never sleeps.** 🛡️
 
-MuRu Guard is a free, open-source Joomla security suite. It finds the malware you can't see, helps you clean it up safely, and blocks the next attack before it lands. The free version supports **Joomla 3 through the latest Joomla release**, so whether you run a long-standing legacy site or a brand-new Joomla 5 or 6 build, you are covered.
+MuRu Guard is a free, open-source Joomla security suite. It finds the malware you can't see, helps you clean it up safely, and blocks the next attack before it lands. The free version supports Joomla 3 to latest.
 
 It is built for the moment every site owner dreads: the hack, the defaced homepage, the warning from your host. It also has extra, purpose-built detection for sites that run **SP Page Builder** and **Helix Ultimate**.
 
@@ -15,8 +15,6 @@ One package installs everything. No account, no license key, no API key.
 - **Guided, backup-first cleanup:** so one wrong click never turns a bad day into a worse one.
 
 ## Download and install
-
-Installable release zips are built from the current source tree by `scripts/build.sh`.
 
 > **Install the bundle package.** It contains both the component and the plugin:
 >

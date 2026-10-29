@@ -256,7 +256,7 @@ class plgSystemMuruguardshield extends CMSPlugin
                 'why'        => 'Failed backend login attempt.',
                 'matched'    => $username !== '' ? "username: {$username}" : '',
                 'uri'        => '',
-                'user_agent' => (string) Factory::getApplication()->input->server->get('HTTP_USER_AGENT', '', 'string'),
+                'user_agent' => mb_substr((string) Factory::getApplication()->input->server->get('HTTP_USER_AGENT', '', 'string'), 0, 200),
             ]);
         } catch (\Throwable $e) {
             // Never let logging break the login flow itself.
@@ -436,9 +436,9 @@ class plgSystemMuruguardshield extends CMSPlugin
         $isAdminExempt = (bool) ($user && !$user->guest && $user->authorise('core.login.admin'));
 
         // Country block -- independent of, and checked before, pattern
-        // matching. lookupCountryForIp() fails open (returns null, never
-        // blocks) on any lookup error, so a third-party GeoIP service
-        // outage can never take real visitors down.
+        // matching. lookupCountryForIp() answers from the local DB-IP
+        // database and fails open (returns null, never blocks) when that
+        // database is missing or unreadable.
         if ($params->get('shield_block_countries', 0) && $ip !== '') {
             $blockedCountries = (string) $params->get('shield_blocked_countries', '');
             if ($blockedCountries !== '') {

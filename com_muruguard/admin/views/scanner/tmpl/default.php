@@ -90,6 +90,12 @@ if (MuruguardCompat::isJoomla4()) {
      preflight would normally do globally (now disabled above). */
   #muruguard-root, #muruguard-root * { box-sizing: border-box; }
   #muruguard-root { line-height: 1.55; -webkit-font-smoothing: antialiased; }
+  /* Readable sizes: descriptions at least 14px, headings and buttons 16px. */
+  #muruguard-root .text-xs { font-size: 14px; line-height: 1.5; }
+  #muruguard-root .text-sm { font-size: 16px; line-height: 1.5; }
+  #muruguard-root button, #muruguard-root .muru-btn { font-size: 16px; }
+  #muru-overview > summary::-webkit-details-marker { display: none; }
+  #muru-overview[open] .muru-ov-open, #muru-overview:not([open]) .muru-ov-close { display: none; }
   #muruguard-root h1, #muruguard-root h2, #muruguard-root h3, #muruguard-root h4, #muruguard-root p { margin: 0; }
   #muruguard-root a { color: inherit; text-decoration: none; }
   #muruguard-root button { font: inherit; cursor: pointer; background: none; border: 0; padding: 0; -webkit-appearance: none; appearance: none; }
@@ -307,6 +313,60 @@ if (MuruguardCompat::isJoomla4()) {
 
 <div id="muruguard-root" class="font-sans text-gray-800 relative">
 
+<!-- Persistent header -- version badge + newsletter banner. Deliberately
+     OUTSIDE #muru-main-content's scanned/not-scanned split below, so both
+     show up regardless of whether a scan has ever been run yet.
+     Confirmed real gap: a site that hadn't run its first scan saw neither
+     the version number nor the newsletter banner at all. -->
+<?php if ($this->componentVersion !== ''): ?>
+<div id="muru-version-badge-wrap" class="flex justify-between items-center mb-3">
+    <a href="https://store.lyzerslab.com/dashboard/support/new" target="_blank" rel="noopener"
+       class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+       title="<?= Text::_('COM_MURUGUARD_REPORT_ISSUE_TITLE') ?>">
+        <?= Text::_('COM_MURUGUARD_REPORT_ISSUE_LINK') ?>
+    </a>
+    <a href="index.php?option=com_installer&view=update"
+       class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-[#EF89EB] text-black hover:bg-[#e575e0] transition-colors"
+       title="<?= Text::_('COM_MURUGUARD_CHECK_UPDATES_TITLE') ?>">
+        🛡️ v<?= htmlspecialchars($this->componentVersion) ?>
+        <span class="opacity-40">|</span>
+        <?= Text::_('COM_MURUGUARD_CHECK_UPDATES_LINK') ?>
+    </a>
+</div>
+<?php endif; ?>
+
+<?php if (!$this->newsletterBannerDismissed): ?>
+<!-- Newsletter opt-in banner -- optional, dismissible, never shown again
+     once dismissed or subscribed (see newsletter_banner_dismissed in
+     component params). Posts to the dashboard's public opt-in endpoint,
+     same table/flow as the main site's own newsletter signup. -->
+<div id="muru-newsletter-banner" class="anim-in flex flex-wrap items-center justify-between gap-3
+            bg-gradient-to-r from-indigo-50 to-violet-50 border border-indigo-200 rounded-xl px-5 py-3 mb-6 shadow-sm">
+    <div class="min-w-[220px]">
+        <p class="text-sm font-semibold text-gray-800">📬 <?= Text::_('COM_MURUGUARD_NEWSLETTER_TITLE') ?></p>
+        <p class="text-xs text-gray-500 mt-0.5"><?= Text::_('COM_MURUGUARD_NEWSLETTER_DESC') ?></p>
+    </div>
+    <div class="flex items-center gap-2 flex-wrap">
+        <form action="index.php?option=com_muruguard&task=scanner.subscribenewsletter" method="post" class="flex flex-wrap items-center gap-2" style="margin:0">
+            <?= HTMLHelper::_('form.token') ?>
+            <input type="text" name="newsletter_name" placeholder="<?= Text::_('COM_MURUGUARD_NEWSLETTER_NAME_PLACEHOLDER') ?>"
+                   class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-indigo-400 w-36">
+            <input type="email" name="newsletter_email" required placeholder="<?= Text::_('COM_MURUGUARD_NEWSLETTER_EMAIL_PLACEHOLDER') ?>"
+                   class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-indigo-400 w-52">
+            <button type="submit"
+                    class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-indigo-200
+                           rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700
+                           transition-colors shadow-sm hover:shadow whitespace-nowrap">
+                <?= Text::_('COM_MURUGUARD_NEWSLETTER_SUBSCRIBE_BTN') ?>
+            </button>
+        </form>
+        <button type="button" id="muru-newsletter-dismiss-btn" title="<?= Text::_('COM_MURUGUARD_NEWSLETTER_DISMISS') ?>" aria-label="<?= Text::_('COM_MURUGUARD_NEWSLETTER_DISMISS') ?>"
+                class="text-gray-400 hover:text-gray-600 hover:bg-white/60 rounded-lg p-1.5 transition-colors">✕</button>
+    </div>
+</div>
+<?php endif; ?>
+
+
 <?php
 /* ── SPPB version warning banner ───────────────────────────────── */
 $w = $this->sppbWarning ?? null;
@@ -415,6 +475,122 @@ if (!empty($criticalVulns)):
     </div>
 </div>
 <?php endif; ?>
+
+<div id="muru-insights-wrap">
+<?php
+/* ── Dashboard insights: PHP / PHP2Shell banner, Joomla support, grade, checks, threats, news ── */
+$in = $this->insights ?? null;
+if ($in !== null):
+    $pb = $in['phpBanner'];
+    if ($pb !== null):
+        $pbHigh = $pb['level'] === 'high';
+        $pbStyle = $pbHigh ? 'background:#fef2f2; border-color:#dc2626; color:#991b1b' : 'background:#fffbeb; border-color:#d97706; color:#78350f';
+        $pbVer = htmlspecialchars($pb['installed']);
+?>
+<div class="anim-in flex gap-4 items-start rounded-xl border-l-4 p-4 mb-5 shadow-sm" style="<?= $pbStyle ?>" role="alert">
+    <div class="text-3xl flex-shrink-0 mt-0.5"><?= $pbHigh ? '🚨' : '⚠️' ?></div>
+    <div class="flex-1 min-w-0">
+        <?php if ($pb['php2shell'] === 'vulnerable'): ?>
+            <p class="font-bold text-sm leading-snug mb-1"><?= Text::sprintf('COM_MURUGUARD_PHP2SHELL_HEAD', $pbVer) ?></p>
+            <p class="text-xs leading-relaxed opacity-90"><?= Text::_('COM_MURUGUARD_PHP2SHELL_DETAIL') ?></p>
+        <?php elseif ($pb['missed'] > 0): ?>
+            <p class="font-bold text-sm leading-snug mb-1"><?= Text::sprintf('COM_MURUGUARD_PHPBANNER_HIGH_HEAD', $pbVer, (int) $pb['missed']) ?></p>
+            <p class="text-xs leading-relaxed opacity-90"><?= Text::sprintf('COM_MURUGUARD_PHPBANNER_HIGH_DETAIL', htmlspecialchars($pb['latest'])) ?><?= $pb['eol'] ? ' ' . Text::_('COM_MURUGUARD_PHPBANNER_EOL_ALSO') : '' ?></p>
+        <?php else: ?>
+            <p class="font-bold text-sm leading-snug mb-1"><?= Text::sprintf('COM_MURUGUARD_PHPBANNER_EOL_HEAD', $pbVer) ?></p>
+            <p class="text-xs leading-relaxed opacity-90"><?= Text::_('COM_MURUGUARD_PHPBANNER_EOL_DETAIL') ?></p>
+        <?php endif; ?>
+    </div>
+</div>
+<?php endif; ?>
+<?php if (($in['joomla']['status'] ?? '') === 'eol' || ($in['joomla']['status'] ?? '') === 'update'): $jEol = $in['joomla']['status'] === 'eol'; ?>
+<div class="anim-in flex gap-4 items-start rounded-xl border-l-4 p-4 mb-5 shadow-sm" style="<?= $jEol ? 'background:#fef2f2; border-color:#dc2626; color:#991b1b' : 'background:#fffbeb; border-color:#d97706; color:#78350f' ?>">
+    <div class="text-3xl flex-shrink-0 mt-0.5"><?= $jEol ? '🚨' : '⚠️' ?></div>
+    <div class="flex-1 min-w-0">
+        <p class="font-bold text-sm leading-snug mb-1"><?= $jEol ? Text::sprintf('COM_MURUGUARD_JOOMLA_EOL_HEAD', htmlspecialchars($in['joomla']['installed'])) : Text::sprintf('COM_MURUGUARD_JOOMLA_UPDATE_HEAD', htmlspecialchars((string) $in['joomla']['latest'])) ?></p>
+        <p class="text-xs leading-relaxed opacity-90"><?= Text::_($jEol ? 'COM_MURUGUARD_JOOMLA_EOL_DETAIL' : 'COM_MURUGUARD_JOOMLA_UPDATE_DETAIL') ?></p>
+    </div>
+</div>
+<?php endif; ?>
+<?php
+    $sc = $in['score'];
+    $gradeColors = ['A' => '#059669', 'B' => '#65a30d', 'C' => '#d97706', 'D' => '#ea580c', 'F' => '#dc2626'];
+    $gc = $gradeColors[$sc['grade']] ?? '#6b7280';
+    $cfgBad = array_values(array_filter($in['config'], fn($r) => !$r['ok']));
+    $admBad = array_values(array_filter($in['admins'], fn($r) => !$r['ok']));
+    $t24 = $in['threats24h']; $t7 = $in['threats7d'];
+?>
+<details id="muru-overview" class="anim-in bg-white border border-gray-200 rounded-xl shadow-sm mb-5">
+<summary class="flex items-center gap-3 cursor-pointer select-none px-5 py-3" style="list-style:none">
+    <span class="text-xl" aria-hidden="true">🛡️</span>
+    <span class="font-bold text-gray-800"><?= Text::_('COM_MURUGUARD_OVERVIEW_TITLE') ?></span>
+    <span class="inline-flex items-center justify-center rounded-lg text-white font-extrabold px-2 py-0.5" style="background:<?= $gc ?>"><?= htmlspecialchars($sc['grade']) ?></span>
+    <span class="text-gray-500"><?= (int) $sc['score'] ?>/100</span>
+    <span class="ml-auto text-gray-400 muru-ov-open"><?= Text::_('COM_MURUGUARD_OVERVIEW_EXPAND') ?> <svg class="inline-block align-middle" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span>
+    <span class="ml-auto text-gray-400 muru-ov-close"><?= Text::_('COM_MURUGUARD_OVERVIEW_COLLAPSE') ?> <svg class="inline-block align-middle" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></span>
+</summary>
+<div class="px-5 pb-5">
+    <div class="flex flex-wrap items-center gap-4">
+        <div class="flex items-center justify-center rounded-2xl text-white font-extrabold" style="width:64px;height:64px;font-size:34px;background:<?= $gc ?>" title="<?= htmlspecialchars(Text::_('COM_MURUGUARD_SCORE_GRADE_HINT')) ?>"><?= htmlspecialchars($sc['grade']) ?></div>
+        <div class="flex-1 min-w-[220px]">
+            <p class="text-sm font-bold text-gray-800"><?= Text::_('COM_MURUGUARD_SECURITY_SCORE_TITLE') ?>: <?= (int) $sc['score'] ?>/100 · <?= htmlspecialchars($sc['label']) ?></p>
+            <?php if ($sc['issues'] === [] && $in['scanned']): ?>
+                <p class="text-xs text-emerald-700 mt-1">✅ <?= Text::_('COM_MURUGUARD_CLEAN_BANNER') ?></p>
+            <?php elseif ($sc['issues'] === []): ?>
+                <p class="text-xs text-gray-500 mt-1"><?= Text::_('COM_MURUGUARD_SECURITY_SCORE_NO_ISSUES') ?> <?= Text::_('COM_MURUGUARD_SCORE_NO_SCAN') ?></p>
+            <?php else: ?>
+                <ul class="text-xs text-gray-600 mt-1 list-disc pl-4">
+                    <?php foreach (array_slice($sc['issues'], 0, 6) as $issue): ?><li><?= htmlspecialchars($issue) ?></li><?php endforeach; ?>
+                </ul>
+            <?php endif; ?>
+        </div>
+        <div class="text-xs text-gray-600 min-w-[200px]">
+            <p class="font-bold text-gray-700 mb-1">🛡 <?= Text::_('COM_MURUGUARD_THREATS_TITLE') ?></p>
+            <p><?= Text::sprintf('COM_MURUGUARD_THREATS_LINE', (int) $t24['total'], (int) $t24['blocked']) ?> <span class="text-gray-400"><?= Text::_('COM_MURUGUARD_THREATS_24H') ?></span></p>
+            <p><?= Text::sprintf('COM_MURUGUARD_THREATS_LINE', (int) $t7['total'], (int) $t7['blocked']) ?> <span class="text-gray-400"><?= Text::_('COM_MURUGUARD_THREATS_7D') ?></span></p>
+            <?php if ($t7['topRules'] !== []): ?><p class="text-gray-400 mt-1"><?= htmlspecialchars(implode(', ', array_map(fn($r, $n) => $r . ' ×' . $n, array_keys($t7['topRules']), $t7['topRules']))) ?></p><?php endif; ?>
+        </div>
+    </div>
+    <?php if ($cfgBad !== [] || $admBad !== [] || $in['exposed'] !== []): ?>
+    <div class="grid sm:grid-cols-3 gap-4 mt-4 pt-4 border-t border-gray-100 text-xs text-gray-700">
+        <?php if ($cfgBad !== []): ?>
+        <div><p class="font-bold mb-1">⚙️ <?= Text::_('COM_MURUGUARD_CONFIG_CHECKS_TITLE') ?></p>
+            <ul class="space-y-1"><?php foreach ($cfgBad as $r): ?><li><strong><?= htmlspecialchars($r['label']) ?></strong> (<?= htmlspecialchars($r['value']) ?>): <?= htmlspecialchars($r['advice']) ?></li><?php endforeach; ?></ul></div>
+        <?php endif; ?>
+        <?php if ($admBad !== []): ?>
+        <div><p class="font-bold mb-1">👤 <?= Text::_('COM_MURUGUARD_ADMIN_CHECKS_TITLE') ?></p>
+            <ul class="space-y-1"><?php foreach ($admBad as $r): ?><li><?= htmlspecialchars($r['text']) ?></li><?php endforeach; ?></ul></div>
+        <?php endif; ?>
+        <?php if ($in['exposed'] !== []): ?>
+        <div><p class="font-bold mb-1">📂 <?= Text::_('COM_MURUGUARD_EXPOSED_TITLE') ?></p>
+            <ul class="space-y-1"><?php foreach ($in['exposed'] as $r): ?><li><code><?= htmlspecialchars($r['path']) ?></code>: <?= htmlspecialchars($r['why']) ?></li><?php endforeach; ?></ul>
+            <p class="text-gray-400 mt-1"><?= Text::_('COM_MURUGUARD_EXPOSED_HINT') ?></p></div>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
+    <?php if (!empty($in['news'])): ?>
+    <div class="mt-4 pt-4 border-t border-gray-100 text-xs">
+        <p class="font-bold text-gray-700 mb-1">📰 <?= Text::_('COM_MURUGUARD_NEWS_TITLE') ?></p>
+        <ul class="space-y-0.5"><?php foreach ($in['news'] as $n): ?>
+            <li><a href="<?= htmlspecialchars($n['link']) ?>" target="_blank" rel="noopener" class="text-indigo-600 hover:underline"><?= htmlspecialchars($n['title']) ?></a><?= $n['date'] > 0 ? ' <span class="text-gray-400">· ' . htmlspecialchars(date('Y-m-d', $n['date'])) . '</span>' : '' ?></li>
+        <?php endforeach; ?></ul>
+    </div>
+    <?php endif; ?>
+</div>
+</details>
+<?php endif; ?>
+
+<?php if ($this->uploadLock !== null): ?>
+<div class="anim-in flex gap-4 items-start rounded-xl border-l-4 p-4 mb-5 shadow-sm" style="background:#fef2f2; border-color:#dc2626; color:#991b1b">
+    <div class="text-3xl flex-shrink-0 mt-0.5">🚧</div>
+    <div class="flex-1 min-w-0">
+        <p class="font-bold text-sm leading-snug mb-1"><?= Text::_('COM_MURUGUARD_UPLOADLOCK_BANNER_HEAD') ?></p>
+        <?php if ((int) $this->uploadLock['expiresAt'] > 0): ?><p class="text-xs opacity-90"><?= Text::sprintf('COM_MURUGUARD_UPLOADLOCK_BANNER_UNTIL', date('Y-m-d H:i', (int) $this->uploadLock['expiresAt'])) ?></p><?php endif; ?>
+    </div>
+</div>
+<?php endif; ?>
+
+</div><!-- /#muru-insights-wrap -->
 
 <!-- ── Loading overlay (re-parented to <body> at runtime, see script) ── -->
 <div id="muruguard-overlay">
@@ -884,6 +1060,23 @@ if (!empty($criticalVulns)):
                            placeholder="CN,RU,KP" <?= $shieldDisabledAttr ?>
                            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 disabled:bg-gray-50 disabled:text-gray-400">
                     <p class="text-xs text-gray-400 mt-1"><?= Text::_('COM_MURUGUARD_SHIELD_BLOCKED_COUNTRIES_DESC') ?></p>
+                    <?php $geo = $this->geoipStatus; ?>
+                    <div class="flex items-center justify-between flex-wrap gap-2 mt-2 px-3 py-2 rounded-lg border <?= !$geo['installed'] || $geo['stale'] ? 'border-amber-200 bg-amber-50' : 'border-gray-200 bg-gray-50' ?>">
+                        <p class="text-xs text-gray-600">
+                            🌍
+                            <?php if (!$geo['installed']): ?>
+                                <?= Text::_('COM_MURUGUARD_GEOIP_STATUS_MISSING') ?>
+                            <?php else: ?>
+                                <?= Text::sprintf('COM_MURUGUARD_GEOIP_STATUS_INSTALLED', HTMLHelper::_('date', (int) ($geo['builtAt'] ?: $geo['downloadedAt']), Text::_('DATE_FORMAT_LC3'))) ?>
+                                <?php if ($geo['stale']): ?><strong><?= Text::_('COM_MURUGUARD_GEOIP_STATUS_STALE') ?></strong><?php endif; ?>
+                            <?php endif; ?>
+                            <a href="https://db-ip.com" target="_blank" rel="noopener" class="underline text-gray-500">IP Geolocation by DB-IP</a>
+                        </p>
+                        <button type="submit" formaction="<?= Route::_('index.php?option=com_muruguard&task=scanner.geoipupdate') ?>" formnovalidate <?= $shieldDisabledAttr ?>
+                                class="flex-shrink-0 px-3 py-1.5 border border-gray-300 rounded-lg text-xs font-semibold text-gray-700 bg-white hover:bg-gray-100">
+                            <?= Text::_($geo['installed'] ? 'COM_MURUGUARD_GEOIP_UPDATE_BTN' : 'COM_MURUGUARD_GEOIP_DOWNLOAD_BTN') ?>
+                        </button>
+                    </div>
                 </div>
 
                 <button type="submit" <?= $shieldDisabledAttr ?> title="<?= $shieldDisabled ? Text::_('COM_MURUGUARD_SHIELD_PLUGIN_MISSING') : '' ?>"
@@ -893,6 +1086,55 @@ if (!empty($criticalVulns)):
             </div>
         </form>
         <?php endif; ?>
+
+        <!-- Upload lockdown -->
+        <?php $ul = $this->uploadLock ?? null; ?>
+        <div id="muru-sec-uploadlock" class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-5">
+            <h4 class="text-sm font-bold text-gray-800 flex items-center gap-2 mb-1">🚧 <?= Text::_('COM_MURUGUARD_UPLOADLOCK_TITLE') ?></h4>
+            <p class="text-xs text-gray-500 mb-3 max-w-2xl"><?= Text::_('COM_MURUGUARD_UPLOADLOCK_DESC') ?></p>
+            <div class="flex items-start gap-2 text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-3 max-w-2xl">
+                <span class="text-base">⚠️</span><span><?= Text::_('COM_MURUGUARD_UPLOADLOCK_WARNING') ?></span>
+            </div>
+            <?php if ($this->php2shellExposed): ?>
+            <div class="flex items-start gap-2 text-xs text-red-900 bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3 max-w-2xl">
+                <span class="text-base">🚨</span><span><?= Text::sprintf('COM_MURUGUARD_UPLOADLOCK_PHP2SHELL', htmlspecialchars(PHP_VERSION)) ?></span>
+            </div>
+            <?php endif; ?>
+            <?php if ($ul !== null): ?>
+            <div class="flex flex-wrap items-center gap-3 mb-3 text-sm">
+                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-600 text-white text-xs font-bold">🚧 <?= Text::_('COM_MURUGUARD_UPLOADLOCK_ACTIVE') ?></span>
+                <span class="text-gray-600 text-xs"><?= (int) $ul['expiresAt'] > 0 ? Text::sprintf('COM_MURUGUARD_UPLOADLOCK_UNTIL', date('Y-m-d H:i', (int) $ul['expiresAt'])) : Text::_('COM_MURUGUARD_UPLOADLOCK_NO_EXPIRY') ?></span>
+            </div>
+            <form action="<?= Route::_('index.php?option=com_muruguard&task=scanner.deactivateuploadlock') ?>" method="post" class="m-0">
+                <?= HTMLHelper::_('form.token') ?>
+                <button type="submit" class="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg text-sm font-bold text-white bg-green-600 hover:bg-green-700 transition-colors shadow-sm">✅ <?= Text::_('COM_MURUGUARD_UPLOADLOCK_OFF_BTN') ?></button>
+            </form>
+            <?php else: ?>
+            <form action="<?= Route::_('index.php?option=com_muruguard&task=scanner.activateuploadlock') ?>" method="post" class="m-0"
+                  onsubmit="return confirm(<?= json_encode(Text::_('COM_MURUGUARD_UPLOADLOCK_CONFIRM')) ?>);">
+                <?= HTMLHelper::_('form.token') ?>
+                <div class="grid sm:grid-cols-2 gap-4 mb-3 max-w-lg">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-600 mb-1.5" for="muru-ul-hours"><?= Text::_('COM_MURUGUARD_UPLOADLOCK_HOURS_LABEL') ?></label>
+                        <select id="muru-ul-hours" name="uploadlock_hours" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                            <?php foreach ([1, 6, 24, 72, 0] as $h): ?>
+                                <option value="<?= (int) $h ?>"<?= $h === 24 ? ' selected' : '' ?>><?= $h === 0 ? Text::_('COM_MURUGUARD_UPLOADLOCK_HOURS_NONE') : Text::sprintf('COM_MURUGUARD_UPLOADLOCK_HOURS_N', $h) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <label class="flex items-start gap-2 text-xs text-gray-700 mt-6">
+                        <input type="checkbox" name="uploadlock_admin" value="1" class="mt-0.5"<?= $this->php2shellExposed ? ' checked' : '' ?>>
+                        <span><?= Text::_('COM_MURUGUARD_UPLOADLOCK_ADMIN_LABEL') ?></span>
+                    </label>
+                </div>
+                <button type="submit" class="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg text-sm font-bold text-white bg-amber-600 hover:bg-amber-700 transition-colors shadow-sm">🚧 <?= Text::_('COM_MURUGUARD_UPLOADLOCK_ON_BTN') ?></button>
+            </form>
+            <details class="mt-4 text-xs text-gray-600 max-w-2xl">
+                <summary class="cursor-pointer font-semibold text-gray-700"><?= Text::_('COM_MURUGUARD_UPLOADLOCK_NGINX') ?></summary>
+                <pre class="mt-2 p-3 bg-gray-50 border border-gray-200 rounded-lg overflow-x-auto text-[11px]"><?= htmlspecialchars(\MuruguardHardeningHelper::getNginxUploadLockSnippet($this->php2shellExposed)) ?></pre>
+            </details>
+            <?php endif; ?>
+        </div>
 
         <!-- Admin Lockdown -->
         <form action="<?= Route::_('index.php?option=com_muruguard&task=scanner.saveadminlockdown') ?>" method="post">
@@ -1296,59 +1538,6 @@ if (!empty($criticalVulns)):
         </div>
     </div>
 </div>
-
-<!-- Persistent header -- version badge + newsletter banner. Deliberately
-     OUTSIDE #muru-main-content's scanned/not-scanned split below, so both
-     show up regardless of whether a scan has ever been run yet.
-     Confirmed real gap: a site that hadn't run its first scan saw neither
-     the version number nor the newsletter banner at all. -->
-<?php if ($this->componentVersion !== ''): ?>
-<div id="muru-version-badge-wrap" class="flex justify-between items-center mb-3">
-    <a href="https://store.lyzerslab.com/dashboard/support/new" target="_blank" rel="noopener"
-       class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
-       title="<?= Text::_('COM_MURUGUARD_REPORT_ISSUE_TITLE') ?>">
-        <?= Text::_('COM_MURUGUARD_REPORT_ISSUE_LINK') ?>
-    </a>
-    <a href="index.php?option=com_installer&view=update"
-       class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-[#EF89EB] text-black hover:bg-[#e575e0] transition-colors"
-       title="<?= Text::_('COM_MURUGUARD_CHECK_UPDATES_TITLE') ?>">
-        🛡️ v<?= htmlspecialchars($this->componentVersion) ?>
-        <span class="opacity-40">|</span>
-        <?= Text::_('COM_MURUGUARD_CHECK_UPDATES_LINK') ?>
-    </a>
-</div>
-<?php endif; ?>
-
-<?php if (!$this->newsletterBannerDismissed): ?>
-<!-- Newsletter opt-in banner -- optional, dismissible, never shown again
-     once dismissed or subscribed (see newsletter_banner_dismissed in
-     component params). Posts to the dashboard's public opt-in endpoint,
-     same table/flow as the main site's own newsletter signup. -->
-<div id="muru-newsletter-banner" class="anim-in flex flex-wrap items-center justify-between gap-3
-            bg-gradient-to-r from-indigo-50 to-violet-50 border border-indigo-200 rounded-xl px-5 py-3 mb-6 shadow-sm">
-    <div class="min-w-[220px]">
-        <p class="text-sm font-semibold text-gray-800">📬 <?= Text::_('COM_MURUGUARD_NEWSLETTER_TITLE') ?></p>
-        <p class="text-xs text-gray-500 mt-0.5"><?= Text::_('COM_MURUGUARD_NEWSLETTER_DESC') ?></p>
-    </div>
-    <div class="flex items-center gap-2 flex-wrap">
-        <form action="index.php?option=com_muruguard&task=scanner.subscribenewsletter" method="post" class="flex flex-wrap items-center gap-2" style="margin:0">
-            <?= HTMLHelper::_('form.token') ?>
-            <input type="text" name="newsletter_name" placeholder="<?= Text::_('COM_MURUGUARD_NEWSLETTER_NAME_PLACEHOLDER') ?>"
-                   class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-indigo-400 w-36">
-            <input type="email" name="newsletter_email" required placeholder="<?= Text::_('COM_MURUGUARD_NEWSLETTER_EMAIL_PLACEHOLDER') ?>"
-                   class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-indigo-400 w-52">
-            <button type="submit"
-                    class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-indigo-200
-                           rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700
-                           transition-colors shadow-sm hover:shadow whitespace-nowrap">
-                <?= Text::_('COM_MURUGUARD_NEWSLETTER_SUBSCRIBE_BTN') ?>
-            </button>
-        </form>
-        <button type="button" id="muru-newsletter-dismiss-btn" title="<?= Text::_('COM_MURUGUARD_NEWSLETTER_DISMISS') ?>" aria-label="<?= Text::_('COM_MURUGUARD_NEWSLETTER_DISMISS') ?>"
-                class="text-gray-400 hover:text-gray-600 hover:bg-white/60 rounded-lg p-1.5 transition-colors">✕</button>
-    </div>
-</div>
-<?php endif; ?>
 
 <!-- Wrapper toggled off when the Settings panel is open -- see the
      #muru-settings-btn handler further down. Wraps BOTH the pre-scan
@@ -2661,6 +2850,7 @@ var muruFpToken = <?= json_encode(\Joomla\CMS\Session\Session::getFormToken()) ?
     // "welcome to the dashboard" banner or a scan-scoped version badge.
     var versionBadgeWrap = document.getElementById('muru-version-badge-wrap');
     var newsletterBanner = document.getElementById('muru-newsletter-banner');
+    var insightsWrap = document.getElementById('muru-insights-wrap');
     // Fetch-only dismiss, same no-reload reasoning as markfalsepositive()
     // above (and reuses its same session form token, muruFpToken -- it's
     // just Session::getFormToken(), valid for any POST on this page, not
@@ -2702,6 +2892,7 @@ var muruFpToken = <?= json_encode(\Joomla\CMS\Session\Session::getFormToken()) ?
         if (settingsPanel) settingsPanel.classList.add('hidden');
         if (newsletterBanner) newsletterBanner.classList.add('hidden');
         if (versionBadgeWrap) versionBadgeWrap.classList.add('hidden');
+        if (insightsWrap) insightsWrap.classList.add('hidden');
         if (settingsBtn) { settingsBtn.classList.remove('muru-settings-open'); settingsBtn.setAttribute('aria-pressed', 'false'); }
     }
     function openSettings() {
@@ -2715,6 +2906,7 @@ var muruFpToken = <?= json_encode(\Joomla\CMS\Session\Session::getFormToken()) ?
         if (mainContent) mainContent.classList.remove('hidden');
         if (newsletterBanner) newsletterBanner.classList.remove('hidden');
         if (versionBadgeWrap) versionBadgeWrap.classList.remove('hidden');
+        if (insightsWrap) insightsWrap.classList.remove('hidden');
     }
     if (settingsBtn) settingsBtn.addEventListener('click', openSettings);
     var cronBadge = document.getElementById('muru-cron-status-badge');
@@ -2929,6 +3121,8 @@ var muruFpToken = <?= json_encode(\Joomla\CMS\Session\Session::getFormToken()) ?
                         ' ' + data.completedCount + ' / ' + data.totalCount +
                         (data.currentAreaLabel ? ' — ' + data.currentAreaLabel : '');
 
+                    // Another scan step is running (second tab or admin): wait, then ask again.
+                    if (data.busy) { setTimeout(step, 1500); return; }
                     step();
                 })
                 .catch(function () { muruChunkScanFailed(''); });

@@ -38,11 +38,11 @@ class MuruguardHelper
         $user = MuruguardCompat::getUser();
 
         if ($user->guest || (int) $user->id <= 0) {
-            throw new \Joomla\CMS\Exception\NotAllowed(Text::_('JERROR_ALERTNOAUTHOR'), 403);
+            throw new \Joomla\CMS\Access\Exception\NotAllowed(Text::_('JERROR_ALERTNOAUTHOR'), 403);
         }
 
         if (!$user->authorise('core.manage', 'com_muruguard')) {
-            throw new \Joomla\CMS\Exception\NotAllowed(Text::_('JERROR_ALERTNOAUTHOR'), 403);
+            throw new \Joomla\CMS\Access\Exception\NotAllowed(Text::_('JERROR_ALERTNOAUTHOR'), 403);
         }
     }
 
@@ -71,7 +71,7 @@ class MuruguardHelper
         // getIdentity() is Joomla 4-only -- see requireManageAccess().
         $user = MuruguardCompat::getUser();
         if (!$user->authorise($action, 'com_muruguard')) {
-            throw new \Joomla\CMS\Exception\NotAllowed(Text::_('JERROR_ALERTNOAUTHOR'), 403);
+            throw new \Joomla\CMS\Access\Exception\NotAllowed(Text::_('JERROR_ALERTNOAUTHOR'), 403);
         }
     }
 
@@ -107,7 +107,7 @@ class MuruguardHelper
     public static function getSignatures(): array
     {
         return [
-            'EXEC_EXTS' => ['php', 'phtml', 'php3', 'php4', 'php5', 'php7', 'phar', 'pht', 'shtml'],
+            'EXEC_EXTS' => ['php', 'phtml', 'php3', 'php4', 'php5', 'php7', 'php8', 'phar', 'pht', 'phtm', 'phps', 'pgif', 'inc', 'shtml'],
 
             // Hidden dot-files with a well-known, ubiquitous benign
             // purpose -- shipped by countless legitimate composer/vendor
@@ -286,6 +286,33 @@ class MuruguardHelper
                     'severity' => 'high', 'why' => 'References ' . 'gsock' . 'et' . ', a reverse-shell/tunneling tool used to give an attacker an interactive shell on the server.'],
                 'shell_exec_chain'   => ['re' => '/' . 'shell_exec' . '\s*\(\s*\$_(POST|REQUEST|GET)/i',
                     'severity' => 'high', 'why' => 'Runs attacker-supplied request data as an OS shell command via shell_exec() — direct remote command execution.'],
+
+                // Taint signatures: a dangerous call fed DIRECTLY from a
+                // request superglobal. Legitimate Joomla code reads input
+                // through $input, never by handing a raw superglobal to a
+                // command, eval, include or callback sink, so these are
+                // narrow in practice. Function names are split into
+                // fragments for the same reason as the entries above.
+                'request_exec_sink' => ['re' => '/\b(?:' . 'sys' . 'tem|' . 'pass' . 'thru|exec|' . 'po' . 'pen|proc_' . 'open|pcntl_' . 'exec)\s*\(\s*(?:@\s*)?\$_(?:GET|POST|REQUEST|COOKIE)\b/i',
+                    'severity' => 'high', 'why' => 'Passes raw request data straight into an operating-system command function — direct remote command execution, the core of a webshell (high-confidence exploit pattern).'],
+                'request_eval_sink' => ['re' => '/\b(?:' . 'ev' . 'al|' . 'cre' . 'ate_function)\s*\(\s*(?:@\s*)?(?:stripslashes\s*\(\s*)?\$_(?:GET|POST|REQUEST|COOKIE)\b/i',
+                    'severity' => 'high', 'why' => 'Runs raw request data as PHP code — direct remote code execution (high-confidence exploit pattern).'],
+                'request_include' => ['re' => '/\b(?:include|require)(?:_once)?\s*\(?\s*(?:@\s*)?\$_(?:GET|POST|REQUEST|COOKIE)\b/i',
+                    'severity' => 'high', 'why' => 'Includes a file whose path comes straight from the request — lets a visitor run any file, or a remote one, as PHP (high-confidence exploit pattern).'],
+                'request_callback_exec' => ['re' => '/\b(?:call_user_func(?:_array)?|array_map|register_shutdown_function|register_tick_function)\s*\(\s*(?:\$_(?:GET|POST|REQUEST|COOKIE)\b|[\'"](?:' . 'sys' . 'tem|' . 'pass' . 'thru|exec|shell_' . 'exec|as' . 'sert|' . 'po' . 'pen)[\'"])|\b(?:array_filter|array_walk|usort|uasort|uksort)\s*\([^,()]{1,200},\s*[\'"](?:' . 'sys' . 'tem|' . 'pass' . 'thru|exec|shell_' . 'exec|as' . 'sert|' . 'po' . 'pen)[\'"]/i',
+                    'severity' => 'high', 'why' => 'Calls a command or code-execution function indirectly as a callback, or uses request data as the callback name — a common way to hide remote execution from simple scanners (high-confidence exploit pattern).'],
+                'request_backtick' => ['re' => '/`[^`\r\n]{0,200}\$_(?:GET|POST|REQUEST|COOKIE)\b[^`\r\n]{0,200}`/',
+                    'severity' => 'high', 'why' => 'Runs a shell command (PHP backtick operator) built from request data — direct remote command execution (high-confidence exploit pattern).'],
+                'request_file_write_path' => ['re' => '/\b(?:file_put_contents|copy)\s*\(\s*(?:@\s*)?\$_(?:GET|POST|REQUEST|COOKIE)\b/i',
+                    'severity' => 'high', 'why' => 'Writes or copies a file to a path taken straight from the request — lets a visitor plant files anywhere the web server can write (high-confidence exploit pattern).'],
+                'request_var_then_exec' => ['re' => '/\$(\w{1,40})\s*=\s*(?:@\s*)?(?:(?:stripslashes|trim|base64_decode|urldecode)\s*\(\s*)?\$_(?:GET|POST|REQUEST|COOKIE)\b[^;]{0,200};.{0,400}?\b(?:' . 'ev' . 'al|as' . 'sert|' . 'sys' . 'tem|' . 'pass' . 'thru|shell_' . 'exec|exec|' . 'po' . 'pen)\s*\(\s*(?:@\s*)?\$\1\b/is',
+                    'severity' => 'high', 'why' => 'Copies request data into a variable and then runs that variable as a command or as PHP code a few lines later — a webshell split in two to dodge single-line patterns (high-confidence exploit pattern).'],
+                'request_variable_function' => ['re' => '/\$\w{1,40}\s*\(\s*(?:@\s*)?\$_(?:GET|POST|REQUEST|COOKIE)\s*\[/',
+                    'severity' => 'medium', 'why' => 'Calls a function whose name is held in a variable, passing raw request data — the usual shape of a webshell that builds the function name from fragments to avoid detection; review what the variable holds.'],
+                'superglobal_name_obfuscation' => ['re' => '/\$\{\s*[\'"]_(?:P|G|R|C)[A-Z]{0,6}[\'"]\s*(?:\.\s*[\'"][A-Z]{1,7}[\'"]\s*)*\}/',
+                    'severity' => 'medium', 'why' => 'Reads request data through a variable-variable such as ${\'_PO\'.\'ST\'} — no reason to write it this way except to hide the request access from scanners; review the file.'],
+                'preg_replace_eval_modifier' => ['re' => '/\bpreg_replace\s*\(\s*([\'"])([^\w\s\\\\]).{0,300}?\2[imsxuADSUXJ]*e[imsxuADSUXJ]*\1\s*,/s',
+                    'severity' => 'medium', 'why' => 'Uses preg_replace() with the /e modifier, which ran the replacement as PHP code; removed in PHP 7, so on a current site this is almost always a leftover or dormant backdoor — review the file.'],
                 'xss_report_payload' => ['re' => '/xss\.report|_hu_inject/i',
                     'severity' => 'high', 'why' => 'Matches the known xss.report / _hu_inject marker used by the Helix Ultimate mega-menu XSS campaign tied to this SPPB compromise.'],
                 // \b word boundaries matter here -- without them this matched
@@ -429,7 +456,11 @@ class MuruguardHelper
                 'sppb_upload_custom_icon' => ['re' => '/task\s*=\s*[\'"]?[^&\'"]*uploadcustomicon/i',
                     'severity' => 'high', 'block_eligible' => true,
                     'why' => 'Directly targets the SP Page Builder uploadCustomIcon task -- the exact unauthenticated RCE this whole tool exists to catch the aftermath of. A live probe against it is worth blocking outright, not just logging.'],
-                'known_dropped_filename' => ['re' => '/^\/?.*(?:codex-sppb-[a-f0-9]+|codex_sppb\w*|queue_\d+)\.php(?:[?\/]|$)/i',
+                // Unanchored with bounded repeats: the old leading "^\/?.*" plus
+                // unbounded \w*/\d+ backtracked quadratically and hit the
+                // backtrack limit on a huge request, where preg_match()
+                // returns false and the rule silently missed.
+                'known_dropped_filename' => ['re' => '/(?:codex-sppb-[a-f0-9]{1,64}|codex_sppb\w{0,64}|queue_\d{1,20})\.php(?:[?\/\s]|$)/i',
                     'severity' => 'high', 'block_eligible' => true,
                     'why' => 'The request path matches a known malware-drop filename pattern from this campaign -- either an attacker probing for a shell that was never dropped, or someone actively using one that was.'],
                 'path_traversal_probe' => ['re' => '/(?:\.\.[\/\\\\]){2,}|\/etc\/passwd|wp-config\.php|configuration\.php~/i',
@@ -734,6 +765,10 @@ class MuruguardHelper
                 'plugins' => 'code', 'administrator/includes' => 'code',
                 'libraries' => 'code', 'templates' => 'code', 'administrator/templates' => 'code',
                 'cli' => 'code', 'bin' => 'code',
+                // Core code trees that used to be skipped entirely: a
+                // webshell dropped here was never content-scanned.
+                'api' => 'code', 'includes' => 'code',
+                'language' => 'code', 'administrator/language' => 'code',
             ],
 
             // Exact relative paths seen in real-world attacks where the
@@ -876,6 +911,10 @@ class MuruguardHelper
                     'administrator/includes'    => 'administrator/includes/',
                     'cli'                       => 'cli/',
                     'bin'                       => 'bin/',
+                    'api'                       => 'api/',
+                    'includes'                  => 'includes/',
+                    'language'                  => 'language/',
+                    'administrator/language'    => 'administrator/language/',
                 ],
             ],
             'core_webroot' => [
@@ -942,7 +981,22 @@ class MuruguardHelper
         $best = null;
         foreach ($sig['REQUEST_SIGNATURES'] as $name => $def) {
             $haystack = $name === 'known_scanner_user_agent' ? $userAgent : $combined;
-            if ($haystack === '' || !preg_match($def['re'], $haystack, $m)) continue;
+            if ($haystack === '') continue;
+            $hit = preg_match($def['re'], $haystack, $m);
+            if ($hit === false) {
+                // The rule couldn't finish (regex limit on a huge request):
+                // logged for review, never blocked, instead of a silent pass.
+                $candidate = [
+                    'rule'           => $name . '_unchecked',
+                    'severity'       => 'medium',
+                    'block_eligible' => false,
+                    'why'            => 'This request was too large or repetitive for the "' . $name . '" rule to finish checking, so it passed unchecked -- worth a look if it repeats.',
+                    'matched_text'   => '',
+                ];
+                if ($best === null) $best = $candidate;
+                continue;
+            }
+            if (!$hit) continue;
 
             $candidate = [
                 'rule'           => $name,
@@ -951,7 +1005,7 @@ class MuruguardHelper
                 'why'            => $def['why'],
                 'matched_text'   => mb_substr((string) $m[0], 0, 120),
             ];
-            if ($best === null || ($candidate['severity'] === 'high' && $best['severity'] !== 'high')) {
+            if ($best === null || substr($best['rule'], -10) === '_unchecked' || ($candidate['severity'] === 'high' && $best['severity'] !== 'high')) {
                 $best = $candidate;
             }
         }
@@ -989,10 +1043,54 @@ class MuruguardHelper
      */
     public static function stripDataFileStub(string $contents): string
     {
+        // Our own stub is cut off exactly, never trimmed, so a payload that
+        // starts with a blank line comes back byte-for-byte.
+        $prefix = self::dataFileStubPrefix();
+        if (strncmp($contents, $prefix, strlen($prefix)) === 0) return substr($contents, strlen($prefix));
+
         if (strpos($contents, '<?php') !== 0) return $contents;
         $end = strpos($contents, '?>');
         if ($end === false) return $contents;
         return ltrim(substr($contents, $end + 2), "\r\n");
+    }
+
+    /**
+     * JSON for a data file, or null when it cannot be encoded. Invalid
+     * UTF-8 (a raw filename byte, a visitor's User-Agent) becomes U+FFFD
+     * instead of making json_encode() return false -- which used to be
+     * concatenated as an empty payload and wiped the whole file.
+     */
+    public static function encodeDataJson($data): ?string
+    {
+        $json = json_encode($data, JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR);
+        return is_string($json) ? $json : null;
+    }
+
+    /** Writes $data to a stub-protected data file; leaves the old file untouched if it can't be encoded. */
+    public static function writeDataFile(string $path, $data): bool
+    {
+        $json = self::encodeDataJson($data);
+        if ($json === null) return false;
+        return @file_put_contents($path, self::dataFileStubPrefix() . $json) !== false;
+    }
+
+    /**
+     * Replaces the contents of a data file the caller already holds an
+     * flock() on. Encodes BEFORE truncating, so a failed encode keeps the
+     * previous contents instead of leaving only the stub.
+     *
+     * @param resource $fh
+     */
+    public static function rewriteLockedDataFile($fh, $data): bool
+    {
+        $json = self::encodeDataJson($data);
+        if ($json === null) return false;
+        ftruncate($fh, 0);
+        rewind($fh);
+        $ok = fwrite($fh, self::dataFileStubPrefix() . $json) !== false;
+        // filesize() results are cached per request; the next read-modify-write must see the new size.
+        clearstatcache();
+        return $ok;
     }
 
     /**
@@ -1019,7 +1117,7 @@ class MuruguardHelper
     /** Overwrites the protected-user snapshot state file. */
     public static function saveProtectedUsersState(array $state): void
     {
-        @file_put_contents(self::protectedUsersStateFilePath(), self::dataFileStubPrefix() . json_encode($state));
+        self::writeDataFile(self::protectedUsersStateFilePath(), $state);
     }
 
     /**
@@ -1193,18 +1291,16 @@ class MuruguardHelper
 
         if (@flock($fh, LOCK_EX)) {
             $size = filesize($path) ?: 0;
-            $contents = $size > 0 ? self::stripDataFileStub(fread($fh, $size)) : '';
+            $contents = ($size > 0 && $size <= self::ATTACK_LOG_ARCHIVE_MAX_BYTES) ? self::stripDataFileStub(fread($fh, $size)) : '';
             $archive = json_decode($contents, true);
             if (!is_array($archive)) $archive = [];
 
             array_push($archive, ...$evicted);
-            if (count($archive) > 20000) {
-                $archive = array_slice($archive, -20000);
+            if (count($archive) > self::ATTACK_LOG_ARCHIVE_MAX_ENTRIES) {
+                $archive = array_slice($archive, -self::ATTACK_LOG_ARCHIVE_MAX_ENTRIES);
             }
 
-            ftruncate($fh, 0);
-            rewind($fh);
-            fwrite($fh, self::dataFileStubPrefix() . json_encode($archive));
+            self::rewriteLockedDataFile($fh, $archive);
             fflush($fh);
             flock($fh, LOCK_UN);
         }
@@ -1216,23 +1312,63 @@ class MuruguardHelper
     {
         $path = self::attackLogArchiveFilePath();
         if (!is_file($path)) return 0;
+        if ((@filesize($path) ?: 0) > self::ATTACK_LOG_ARCHIVE_MAX_BYTES) return 0;
         $contents = @file_get_contents($path);
         if ($contents === false) return 0;
         $decoded = json_decode(self::stripDataFileStub($contents), true);
         return is_array($decoded) ? count($decoded) : 0;
     }
 
+    /** Live log and archive files above these sizes are not decoded (a JSON blob that size can exhaust memory_limit). */
+    private const ATTACK_LOG_MAX_BYTES = 2097152;
+    private const ATTACK_LOG_ARCHIVE_MAX_BYTES = 25165824;
+    private const ATTACK_LOG_ARCHIVE_MAX_ENTRIES = 10000;
+
+    /** Per-field length caps; any other string field gets ATTACK_LOG_DEFAULT_FIELD_LEN. */
+    private const ATTACK_LOG_FIELD_LENGTHS = [
+        'uri' => 300, 'user_agent' => 200, 'matched' => 200, 'why' => 400,
+        'ip' => 64, 'rule' => 64, 'type' => 32, 'severity' => 16, 'country' => 8,
+    ];
+    private const ATTACK_LOG_DEFAULT_FIELD_LEN = 300;
+
+    /**
+     * Every string field is scrubbed to valid UTF-8 and length-capped here,
+     * for every caller: values come straight from the request (a failed
+     * login's username, the User-Agent), and one invalid byte or a 2 MB
+     * username used to wipe or bloat the whole log.
+     */
+    public static function normalizeAttackLogEntry(array $entry): array
+    {
+        foreach ($entry as $key => $value) {
+            if (!is_string($value)) continue;
+            $max = self::ATTACK_LOG_FIELD_LENGTHS[$key] ?? self::ATTACK_LOG_DEFAULT_FIELD_LEN;
+            if (strlen($value) > $max * 4) $value = substr($value, 0, $max * 4);
+            $entry[$key] = mb_substr(mb_scrub($value, 'UTF-8'), 0, $max, 'UTF-8');
+        }
+        return $entry;
+    }
+
     /** Newest first, capped at 500 entries so the live file stays small and fast to read regardless of traffic volume -- anything evicted past that is preserved in the archive (see archiveAttackLogEntries()), never just dropped. */
     public static function recordAttackLogEntry(array $entry): void
     {
+        $entry = self::normalizeAttackLogEntry($entry);
         $path = self::attackLogFilePath();
         $fh = @fopen($path, 'c+');
         if ($fh === false) return;
 
         $evicted = [];
-        if (@flock($fh, LOCK_EX)) {
+        // Under a flood every blocked request lands here: wait briefly for
+        // the lock, then drop this one entry rather than queue the request
+        // behind every other writer. The block itself has already happened.
+        $locked = false;
+        for ($try = 0; $try < 5 && !$locked; $try++) {
+            $locked = @flock($fh, LOCK_EX | LOCK_NB);
+            if (!$locked) usleep(10000);
+        }
+        if ($locked) {
             $size = filesize($path) ?: 0;
-            $contents = $size > 0 ? self::stripDataFileStub(fread($fh, $size)) : '';
+            // An oversized file is started over rather than decoded into an out-of-memory fatal.
+            $contents = ($size > 0 && $size <= self::ATTACK_LOG_MAX_BYTES) ? self::stripDataFileStub(fread($fh, $size)) : '';
             $log = json_decode($contents, true);
             if (!is_array($log)) $log = [];
 
@@ -1242,9 +1378,7 @@ class MuruguardHelper
                 $log = array_slice($log, 0, 500);
             }
 
-            ftruncate($fh, 0);
-            rewind($fh);
-            fwrite($fh, self::dataFileStubPrefix() . json_encode($log));
+            self::rewriteLockedDataFile($fh, $log);
             fflush($fh);
             flock($fh, LOCK_UN);
         }
@@ -1253,10 +1387,21 @@ class MuruguardHelper
         self::archiveAttackLogEntries($evicted);
     }
 
+    /** Entries evicted from the live log and kept in the archive (oldest first). Empty when none or too big to read. */
+    public static function getAttackLogArchive(): array
+    {
+        $path = self::attackLogArchiveFilePath();
+        if (!is_file($path) || (@filesize($path) ?: 0) > self::ATTACK_LOG_ARCHIVE_MAX_BYTES) return [];
+        $decoded = json_decode(self::stripDataFileStub((string) @file_get_contents($path)), true);
+        return is_array($decoded) ? $decoded : [];
+    }
+
     public static function getAttackLog(): array
     {
         $path = self::attackLogFilePath();
         if (!is_file($path)) return [];
+        // Too big to decode safely: show an empty log (Clear log still works) instead of a fatal admin page.
+        if ((@filesize($path) ?: 0) > self::ATTACK_LOG_MAX_BYTES) return [];
         $contents = @file_get_contents($path);
         if ($contents === false) return [];
         $decoded = json_decode(self::stripDataFileStub($contents), true);
@@ -1265,7 +1410,7 @@ class MuruguardHelper
 
     public static function clearAttackLog(): void
     {
-        @file_put_contents(self::attackLogFilePath(), self::dataFileStubPrefix() . json_encode([]));
+        self::writeDataFile(self::attackLogFilePath(), []);
     }
 
     private static function loginAttemptsFilePath(): string
@@ -1281,6 +1426,8 @@ class MuruguardHelper
      * never grow unbounded even under a sustained attack -- a rolling
      * window is all isBruteForceThresholdExceeded() ever needs anyway.
      */
+    private const LOGIN_ATTEMPTS_MAX = 5000;
+
     public static function recordLoginFailure(string $ip, string $username): void
     {
         $path = self::loginAttemptsFilePath();
@@ -1295,11 +1442,15 @@ class MuruguardHelper
 
             $cutoff = time() - 86400;
             $attempts = array_values(array_filter($attempts, fn($a) => ($a['time'] ?? 0) >= $cutoff));
-            $attempts[] = ['ip' => $ip, 'username' => $username, 'time' => time()];
+            $attempts[] = ['ip' => $ip, 'username' => mb_substr(mb_scrub($username, 'UTF-8'), 0, 100, 'UTF-8'), 'time' => time()];
+            // A botnet can produce far more than a day's worth of entries
+            // the age cutoff alone allows; this file is read on every
+            // request, so keep only the newest ones.
+            if (count($attempts) > self::LOGIN_ATTEMPTS_MAX) {
+                $attempts = array_slice($attempts, -self::LOGIN_ATTEMPTS_MAX);
+            }
 
-            ftruncate($fh, 0);
-            rewind($fh);
-            fwrite($fh, self::dataFileStubPrefix() . json_encode($attempts));
+            self::rewriteLockedDataFile($fh, $attempts);
             fflush($fh);
             flock($fh, LOCK_UN);
         }
@@ -1316,14 +1467,28 @@ class MuruguardHelper
         return is_array($decoded) ? $decoded : [];
     }
 
+    /**
+     * The address brute-force counting groups by: an IPv4 address as is,
+     * an IPv6 address by its /64 (one customer's normal allocation), so
+     * rotating through addresses in the same /64 no longer resets the count.
+     */
+    public static function bruteForceKey(string $ip): string
+    {
+        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) === false) return $ip;
+        $packed = @inet_pton($ip);
+        if ($packed === false || strlen($packed) !== 16) return $ip;
+        return bin2hex(substr($packed, 0, 8)) . '::/64';
+    }
+
     /** True if $ip has failed $threshold or more times within the last $windowMinutes. */
     public static function isBruteForceThresholdExceeded(string $ip, int $threshold, int $windowMinutes): bool
     {
         if ($threshold <= 0) return false;
         $cutoff = time() - ($windowMinutes * 60);
         $count = 0;
+        $key = self::bruteForceKey($ip);
         foreach (self::getLoginAttempts() as $a) {
-            if (($a['ip'] ?? '') === $ip && ($a['time'] ?? 0) >= $cutoff) {
+            if (self::bruteForceKey((string) ($a['ip'] ?? '')) === $key && ($a['time'] ?? 0) >= $cutoff) {
                 $count++;
                 if ($count >= $threshold) return true;
             }
@@ -1436,9 +1601,7 @@ class MuruguardHelper
             ));
             $list[] = $entry;
 
-            ftruncate($fh, 0);
-            rewind($fh);
-            fwrite($fh, self::dataFileStubPrefix() . json_encode($list));
+            self::rewriteLockedDataFile($fh, $list);
             fflush($fh);
             flock($fh, LOCK_UN);
         }
@@ -1461,9 +1624,7 @@ class MuruguardHelper
 
             $list = array_values(array_filter($list, fn($e) => ($e['id'] ?? '') !== $id));
 
-            ftruncate($fh, 0);
-            rewind($fh);
-            fwrite($fh, self::dataFileStubPrefix() . json_encode($list));
+            self::rewriteLockedDataFile($fh, $list);
             fflush($fh);
             flock($fh, LOCK_UN);
         }
@@ -1543,9 +1704,7 @@ class MuruguardHelper
 
             $list[] = $entry;
 
-            ftruncate($fh, 0);
-            rewind($fh);
-            fwrite($fh, self::dataFileStubPrefix() . json_encode($list));
+            self::rewriteLockedDataFile($fh, $list);
             fflush($fh);
             flock($fh, LOCK_UN);
         }
@@ -1568,9 +1727,7 @@ class MuruguardHelper
 
             $list = array_values(array_filter($list, fn($e) => ($e['id'] ?? '') !== $id));
 
-            ftruncate($fh, 0);
-            rewind($fh);
-            fwrite($fh, self::dataFileStubPrefix() . json_encode($list));
+            self::rewriteLockedDataFile($fh, $list);
             fflush($fh);
             flock($fh, LOCK_UN);
         }
@@ -1654,97 +1811,43 @@ class MuruguardHelper
     }
 
     // ------------------------------------------------------------------
-    // GeoIP / country blocking -- deliberately does NOT bundle a GeoIP
-    // database (MaxMind's GeoLite2 requires a free account + license key
-    // this project can't obtain on an admin's behalf, and a stale bundled
-    // copy would silently rot). Instead uses a free lookup API
-    // (ip-api.com) with an aggressive, indefinite local cache keyed by
-    // IP -- a given IP's country essentially never changes, so this is a
-    // ONE-TIME network call per unique visitor IP ever seen, not a
-    // per-request dependency. Fails open (returns null, never blocks) on
-    // any lookup error/timeout/malformed response -- a third-party
-    // service hiccup must never be able to take real visitors down.
+    // GeoIP / country blocking -- answered from a local copy of the free
+    // DB-IP country database (see helpers/geoip.php), downloaded and
+    // refreshed monthly by the site itself. No visitor IP is sent
+    // anywhere. Fails open: no database, a private address or any read
+    // error means "country unknown", which never blocks anyone.
     // ------------------------------------------------------------------
 
-    private static function geoipCacheFilePath(): string
+    private static function loadGeoIp(): bool
     {
-        $new = JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/geoip-cache.php';
-        self::migrateLegacyDataFile(JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/geoip-cache.json', $new);
-        return $new;
+        if (!class_exists('MuruguardGeoIp', false)) {
+            $path = __DIR__ . '/geoip.php';
+            if (!is_file($path)) return false;
+            require_once $path;
+        }
+        return true;
     }
 
-    /** Returns a 2-letter ISO country code, or null if unknown/lookup failed. */
+    /** Returns a 2-letter ISO country code, or null if unknown or no database is installed. */
     public static function lookupCountryForIp(string $ip): ?string
     {
         if ($ip === '' || filter_var($ip, FILTER_VALIDATE_IP) === false) return null;
         // Private/reserved ranges (localhost, LAN, Docker/CI runners, ...)
-        // are never geolocatable and would otherwise burn a lookup (and
-        // cache slot) on every dev/staging environment.
+        // are never geolocatable.
         if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) return null;
-
-        $cachePath = self::geoipCacheFilePath();
-        $cache = [];
-        if (is_file($cachePath)) {
-            $decoded = json_decode(self::stripDataFileStub((string) @file_get_contents($cachePath)), true);
-            if (is_array($decoded)) $cache = $decoded;
-        }
-
-        if (array_key_exists($ip, $cache)) {
-            return $cache[$ip]['country'] !== '' ? $cache[$ip]['country'] : null;
-        }
-
-        $country = self::fetchCountryFromApi($ip);
-
-        $fh = @fopen($cachePath, 'c+');
-        if ($fh !== false) {
-            if (@flock($fh, LOCK_EX)) {
-                $size = filesize($cachePath) ?: 0;
-                $contents = $size > 0 ? self::stripDataFileStub(fread($fh, $size)) : '';
-                $freshCache = json_decode((string) $contents, true);
-                if (!is_array($freshCache)) $freshCache = [];
-
-                // Cap cache size so a distributed scan/attack hitting
-                // thousands of unique IPs can't grow this file unbounded
-                // -- oldest entries are dropped first (insertion order).
-                if (count($freshCache) > 20000) {
-                    $freshCache = array_slice($freshCache, -15000, null, true);
-                }
-                $freshCache[$ip] = ['country' => (string) $country, 'cachedAt' => time()];
-
-                ftruncate($fh, 0);
-                rewind($fh);
-                fwrite($fh, self::dataFileStubPrefix() . json_encode($freshCache));
-                fflush($fh);
-                flock($fh, LOCK_UN);
-            }
-            fclose($fh);
-        }
-
-        return $country;
-    }
-
-    /** Isolated for testability -- swap/mock this in tests rather than the caching wrapper above. */
-    protected static function fetchCountryFromApi(string $ip): ?string
-    {
         try {
-            $context = stream_context_create(['http' => ['timeout' => 2, 'ignore_errors' => true]]);
-            // Plain http:// is deliberate, not an oversight: ip-api.com's
-            // free tier only serves HTTP (HTTPS requires a paid Pro key
-            // this extension neither has nor asks the admin for). The
-            // request carries nothing sensitive -- just the visitor IP
-            // being looked up, which is the API's entire purpose -- and
-            // the response is validated (status + 2-letter code shape)
-            // before anything is trusted or cached.
-            $response = @file_get_contents("http://ip-api.com/json/{$ip}?fields=status,countryCode", false, $context);
-            if ($response === false) return null;
-
-            $data = json_decode($response, true);
-            if (!is_array($data) || ($data['status'] ?? '') !== 'success') return null;
-
-            $code = (string) ($data['countryCode'] ?? '');
-            return preg_match('/^[A-Z]{2}$/', $code) ? $code : null;
+            return self::loadGeoIp() ? \MuruguardGeoIp::countryForIp($ip) : null;
         } catch (\Throwable $e) {
             return null;
+        }
+    }
+
+    /** Removes the old ip-api.com lookup cache (it held every visitor IP ever geolocated). Safe to call repeatedly. */
+    public static function deleteLegacyGeoipCache(): void
+    {
+        foreach (['geoip-cache.php', 'geoip-cache.json'] as $f) {
+            $path = JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/' . $f;
+            if (is_file($path)) @unlink($path);
         }
     }
 
@@ -1802,9 +1905,7 @@ class MuruguardHelper
         $fh = @fopen($cachePath, 'c+');
         if ($fh !== false) {
             if (@flock($fh, LOCK_EX)) {
-                ftruncate($fh, 0);
-                rewind($fh);
-                fwrite($fh, self::dataFileStubPrefix() . json_encode(['fetchedAt' => time(), 'advisories' => $fetched]));
+                self::rewriteLockedDataFile($fh, ['fetchedAt' => time(), 'advisories' => $fetched]);
                 fflush($fh);
                 flock($fh, LOCK_UN);
             }
@@ -2383,6 +2484,42 @@ class MuruguardHelper
             return "Contains a directive that executes a non-PHP file extension as PHP ({$m[0]} combined with a PHP execution handler) — the exact technique used to run a dropped webshell despite a disguised extension (e.g. \".json\"), defeating any filter that only blocks \".php\" files directly.";
         }
 
+        // The same hijack without <FilesMatch>: "AddType application/x-httpd-php .jpg".
+        // Hosts list only PHP-family extensions here (".php .php8 .phtml"), so
+        // only a list containing some other extension is flagged.
+        $phpFamily = ['php', 'php3', 'php4', 'php5', 'php7', 'php8', 'phtml', 'pht', 'phps'];
+        if (preg_match_all('/^\s*(?:AddType|AddHandler)\s+["\']?application\/x-httpd-[a-z0-9_.-]*php[a-z0-9_.-]*["\']?((?:\s+\.?[a-z0-9]+)+)\s*$/im', $content, $all, PREG_SET_ORDER)) {
+            foreach ($all as $m) {
+                $exts = preg_split('/\s+/', strtolower(trim($m[1])));
+                foreach ($exts as $ext) {
+                    $ext = ltrim($ext, '.');
+                    if ($ext !== '' && !in_array($ext, $phpFamily, true)) {
+                        return "Contains a directive that executes a non-PHP file extension as PHP (" . trim($m[0]) . ") — the technique used to run a dropped webshell disguised with an image or text extension.";
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * auto_prepend_file / auto_append_file in a .user.ini, php.ini or
+     * .htaccess (php_value) makes PHP run that file before or after every
+     * script on the site -- a common way to keep a backdoor running even
+     * after the visible webshell is deleted. Some security tools set it
+     * legitimately, so this is reported for review, naming the file.
+     */
+    public static function checkPhpAutoPrependDirective(string $content): ?string
+    {
+        if (!preg_match_all('/^\s*(?:php_(?:admin_)?value\s+)?(auto_(?:prepend|append)_file)\s*(?:=\s*)?["\']?([^"\'\r\n;]*)/im', $content, $all, PREG_SET_ORDER)) {
+            return null;
+        }
+        foreach ($all as $m) {
+            $target = trim($m[2]);
+            if ($target === '' || strtolower($target) === 'none') continue;
+            return "Sets {$m[1]} to \"" . mb_substr($target, 0, 200) . "\", so PHP runs that file before or after every page on the site — a common way to keep a backdoor running after the visible file is removed. Check that this file is expected.";
+        }
         return null;
     }
 
@@ -2691,9 +2828,50 @@ class MuruguardHelper
         return round($bytes, 1) . ' ' . $units[$i];
     }
 
-    public static function walkDir(string $dir, callable $callback, array $skipDirNames = ['node_modules', '.git']): void
+    /**
+     * preg_match() for a content signature, without silent misses:
+     * - a UTF-8 (/u) pattern on text with an invalid byte errors out, which
+     *   read as "no match" -- one stray byte hid a file from every /u rule.
+     *   It is retried on a scrubbed copy (same offsets for valid text).
+     * - a backtrack/recursion limit hit is retried once with a higher limit.
+     * Returns 1, 0, or false only when the check still could not finish.
+     */
+    private static function contentSignatureMatch(string $re, string $text, &$m)
+    {
+        $hit = preg_match($re, $text, $m, PREG_OFFSET_CAPTURE);
+        if ($hit !== false) return $hit;
+
+        if (preg_last_error() === PREG_BAD_UTF8_ERROR || preg_last_error() === PREG_BAD_UTF8_OFFSET_ERROR) {
+            $hit = preg_match($re, mb_scrub($text, 'UTF-8'), $m, PREG_OFFSET_CAPTURE);
+            if ($hit !== false) return $hit;
+        }
+        if (in_array(preg_last_error(), [PREG_BACKTRACK_LIMIT_ERROR, PREG_RECURSION_LIMIT_ERROR, PREG_JIT_STACKLIMIT_ERROR], true)) {
+            $bt = ini_get('pcre.backtrack_limit');
+            $rc = ini_get('pcre.recursion_limit');
+            ini_set('pcre.backtrack_limit', '5000000');
+            ini_set('pcre.recursion_limit', '50000');
+            $hit = preg_match($re, $text, $m, PREG_OFFSET_CAPTURE);
+            if ($bt !== false) ini_set('pcre.backtrack_limit', $bt);
+            if ($rc !== false) ini_set('pcre.recursion_limit', $rc);
+            return $hit;
+        }
+        return false;
+    }
+
+    public static function walkDir(string $dir, callable $callback, array $skipDirNames = ['node_modules', '.git'], ?array &$visited = null): void
     {
         if (!is_dir($dir)) return;
+        // Symlinked folders are entered only when they resolve inside the
+        // site and haven't been walked yet: following them blindly let a
+        // link to /etc or a home folder leak outside files into the scan,
+        // and a link loop recursed forever.
+        if ($visited === null) $visited = [];
+        $real = realpath($dir);
+        if ($real === false || isset($visited[$real])) return;
+        $siteRoot = defined('JPATH_ROOT') ? realpath(JPATH_ROOT) : false;
+        if (is_link($dir) && $siteRoot !== false && $real !== $siteRoot && strpos($real, $siteRoot . DIRECTORY_SEPARATOR) !== 0) return;
+        $visited[$real] = true;
+
         $items = @scandir($dir);
         if ($items === false) return;
         foreach ($items as $item) {
@@ -2702,7 +2880,7 @@ class MuruguardHelper
             $path = $dir . '/' . $item;
             $isDir = is_dir($path);
             $callback($path, $isDir);
-            if ($isDir) self::walkDir($path, $callback, $skipDirNames);
+            if ($isDir) self::walkDir($path, $callback, $skipDirNames, $visited);
         }
     }
 
@@ -3310,7 +3488,11 @@ class MuruguardHelper
         // getSignatures()) would otherwise skip every check below
         // entirely on the default 2MB cap.
         $flagged = false;
-        if (!empty($sig['KNOWN_MALWARE_HASHES'])) {
+        // Only files up to 32 MB are hashed: the known samples are small
+        // scripts, and hashing every multi-GB video or backup archive first
+        // could use up a whole scan step's time budget on one file.
+        $hashSize = @filesize($path);
+        if (!empty($sig['KNOWN_MALWARE_HASHES']) && $hashSize !== false && $hashSize <= 33554432) {
             $knownHash = @hash_file('sha256', $path);
             if ($knownHash !== false && isset($sig['KNOWN_MALWARE_HASHES'][$knownHash])) {
                 $flagged = true;
@@ -3334,7 +3516,7 @@ class MuruguardHelper
         // Handler()). Legitimate JSON (language files, manifests,
         // composer.json, ...) never matches any signature below, so this
         // adds coverage with no new false-positive surface.
-        $textLikeExts = ['php', 'phtml', 'php3', 'php4', 'php5', 'php7', 'phar', 'pht', 'js', 'html', 'htm', 'txt', 'css', 'xml', 'json', 'gif', 'png', 'jpg', 'jpeg', 'profile', 'htaccess'];
+        $textLikeExts = ['php', 'phtml', 'php3', 'php4', 'php5', 'php7', 'php8', 'phar', 'pht', 'phtm', 'inc', 'js', 'html', 'htm', 'txt', 'css', 'xml', 'json', 'gif', 'png', 'jpg', 'jpeg', 'profile', 'htaccess'];
         if (!in_array($ext, $textLikeExts, true) && $ext !== '') return $flagged;
         $contents = @file_get_contents($path);
         if ($contents === false || $contents === '') return $flagged;
@@ -3361,13 +3543,22 @@ class MuruguardHelper
         // explanation and is surfaced for human review instead of an
         // automatic verdict. Either way the actual matched code is quoted
         // so the reason is verifiable, not just a signature label.
+        // A signature that hits the regex limit returns false, which used
+        // to read as "no match": padding a file was enough to slip past it.
+        $limitHit = null;
         foreach ($sig['CONTENT_SIGNATURES'] as $sigName => $def) {
-            if (preg_match($def['re'], $scanText, $m, PREG_OFFSET_CAPTURE)) {
+            $hit = self::contentSignatureMatch($def['re'], $scanText, $m);
+            if ($hit === false && $limitHit === null) $limitHit = $sigName;
+            if ($hit) {
                 $flagged = true;
                 $preview = self::previewMatch($scanText, $m);
                 $tag = $def['severity'] === 'high' ? 'high-confidence exploit pattern' : 'needs manual review';
                 $reasons[] = "Content signature: {$sigName} ({$tag}) — {$def['why']} Matched code: {$preview}";
             }
+        }
+        if ($limitHit !== null && preg_match('/^(?:php\d?|phtml|phar|pht|inc)$/', (string) $ext)) {
+            $flagged = true;
+            $reasons[] = "Content check {$limitHit} could not finish on this file (it is unusually large or repetitive), so it was not fully checked -- review it by hand.";
         }
         // The PHP-open-tag check gets its own full-file pass instead of
         // sharing $scanText's narrow head+tail window above. A literal

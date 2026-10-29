@@ -10,7 +10,11 @@
  * directly from the official joomla/joomla-cms GitHub release tags --
  * these plain PHP/text files are not build/minify artifacts, so tag
  * content matches the released package byte-for-byte. Covers the
- * latest patch of the 4.x LTS, 5.x, and 6.x lines as of 2026-07-17;
+ * latest patch of the 4.x LTS, 5.x, and 6.x lines as of 2026-07-17,
+ * plus 6.2.0 (from the official joomla:6 Docker image's /usr/src/joomla)
+ * and 6.0.0 (its eight files are byte-identical to 6.1.2's), plus the Joomla 3
+ * line: 3.10.10, 3.10.11 and 3.10.12 from the official joomla-cms tags (the six
+ * files Joomla 3 has are byte-identical across the three);
  * extend with more versions as needed -- an unlisted version simply
  * means checksum verification is skipped for that install (falls
  * back to the existing heuristic checks), never a false positive.
@@ -19,7 +23,56 @@
 defined('_JEXEC') or die;
 
 return array (
+  '3.10.12' => 
+  array (
+    'index.php' => '6554f8ede0dc033c429838f428dc2b1d1ed0013b163ef56eb7b37706631cc59d',
+    'administrator/index.php' => 'e63201b132431b623514c51d6fccc24fccbfd6dc7348db4e89516015b84e018b',
+    'includes/framework.php' => '76443795590a77891d7ba154979a770a84adf486cbbfdc5122e2319ffd5391fa',
+    'robots.txt.dist' => 'b0badb1a6e6cf7444fb0e354203aa0f662ade78b49ddc68d3a1b892214f7897a',
+    'htaccess.txt' => 'b34b5862a37ca3d85ce61bb63abd46c9792f2a68deb82ae397adc4579b3ce10f',
+    'web.config.txt' => 'c42514aa48d2d442f16507806a2929987afa5566c3273d62b3640db4a317002d',
+  ),
+  '3.10.11' => 
+  array (
+    'index.php' => '6554f8ede0dc033c429838f428dc2b1d1ed0013b163ef56eb7b37706631cc59d',
+    'administrator/index.php' => 'e63201b132431b623514c51d6fccc24fccbfd6dc7348db4e89516015b84e018b',
+    'includes/framework.php' => '76443795590a77891d7ba154979a770a84adf486cbbfdc5122e2319ffd5391fa',
+    'robots.txt.dist' => 'b0badb1a6e6cf7444fb0e354203aa0f662ade78b49ddc68d3a1b892214f7897a',
+    'htaccess.txt' => 'b34b5862a37ca3d85ce61bb63abd46c9792f2a68deb82ae397adc4579b3ce10f',
+    'web.config.txt' => 'c42514aa48d2d442f16507806a2929987afa5566c3273d62b3640db4a317002d',
+  ),
+  '3.10.10' => 
+  array (
+    'index.php' => '6554f8ede0dc033c429838f428dc2b1d1ed0013b163ef56eb7b37706631cc59d',
+    'administrator/index.php' => 'e63201b132431b623514c51d6fccc24fccbfd6dc7348db4e89516015b84e018b',
+    'includes/framework.php' => '76443795590a77891d7ba154979a770a84adf486cbbfdc5122e2319ffd5391fa',
+    'robots.txt.dist' => 'b0badb1a6e6cf7444fb0e354203aa0f662ade78b49ddc68d3a1b892214f7897a',
+    'htaccess.txt' => 'b34b5862a37ca3d85ce61bb63abd46c9792f2a68deb82ae397adc4579b3ce10f',
+    'web.config.txt' => 'c42514aa48d2d442f16507806a2929987afa5566c3273d62b3640db4a317002d',
+  ),
+  '6.2.0' => 
+  array (
+    'index.php' => 'b4d69a3efd42f788311ea6395d381aa2f8a65f211414b52380288ba0820d3b0b',
+    'administrator/index.php' => '1de0f0351ae50b9c01ec76ab27a97a638a40477f5f99ea20717f8f06e522550e',
+    'api/index.php' => '631ca6cc09b25cc3e832e4a81c8aa11ba51ed2dcd75f3cec13307f0011890681',
+    'includes/app.php' => '332157bec452ec181aea94493c5d571b0993a486074712dd9d3519c273a412b8',
+    'includes/framework.php' => '577d2ec1deebe0d609fc743028433a68c7470fbb1c22643716715056e9cababa',
+    'robots.txt.dist' => 'f1a6b5e3f6e69a71c53516c4bce70e2414429d23dab6814239500999eb80907e',
+    'htaccess.txt' => 'a81a5278e7e61a51df9c114ec5d38217811c138d2f246ef8ae9cd6a349e62de9',
+    'web.config.txt' => 'f712f94ab6dcd0e0336833663136340d06f06a7fe1eaf5bc44b9ba2390f8934d',
+  ),
   '6.1.2' => 
+  array (
+    'index.php' => '2d180c20f102986b1235d2d418c7846d51e9dc942a8e3e58386c5cbc63b74208',
+    'administrator/index.php' => '1de0f0351ae50b9c01ec76ab27a97a638a40477f5f99ea20717f8f06e522550e',
+    'api/index.php' => '631ca6cc09b25cc3e832e4a81c8aa11ba51ed2dcd75f3cec13307f0011890681',
+    'includes/app.php' => '332157bec452ec181aea94493c5d571b0993a486074712dd9d3519c273a412b8',
+    'includes/framework.php' => '577d2ec1deebe0d609fc743028433a68c7470fbb1c22643716715056e9cababa',
+    'robots.txt.dist' => 'f1a6b5e3f6e69a71c53516c4bce70e2414429d23dab6814239500999eb80907e',
+    'htaccess.txt' => 'a81a5278e7e61a51df9c114ec5d38217811c138d2f246ef8ae9cd6a349e62de9',
+    'web.config.txt' => 'f712f94ab6dcd0e0336833663136340d06f06a7fe1eaf5bc44b9ba2390f8934d',
+  ),
+  '6.0.0' => 
   array (
     'index.php' => '2d180c20f102986b1235d2d418c7846d51e9dc942a8e3e58386c5cbc63b74208',
     'administrator/index.php' => '1de0f0351ae50b9c01ec76ab27a97a638a40477f5f99ea20717f8f06e522550e',

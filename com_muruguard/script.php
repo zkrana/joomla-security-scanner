@@ -92,6 +92,23 @@ class com_muruguardInstallerScript
             return false;
         }
 
+        // Refuse a downgrade: an older zip would put back bugs this
+        // version fixed. Only versions that ship this check can enforce
+        // it (Joomla runs the incoming package's script, not this one).
+        if ($type === 'update') {
+            try {
+                $new = (string) $parent->getManifest()->version;
+                $installedXml = JPATH_ADMINISTRATOR . '/components/com_muruguard/muruguard.xml';
+                $old = is_file($installedXml) ? (string) (@simplexml_load_file($installedXml)->version ?? '') : '';
+                if ($new !== '' && $old !== '' && version_compare($new, $old, '<')) {
+                    Factory::getApplication()->enqueueMessage("This is MuRu Guard {$new}, older than the installed {$old}. Installing it would remove fixes in {$old}; download the latest version instead.", 'error');
+                    return false;
+                }
+            } catch (\Throwable $e) {
+                // Version unreadable: let the install proceed as before.
+            }
+        }
+
         return true;
     }
 
@@ -104,6 +121,24 @@ class com_muruguardInstallerScript
      */
     public function uninstall($parent)
     {
+        // Access rules this component wrote into .htaccess (Emergency
+        // Mode, Upload lockdown, Backend Access) would otherwise stay
+        // behind after uninstall -- with nothing left to switch them off,
+        // locking the owner out of their own admin or uploads.
+        try {
+            $helpers = JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/';
+            if (is_file($helpers . 'hardening.php') && is_file($helpers . 'muruguard.php')) {
+                require_once $helpers . 'muruguard.php';
+                require_once $helpers . 'hardening.php';
+                $removed = \MuruguardHardeningHelper::removeAccessBlocksForUninstall(JPATH_ROOT, JPATH_ADMINISTRATOR);
+                if ($removed !== []) {
+                    Factory::getApplication()->enqueueMessage('MuRu Guard removed its access rules from .htaccess (' . implode(', ', $removed) . ').', 'message');
+                }
+            }
+        } catch (\Throwable $e) {
+            Factory::getApplication()->enqueueMessage('MuRu Guard could not clean up its .htaccess rules; check the site root and administrator .htaccess files for "MuRu" blocks and remove them by hand.', 'warning');
+        }
+
         try {
             $db = self::getDb();
             $links = [
@@ -170,6 +205,37 @@ class com_muruguardInstallerScript
         // returns can only ever exit that method, never this one.
         $this->applyDefaultAclRules();
         $this->addAdminSubmenuItems();
+        $this->prepareLocalGeoIp();
+    }
+
+    /**
+     * 4.1.0 moved country lookups from ip-api.com to a local database.
+     * Deletes the old lookup cache (it held every visitor IP ever
+     * looked up) and, when country blocking is on, downloads the
+     * database right away so blocking keeps working after the update.
+     * Best-effort: a failed download only means the scheduled check or
+     * the Update now button fetches it later.
+     */
+    private function prepareLocalGeoIp(): void
+    {
+        try {
+            require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/muruguard.php';
+            require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/geoip.php';
+            \MuruguardHelper::deleteLegacyGeoipCache();
+
+            $db = self::getDb();
+            $query = $db->getQuery(true)
+                ->select($db->quoteName('params'))
+                ->from($db->quoteName('#__extensions'))
+                ->where($db->quoteName('element') . ' = ' . $db->quote('com_muruguard'))
+                ->where($db->quoteName('type') . ' = ' . $db->quote('component'));
+            $params = json_decode((string) $db->setQuery($query)->loadResult(), true);
+            if (is_array($params) && !empty($params['shield_block_countries']) && !is_file(\MuruguardGeoIp::dbPath())) {
+                \MuruguardGeoIp::downloadDatabase();
+            }
+        } catch (\Throwable $e) {
+            // Must never fail an update.
+        }
     }
 
     /**

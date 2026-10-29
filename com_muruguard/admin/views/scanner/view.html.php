@@ -30,6 +30,9 @@ class MuruguardViewScanner extends HtmlView
     public $sppbWarning = null;
     public $updateSiteHealthWarning = null;
     public $vulnerableExtensions = [];
+    public ?array $insights = null;
+    public ?array $uploadLock = null;
+    public bool $php2shellExposed = false;
     public $scanAreas = [];
     public $selectedAreas = [];
     public $cronEnabled = false;
@@ -169,6 +172,7 @@ class MuruguardViewScanner extends HtmlView
         $this->shieldBlockUserAgents = (bool) $cfgParams->get('shield_block_useragents', 0);
         $this->shieldBlockCountries  = (bool) $cfgParams->get('shield_block_countries', 0);
         $this->shieldBlockedCountries = (string) $cfgParams->get('shield_blocked_countries', '');
+        $this->geoipStatus           = $model->getGeoIpStatus();
         $this->hardenLockAdminActions = (bool) $cfgParams->get('harden_lock_admin_actions', 0);
         $this->protectedUsersEnabled  = (bool) $cfgParams->get('protected_users_enabled', 0);
         $protectedUsersState         = MuruguardHelper::loadProtectedUsersState();
@@ -243,6 +247,25 @@ class MuruguardViewScanner extends HtmlView
             $this->scanned       = true;
             $this->scanStartedAt = $cachedAt;
         }
+
+        // Dashboard insights (PHP/Joomla status, score and grade, admin and
+        // configuration checks, threat summary, security news) and the
+        // Upload lockdown state -- independent of whether a scan has run.
+        $openFindings = -1;
+        if ($this->scanned) {
+            $openFindings = count($this->fileFindings);
+            foreach ($this->dbFindings as $category => $rows) {
+                if ($category === 'vulnerable_extensions') continue;
+                $openFindings += is_array($rows) ? count($rows) : 0;
+            }
+        }
+        try {
+            $this->insights = $model->getInsights($openFindings, count($this->vulnerableExtensions), $this->htaccess);
+        } catch (\Throwable $e) {
+            $this->insights = null;
+        }
+        $this->uploadLock = $model->getUploadLockState();
+        $this->php2shellExposed = \MuruguardInsights::php2shellStatus(PHP_VERSION) !== 'fixed';
 
         // Which panel the left sidebar submenu (see addSubmenu()) should
         // land on -- a plain custom query param rather than Joomla's
