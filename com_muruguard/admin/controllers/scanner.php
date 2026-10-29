@@ -391,6 +391,14 @@ public function scan()
             }
         }
 
+        // Monthly GeoIP refresh happens here, never inside a visitor request.
+        $model->refreshGeoIpIfInUse((bool) $params->get('shield_block_countries', 0));
+        // An Upload lockdown whose time is up is switched off here too.
+        try {
+            $model->getUploadLockState();
+        } catch (\Throwable $e) {
+        }
+
         $status = $result['isFirstRun'] ? 'baseline recorded' : 'ok';
         echo "MuRu Guard: {$status}, total={$result['totalCount']} new={$result['newCount']} emailed=" . ($emailed ? 'yes' : 'no') . " protectedUsers=" . count($protectedUserIssues) . "\n";
         $app->close();
@@ -749,6 +757,69 @@ public function scan()
         );
 
         $app->enqueueMessage(Text::_('COM_MURUGUARD_SETTINGS_SAVED_MSG'), 'message');
+        // Country blocking needs the local database: fetch it now rather
+        // than leave the switch on with nothing to answer from.
+        if ($blockCountries) {
+            $geo = $model->refreshGeoIpIfInUse(true);
+            if (is_array($geo) && empty($geo['ok'])) {
+                $app->enqueueMessage(Text::sprintf('COM_MURUGUARD_GEOIP_DOWNLOAD_FAILED', htmlspecialchars((string) ($geo['error'] ?? ''))), 'warning');
+            } elseif (is_array($geo)) {
+                $app->enqueueMessage(Text::_('COM_MURUGUARD_GEOIP_DOWNLOADED'), 'message');
+            }
+        }
+        $this->setRedirect($this->settingsRedirectUrl());
+    }
+
+    /** Settings > Site Protection: Upload lockdown on. $hours 0 = until switched off. */
+    public function activateuploadlock()
+    {
+        Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
+        \MuruguardHelper::requireAdminAccess();
+        $app = Factory::getApplication();
+
+        $hours = $app->input->getInt('uploadlock_hours', 24);
+        if (!in_array($hours, [0, 1, 6, 24, 72], true)) $hours = 24;
+        $includeAdmin = (bool) $app->input->getInt('uploadlock_admin', 0);
+
+        /** @var MuruguardModelScanner $model */
+        $model = $this->getModel('Scanner');
+        $result = $model->activateUploadLock($hours, $includeAdmin);
+        $app->enqueueMessage(
+            $result['ok'] ? Text::_('COM_MURUGUARD_UPLOADLOCK_ON_MSG') : Text::sprintf('COM_MURUGUARD_UPLOADLOCK_FAILED_MSG', htmlspecialchars((string) $result['reason'])),
+            $result['ok'] ? 'message' : 'error'
+        );
+        $this->setRedirect($this->settingsRedirectUrl());
+    }
+
+    public function deactivateuploadlock()
+    {
+        Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
+        \MuruguardHelper::requireAdminAccess();
+
+        /** @var MuruguardModelScanner $model */
+        $model = $this->getModel('Scanner');
+        $model->deactivateUploadLock();
+        Factory::getApplication()->enqueueMessage(Text::_('COM_MURUGUARD_UPLOADLOCK_OFF_MSG'), 'message');
+        $this->setRedirect($this->settingsRedirectUrl());
+    }
+
+    /** Settings > Site Protection: download or refresh the local GeoIP country database now. */
+    public function geoipupdate()
+    {
+        Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
+        \MuruguardHelper::requireAdminAccess();
+        $app = Factory::getApplication();
+
+        require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/geoip.php';
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(120);
+        }
+        $result = \MuruguardGeoIp::downloadDatabase();
+        if (!empty($result['ok'])) {
+            $app->enqueueMessage(Text::_('COM_MURUGUARD_GEOIP_DOWNLOADED'), 'message');
+        } else {
+            $app->enqueueMessage(Text::sprintf('COM_MURUGUARD_GEOIP_DOWNLOAD_FAILED', htmlspecialchars((string) ($result['error'] ?? ''))), 'error');
+        }
         $this->setRedirect($this->settingsRedirectUrl());
     }
 

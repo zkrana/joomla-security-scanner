@@ -13,6 +13,7 @@ use Joomla\CMS\Language\Text;
 
 require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/compat.php';
 require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/muruguard.php';
+require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/insights.php';
 
 /**
  * Internal control-flow signal only -- thrown from inside scanFilesystem()'s
@@ -273,6 +274,213 @@ class MuruguardModelScanner extends MuruguardCompatDatabaseModel
      * caller can skip alerting on a site's entire pre-existing finding
      * list the first time this ever runs.
      */
+    // ------------------------------------------------------------------
+    // Dashboard insights (see helpers/insights.php) -- read-only facts
+    // that need no scan. Every piece is isolated: one failing source
+    // leaves its own card empty, never the page.
+    // ------------------------------------------------------------------
+
+    /**
+     * @param int $openFindings scan findings to include in the score, or -1 when no scan has run this session
+     * @param array $htaccess MuruguardHelper::getHtaccessSuggestions() result
+     */
+    public function getInsights(int $openFindings, int $vulnerableExtensions, array $htaccess): array
+    {
+        $now = time();
+        $cfgParams = ComponentHelper::getParams('com_muruguard');
+        $out = [];
+
+        $phpSupport = \MuruguardInsights::phpSupportStatus(PHP_VERSION, $now);
+        $releases = [];
+        if (preg_match('/^(\d+\.\d+)/', PHP_VERSION, $m)) {
+            try { $releases = \MuruguardInsights::fetchPhpReleases($m[1]); } catch (\Throwable $e) { $releases = []; }
+        }
+        $out['php'] = ['version' => \MuruguardInsights::phpVersionTriple(PHP_VERSION), 'support' => $phpSupport,
+                       'php2shell' => \MuruguardInsights::php2shellStatus(PHP_VERSION)];
+        $out['phpBanner'] = \MuruguardInsights::phpBannerState(PHP_VERSION, $phpSupport, $releases);
+
+        $out['joomla'] = \MuruguardInsights::joomlaStatus(defined('JVERSION') ? JVERSION : '', $this->getLatestCoreVersion());
+
+        $isHttps = false;
+        try { $isHttps = \Joomla\CMS\Uri\Uri::getInstance()->isSsl(); } catch (\Throwable $e) {}
+        $out['https'] = $isHttps;
+        $out['config'] = \MuruguardInsights::configChecks($this->getGlobalConfigValues(), $isHttps);
+        try {
+            $out['admins'] = \MuruguardInsights::adminChecks($this->getSuperUsers());
+        } catch (\Throwable $e) {
+            $out['admins'] = [];
+        }
+        $out['exposed'] = \MuruguardInsights::findExposedFiles($this->root);
+
+        $log = MuruguardHelper::getAttackLog();
+        $out['threats24h'] = \MuruguardInsights::summarizeThreats($log, $now - 86400);
+        // The live log keeps the newest 500 entries; older ones are in the archive.
+        $oldest = $log === [] ? $now : (int) (end($log)['time'] ?? $now);
+        $weekLog = $oldest > $now - 7 * 86400 ? array_merge($log, MuruguardHelper::getAttackLogArchive()) : $log;
+        $out['threats7d'] = \MuruguardInsights::summarizeThreats($weekLog, $now - 7 * 86400);
+
+        try { $out['news'] = \MuruguardInsights::fetchSecurityNews(5); } catch (\Throwable $e) { $out['news'] = []; }
+
+        $htTotal = count($htaccess['checks'] ?? []);
+        $htPresent = count(array_filter($htaccess['checks'] ?? [], fn($c) => !empty($c['present'])));
+        $out['score'] = \MuruguardInsights::computeSecurityScore([
+            'https'                   => $isHttps,
+            'shield_enabled'          => (bool) $cfgParams->get('shield_enabled', 0) && $this->isShieldPluginActive(),
+            'backend_auth_enabled'    => (bool) $cfgParams->get('backend_auth_enabled', 0),
+            'htaccess_checks_present' => $htPresent,
+            'htaccess_checks_total'   => $htTotal,
+            'vulnerable_extensions'   => $vulnerableExtensions,
+            'joomla_status'           => $out['joomla']['status'],
+            'php_banner'              => $out['phpBanner'] !== null,
+            'config_issues'           => count(array_filter($out['config'], fn($r) => !$r['ok'])),
+            'admin_issues'            => count(array_filter($out['admins'], fn($r) => !$r['ok'])),
+            'exposed_files'           => count($out['exposed']),
+            'open_findings'           => max(0, $openFindings),
+        ]);
+        $out['scanned'] = $openFindings >= 0;
+        return $out;
+    }
+
+    /** Newest Joomla core version Joomla's own updater has found, or null when it has not checked. */
+    private function getLatestCoreVersion(): ?string
+    {
+        try {
+            $db = $this->getDatabase();
+            $db->setQuery(
+                $db->getQuery(true)
+                    ->select($db->quoteName('version'))
+                    ->from($db->quoteName('#__updates'))
+                    ->where($db->quoteName('element') . ' = ' . $db->quote('joomla'))
+                    ->where($db->quoteName('type') . ' = ' . $db->quote('file'))
+            );
+            $latest = null;
+            foreach ((array) $db->loadColumn() as $v) {
+                $v = (string) $v;
+                if (preg_match('/^\d+\.\d+\.\d+$/', $v) && ($latest === null || version_compare($v, $latest, '>'))) $latest = $v;
+            }
+            return $latest;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    private function getGlobalConfigValues(): array
+    {
+        $app = Factory::getApplication();
+        $out = [];
+        foreach (['debug', 'error_reporting', 'force_ssl', 'sef'] as $key) {
+            $out[$key] = $app->get($key);
+        }
+        // Joomla 3 only: the setting does not exist on 4+.
+        if ($app->get('ftp_enable', null) !== null) $out['ftp_enable'] = $app->get('ftp_enable');
+        return $out;
+    }
+
+    /**
+     * Every account that holds core.admin (Super User) through any of its
+     * groups, including blocked ones (adminChecks() filters those).
+     *
+     * @return list<array{id:int,username:string,lastvisitDate:?string,block:int}>
+     */
+    private function getSuperUsers(): array
+    {
+        $db = $this->getDatabase();
+        $db->setQuery($db->getQuery(true)->select($db->quoteName('id'))->from($db->quoteName('#__usergroups')));
+        $superGroups = [];
+        foreach ((array) $db->loadColumn() as $gid) {
+            if (\Joomla\CMS\Access\Access::checkGroup((int) $gid, 'core.admin')) $superGroups[] = (int) $gid;
+        }
+        if ($superGroups === []) return [];
+
+        $db->setQuery(
+            $db->getQuery(true)
+                ->select('DISTINCT ' . implode(', ', $db->quoteName(['u.id', 'u.username', 'u.lastvisitDate', 'u.block'])))
+                ->from($db->quoteName('#__users', 'u'))
+                ->join('INNER', $db->quoteName('#__user_usergroup_map', 'm') . ' ON ' . $db->quoteName('m.user_id') . ' = ' . $db->quoteName('u.id'))
+                ->where($db->quoteName('m.group_id') . ' IN (' . implode(',', $superGroups) . ')')
+        );
+        $rows = [];
+        foreach ((array) $db->loadAssocList() as $r) {
+            $rows[] = ['id' => (int) $r['id'], 'username' => (string) $r['username'], 'lastvisitDate' => $r['lastvisitDate'], 'block' => (int) $r['block']];
+        }
+        return $rows;
+    }
+
+    // ------------------------------------------------------------------
+    // Upload lockdown (see MuruguardHardeningHelper)
+    // ------------------------------------------------------------------
+
+    public function getUploadLockState(): ?array
+    {
+        require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/hardening.php';
+        return \MuruguardHardeningHelper::maintainUploadLock($this->root);
+    }
+
+    public function activateUploadLock(int $hours, bool $includeAdmin): array
+    {
+        require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/hardening.php';
+        return \MuruguardHardeningHelper::activateUploadLock($this->root, \Joomla\CMS\Uri\Uri::root(), $hours, $includeAdmin);
+    }
+
+    public function deactivateUploadLock(): void
+    {
+        require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/hardening.php';
+        \MuruguardHardeningHelper::deactivateUploadLock($this->root);
+    }
+
+    /** Downloads or refreshes the local GeoIP database when country blocking is on or a copy already exists. Never throws. */
+    public function refreshGeoIpIfInUse(bool $countryBlockingOn): ?array
+    {
+        try {
+            require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/geoip.php';
+            if (!$countryBlockingOn && !is_file(\MuruguardGeoIp::dbPath())) return null;
+            return \MuruguardGeoIp::refreshIfStale();
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /** For the Settings panel: whether the local country database is installed and how old it is. */
+    public function getGeoIpStatus(): array
+    {
+        require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/geoip.php';
+        return \MuruguardGeoIp::status();
+    }
+
+    /**
+     * Content-only check for a file whose NAME is expected (a known webroot
+     * file): content signatures plus the .htaccess / .user.ini / php.ini
+     * directive checks, never the "unrecognized file" fallback.
+     */
+    private function scanKnownFileContent(string $path, array $sig, int $maxSize, array $falsePositives): void
+    {
+        if (isset($this->seenAbs[$path])) return;
+
+        $reasons = [];
+        $base = strtolower(basename($path));
+        if (in_array($base, ['.htaccess', '.user.ini', 'php.ini'], true)) {
+            $directives = @file_get_contents($path, false, null, 0, 8192);
+            if ($directives !== false) {
+                if ($base === '.htaccess') {
+                    $hijack = MuruguardHelper::checkMaliciousHtaccessHandler($directives);
+                    if ($hijack !== null) $reasons[] = $hijack;
+                }
+                $prepend = MuruguardHelper::checkPhpAutoPrependDirective($directives);
+                if ($prepend !== null) $reasons[] = $prepend;
+            }
+        }
+
+        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        MuruguardHelper::scanFileContent($path, $ext, $sig, $maxSize, $reasons);
+        if (empty($reasons)) return;
+
+        $this->seenAbs[$path] = true;
+        $rel = ltrim(str_replace($this->root, '', $path), '/');
+        if (!MuruguardHelper::isFalsePositive($falsePositives, 'file', $rel, MuruguardHelper::fingerprintReasons($reasons))) {
+            MuruguardHelper::recordFinding($this->fileFindings, $path, $this->root, $reasons, false);
+        }
+    }
+
     public function runScheduledCheck(): array
     {
         $this->scanFilesystem();
@@ -336,15 +544,18 @@ class MuruguardModelScanner extends MuruguardCompatDatabaseModel
         $contents = @file_get_contents($path);
         if ($contents === false) return null;
 
+        // A history file that exists but can't be read back means the
+        // baseline was lost, not that this is the first run: report every
+        // current finding as new (fail loud) instead of alerting on nothing.
         $decoded = json_decode(MuruguardHelper::stripDataFileStub($contents), true);
-        if (!is_array($decoded) || !isset($decoded['keys']) || !is_array($decoded['keys'])) return null;
+        if (!is_array($decoded) || !isset($decoded['keys']) || !is_array($decoded['keys'])) return [];
         return $decoded['keys'];
     }
 
     private function saveLastScanKeys(array $keys): void
     {
         $path = $this->scanHistoryFilePath();
-        @file_put_contents($path, MuruguardHelper::dataFileStubPrefix() . json_encode(['keys' => $keys, 'saved_at' => time()]));
+        MuruguardHelper::writeDataFile($path, ['keys' => $keys, 'saved_at' => time()]);
     }
 
     // ------------------------------------------------------------------
@@ -411,7 +622,7 @@ class MuruguardModelScanner extends MuruguardCompatDatabaseModel
 
     private function saveScanProgress(array $progress): void
     {
-        @file_put_contents($this->scanProgressFilePath(), MuruguardHelper::dataFileStubPrefix() . json_encode($progress));
+        MuruguardHelper::writeDataFile($this->scanProgressFilePath(), $progress);
     }
 
     /**
@@ -425,6 +636,36 @@ class MuruguardModelScanner extends MuruguardCompatDatabaseModel
      * @return array{done:bool,completedCount:int,totalCount:int,currentArea:?string,truncated:list<string>}
      */
     public function runScanChunk(bool $reset = false): array
+    {
+        // Serialised on the progress file: two admins (or two tabs)
+        // scanning at once used to overwrite each other's queue and
+        // findings. A step that finds another one running reports the
+        // current progress with busy=true and changes nothing; the
+        // progress bar simply asks again.
+        $lock = @fopen($this->scanProgressFilePath(), 'c');
+        if ($lock !== false && !@flock($lock, LOCK_EX | LOCK_NB)) {
+            fclose($lock);
+            $p = $this->loadScanProgress() ?? [];
+            return [
+                'done'           => false,
+                'busy'           => true,
+                'completedCount' => count((array) ($p['completed'] ?? [])),
+                'totalCount'     => (int) ($p['totalItems'] ?? 0),
+                'currentArea'    => $p['queue'][0] ?? null,
+                'truncated'      => [],
+            ];
+        }
+        try {
+            return $this->runScanChunkLocked($reset);
+        } finally {
+            if ($lock !== false) {
+                @flock($lock, LOCK_UN);
+                fclose($lock);
+            }
+        }
+    }
+
+    private function runScanChunkLocked(bool $reset): array
     {
         $progress = $reset ? null : $this->loadScanProgress();
 
@@ -601,8 +842,35 @@ class MuruguardModelScanner extends MuruguardCompatDatabaseModel
         ]);
     }
 
+    /**
+     * Serialises every read-modify-write of the component's params: each
+     * settings save loads the whole params blob, changes a few keys and
+     * stores it back, so two saves at once used to lose one side's change.
+     * The returned object holds an exclusive lock until the calling
+     * function returns (it is released when the object goes out of
+     * scope), so no early return can leave it held.
+     */
+    private function lockParams(): object
+    {
+        $path = JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/.muruguard-' . substr(md5('params-write'), 0, 16) . '.lock';
+        $fh = @fopen($path, 'c');
+        if ($fh !== false) @flock($fh, LOCK_EX);
+        return new class($fh) {
+            private $fh;
+            public function __construct($fh) { $this->fh = $fh; }
+            public function __destruct()
+            {
+                if (is_resource($this->fh)) {
+                    @flock($this->fh, LOCK_UN);
+                    fclose($this->fh);
+                }
+            }
+        };
+    }
+
     private function saveHardeningParams(array $set): void
     {
+        $paramsLock = $this->lockParams();
         // Joomla\CMS\Table\Extension does not exist on Joomla 3 (and
         // Joomla 3 has no persistent component-registry cache needing a
         // cleanCache()), so that platform takes the plain-query path.
@@ -1251,11 +1519,15 @@ class MuruguardModelScanner extends MuruguardCompatDatabaseModel
                 // backdoor technique: pairs with a *.php.json-style dropped
                 // file (see SUSPICIOUS_FILENAME_REGEXES above) to defeat any
                 // filter that only blocks the .php extension itself.
-                if (!$isDir && !$isKnownSafeEntry && $basename === '.htaccess') {
+                if (!$isDir && !$isKnownSafeEntry && in_array(strtolower($basename), ['.htaccess', '.user.ini', 'php.ini'], true)) {
                     $htaccessContents = @file_get_contents($path, false, null, 0, 8192);
                     if ($htaccessContents !== false) {
-                        $handlerHijack = MuruguardHelper::checkMaliciousHtaccessHandler($htaccessContents);
-                        if ($handlerHijack !== null) { $flagged = true; $reasons[] = $handlerHijack; }
+                        if (strtolower($basename) === '.htaccess') {
+                            $handlerHijack = MuruguardHelper::checkMaliciousHtaccessHandler($htaccessContents);
+                            if ($handlerHijack !== null) { $flagged = true; $reasons[] = $handlerHijack; }
+                        }
+                        $autoPrepend = MuruguardHelper::checkPhpAutoPrependDirective($htaccessContents);
+                        if ($autoPrepend !== null) { $flagged = true; $reasons[] = $autoPrepend; }
                     }
                 }
 
@@ -1411,7 +1683,15 @@ class MuruguardModelScanner extends MuruguardCompatDatabaseModel
             }
 
             if (!is_file($p)) continue;
-            if (in_array(strtolower($it), array_map('strtolower', $sig['KNOWN_ROOT_FILES']), true)) continue;
+            if (in_array(strtolower($it), array_map('strtolower', $sig['KNOWN_ROOT_FILES']), true)) {
+                // Known by name, so never "unrecognized" -- but still read:
+                // configuration.php, .htaccess and .user.ini used to be
+                // skipped outright, so a payload in them was never seen.
+                if (!in_array($it, $sig['CORE_ENTRY_POINTS'], true)) {
+                    $this->scanKnownFileContent($p, $sig, $maxSize, $falsePositives);
+                }
+                continue;
+            }
             if (preg_match($sig['MYJOOMLA_CHECKSUM_FILE_RE'], $it)) continue;
             $relCheck = ltrim(str_replace($this->root, '', $p), '/');
             if (in_array($relCheck, $sig['KNOWN_SAFE_RELATIVE_FILES'], true)) continue;

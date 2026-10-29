@@ -82,6 +82,9 @@ jobs:
       - name: Run static checks
         run: php tests/static-checks.php
 
+      - name: Run regression test
+        run: php tests/t_free_410_test.php
+
   phpcs:
     name: PHP CodeSniffer (PSR-12)
     runs-on: ubuntu-latest

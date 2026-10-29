@@ -3,12 +3,12 @@
     <name>pkg_muruguard</name>
     <packagename>muruguard</packagename>
     <author>ZKRANA</author>
-    <creationDate>2026-10-04</creationDate>
+    <creationDate>2026-10-29</creationDate>
     <copyright>Copyright (C) 2026 ZKRANA. All rights reserved.</copyright>
     <license>GNU General Public License version 2 or later; see LICENSE.txt</license>
     <authorEmail>zkranao@gmail.com</authorEmail>
     <authorUrl>https://store.lyzerslab.com/joomla-products/muru-guard-security-scanner</authorUrl>
-    <version>4.0.0</version>
+    <version>4.1.0</version>
     <description>PKG_MURUGUARD_XML_DESCRIPTION</description>
     <files>
         <file type="component" id="com_muruguard">com_muruguard.zip</file>

@@ -2,12 +2,12 @@
 <extension type="component" method="upgrade">
     <name>com_muruguard</name>
     <author>ZKRANA</author>
-    <creationDate>2026-10-04</creationDate>
+    <creationDate>2026-10-29</creationDate>
     <copyright>Copyright (C) 2026 ZKRANA. All rights reserved.</copyright>
     <license>GNU General Public License version 2 or later; see LICENSE.txt</license>
     <authorEmail>zkranao@gmail.com</authorEmail>
     <authorUrl>https://store.lyzerslab.com/joomla-products/muru-guard-security-scanner</authorUrl>
-    <version>4.0.0</version>
+    <version>4.1.0</version>
     <description>COM_MURUGUARD_XML_DESCRIPTION</description>
 
     <scriptfile>script.php</scriptfile>
