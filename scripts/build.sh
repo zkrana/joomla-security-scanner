@@ -88,7 +88,9 @@ else
 fi
 
 # --- 2. Static checks ---------------------------------------------------------
-if command -v php >/dev/null 2>&1; then
+if [[ ! -f tests/static-checks.php ]]; then
+  echo "Warning: tests/static-checks.php not found -- skipping static checks." >&2
+elif command -v php >/dev/null 2>&1; then
   echo "Running static checks..."
   php tests/static-checks.php
 else
