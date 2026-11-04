@@ -22,6 +22,10 @@ use Joomla\CMS\Uri\Uri;
 
 class MuruguardHelper
 {
+    /** Where the Get Pro banner sends people: a free store account first, then the product page to compare editions. */
+    public const STORE_REGISTER_URL = 'https://store.lyzerslab.com/register';
+    public const PRODUCT_PAGE_URL = 'https://lyzerslab.com/joomla-products/muru-guard-security-scanner';
+
     /**
      * Ensures the request is from a logged-in backend user with manage rights.
      * Call from entry point, controllers, views, and destructive model methods.
@@ -447,7 +451,12 @@ class MuruguardHelper
             // since a false positive here rejects a real visitor's request
             // rather than just flagging a file for human review.
             'REQUEST_SIGNATURES' => [
-                'webshell_param_exec' => ['re' => '/\b(?:' . 'system' . '|' . 'exec' . '|' . 'shell_exec' . '|' . 'passthru' . '|' . 'popen' . '|' . 'proc_open' . '|' . 'assert' . '|' . 'create_function' . ')\s*\(/i',
+                // The call must have a PHP-shaped argument (a $variable, a quoted
+                // string closed by "," or ")", or a nested function call), not
+                // just a name and a bracket: a contact message naming an
+                // operating system followed by a bracketed version used to be
+                // blocked.
+                'webshell_param_exec' => ['re' => '/\b(?:' . 'system' . '|' . 'exec' . '|' . 'shell_exec' . '|' . 'passthru' . '|' . 'popen' . '|' . 'proc_open' . '|' . 'assert' . '|' . 'create_function' . ')\s*\(\s*(?:\$|[\'"][^\'"]{0,500}[\'"]\s*[,)]|[a-z_][a-z0-9_]*\s*\()/i',
                     'severity' => 'high', 'block_eligible' => true,
                     'why' => 'A request parameter value itself contains a PHP code-execution function call -- the classic way an attacker interacts with an already-planted one-line eval/assert webshell, sending the actual command as the payload rather than in the file.'],
                 'webshell_param_eval_b64' => ['re' => '/' . 'eval' . '\s*\(\s*(?:@)?' . 'base64_decode' . '\s*\(/i',
@@ -1385,6 +1394,13 @@ class MuruguardHelper
         fclose($fh);
 
         self::archiveAttackLogEntries($evicted);
+
+        // Feed the Threat Monitor's small aggregate (never throws).
+        try {
+            if (!class_exists('MuruguardThreatStats', false)) require_once __DIR__ . '/threatstats.php';
+            \MuruguardThreatStats::recordEntry($entry);
+        } catch (\Throwable $e) {
+        }
     }
 
     /** Entries evicted from the live log and kept in the archive (oldest first). Empty when none or too big to read. */
@@ -1411,6 +1427,11 @@ class MuruguardHelper
     public static function clearAttackLog(): void
     {
         self::writeDataFile(self::attackLogFilePath(), []);
+        try {
+            if (!class_exists('MuruguardThreatStats', false)) require_once __DIR__ . '/threatstats.php';
+            \MuruguardThreatStats::clearState();
+        } catch (\Throwable $e) {
+        }
     }
 
     private static function loginAttemptsFilePath(): string
@@ -1545,14 +1566,39 @@ class MuruguardHelper
         foreach (self::getFalsePositives() as $entry) {
             $key = ($entry['category'] ?? '') . '|' . ($entry['identifier'] ?? '');
             $lookup[$key] = (string) ($entry['fingerprint'] ?? '');
+            if (!empty($entry['sha256'])) {
+                $lookup[$key . '#sha256'] = (string) $entry['sha256'];
+            }
         }
         return $lookup;
     }
 
+    /**
+     * A file finding marked safe stays hidden only while the file's bytes
+     * are unchanged: the reasons alone can stay identical after a file is
+     * swapped for a different payload (purely structural reasons such as
+     * "executable file in an upload folder" carry no content). Entries
+     * saved before the hash was recorded fall back to the reasons check.
+     */
     public static function isFalsePositive(array $lookup, string $category, string $identifier, string $currentFingerprint): bool
     {
         $key = $category . '|' . $identifier;
-        return isset($lookup[$key]) && $lookup[$key] !== '' && $lookup[$key] === $currentFingerprint;
+        if (!isset($lookup[$key]) || $lookup[$key] === '' || $lookup[$key] !== $currentFingerprint) return false;
+        if ($category === 'file' && isset($lookup[$key . '#sha256'])) {
+            $abs = self::falsePositiveFileAbsPath($identifier);
+            if ($abs !== null && is_file($abs)) {
+                return hash_equals($lookup[$key . '#sha256'], (string) @hash_file('sha256', $abs));
+            }
+        }
+        return true;
+    }
+
+    /** Absolute path for a 'file' false-positive identifier (relative to the site root), or null if it escapes the root. */
+    private static function falsePositiveFileAbsPath(string $identifier): ?string
+    {
+        $rel = ltrim(str_replace('\\', '/', $identifier), '/');
+        if ($rel === '' || preg_match('#(^|/)\.\.(/|$)#', $rel)) return null;
+        return rtrim(JPATH_ROOT, '/') . '/' . $rel;
     }
 
     private const FALSE_POSITIVE_CATEGORIES = ['file', 'superusers', 'menu_xss', 'sppb_assets', 'rogue_iconfont', 'template_defacement'];
@@ -1582,6 +1628,20 @@ class MuruguardHelper
             'note'        => mb_substr(trim($note), 0, 200),
             'addedAt'     => time(),
         ];
+        if ($category === 'file') {
+            // Pinned to the file's current bytes. A path that doesn't exist
+            // (or can't be read) is refused: a "safe" mark without a hash
+            // would hide whatever is written there later.
+            $abs = self::falsePositiveFileAbsPath($identifier);
+            if ($abs === null || !file_exists($abs)) {
+                return ['ok' => false, 'error' => 'That file no longer exists, so it cannot be marked safe. Run a new scan first.'];
+            }
+            if (is_file($abs)) {
+                $hash = @hash_file('sha256', $abs);
+                if (!is_string($hash)) return ['ok' => false, 'error' => 'That file could not be read, so it cannot be marked safe.'];
+                $entry['sha256'] = $hash;
+            }
+        }
 
         $path = self::falsePositivesFilePath();
         $fh = @fopen($path, 'c+');
@@ -1769,7 +1829,7 @@ class MuruguardHelper
      * or this silently falls back to REMOTE_ADDR rather than trust
      * garbage input.
      */
-    public static function resolveClientIp($serverInput, string $trustedHeader): string
+    public static function resolveClientIp($serverInput, string $trustedHeader, ?array $trustedProxies = null): string
     {
         $remoteAddr = (string) $serverInput->get('REMOTE_ADDR', '', 'string');
 
@@ -1782,9 +1842,78 @@ class MuruguardHelper
             return $remoteAddr;
         }
 
-        $candidate = trim(explode(',', $headerValue)[0]);
+        if ($trustedProxies === null) {
+            try {
+                $trustedProxies = self::parseTrustedProxies((string) \Joomla\CMS\Component\ComponentHelper::getParams('com_muruguard')->get('shield_trusted_proxies', ''));
+            } catch (\Throwable $e) {
+                $trustedProxies = [];
+            }
+        }
 
-        return filter_var($candidate, FILTER_VALIDATE_IP) !== false ? $candidate : $remoteAddr;
+        // The header is only believed when the request really came from a
+        // trusted proxy: one listed in "Trusted proxy IPs", or with that
+        // list empty, a private/local address, or a Cloudflare edge for
+        // CF-Connecting-IP. Otherwise a visitor reaching the server
+        // directly could send the header and pick any IP.
+        $isTrusted = function (string $ip) use ($trustedProxies, $trustedHeader): bool {
+            if ($trustedProxies !== []) return self::ipInList($ip, $trustedProxies);
+            if ($trustedHeader === 'HTTP_CF_CONNECTING_IP' && self::ipInList($ip, self::CLOUDFLARE_RANGES)) return true;
+            return self::isPrivateOrReservedIp($ip);
+        };
+
+        if (!$isTrusted($remoteAddr)) {
+            return $remoteAddr;
+        }
+
+        // Each proxy appends the address it saw, so X-Forwarded-For is read
+        // from the right: the first hop that is not a trusted proxy is the
+        // real client.
+        $hops = array_reverse(array_map('trim', explode(',', $headerValue)));
+        foreach ($hops as $hop) {
+            if (filter_var($hop, FILTER_VALIDATE_IP) === false) break;
+            if (!$isTrusted($hop)) return $hop;
+        }
+        // Every hop was a trusted proxy (an internal request).
+        $first = trim(explode(',', $headerValue)[0]);
+        return filter_var($first, FILTER_VALIDATE_IP) !== false ? $first : $remoteAddr;
+    }
+
+    /** Cloudflare's published edge ranges (https://www.cloudflare.com/ips/). CF-Connecting-IP is only believed from these. */
+    public const CLOUDFLARE_RANGES = [
+        '173.245.48.0/20', '103.21.244.0/22', '103.22.200.0/22', '103.31.4.0/22', '141.101.64.0/18',
+        '108.162.192.0/18', '190.93.240.0/20', '188.114.96.0/20', '197.234.240.0/22', '198.41.128.0/17',
+        '162.158.0.0/15', '104.16.0.0/13', '104.24.0.0/14', '172.64.0.0/13', '131.0.72.0/22',
+        '2400:cb00::/32', '2606:4700::/32', '2803:f800::/32', '2405:b500::/32', '2405:8100::/32',
+        '2a06:98c0::/29', '2c0f:f248::/32',
+    ];
+
+    /** Parses the "Trusted proxy IPs" setting (one IP or CIDR per line, or comma-separated) into a clean list. */
+    public static function parseTrustedProxies(string $raw): array
+    {
+        $out = [];
+        foreach (preg_split('/[\s,]+/', $raw) ?: [] as $entry) {
+            $entry = trim($entry);
+            if ($entry === '') continue;
+            $ip = strpos($entry, '/') !== false ? explode('/', $entry, 2)[0] : $entry;
+            if (filter_var($ip, FILTER_VALIDATE_IP) !== false) $out[] = $entry;
+        }
+        return $out;
+    }
+
+    /** True when $ip equals, or falls inside, any entry of $list (IPs or CIDRs, IPv4 or IPv6). */
+    public static function ipInList(string $ip, array $list): bool
+    {
+        foreach ($list as $entry) {
+            if ($entry === $ip || (strpos($entry, '/') !== false && self::ipMatchesCidr($ip, $entry))) return true;
+        }
+        return false;
+    }
+
+    /** Loopback, private (RFC 1918 / fc00::/7) or reserved: the address of a proxy on the same host or network. */
+    public static function isPrivateOrReservedIp(string $ip): bool
+    {
+        return filter_var($ip, FILTER_VALIDATE_IP) !== false
+            && filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false;
     }
 
     /**
@@ -3132,6 +3261,30 @@ class MuruguardHelper
     }
 
     /**
+     * Findings a scan step added, shortened for the live list on the scan overlay: path, confidence and the first
+     * reason as plain text. At most 10 per step; the full details are on the results page.
+     *
+     * @return array<int,array{path:string,confidence:string,reason:string}>
+     */
+    public static function liveScanFindings(array $findings, array $knownBefore, int $max = 10): array
+    {
+        $out = [];
+        foreach ($findings as $key => $f) {
+            if (isset($knownBefore[(string) $key]) || !is_array($f)) continue;
+            $reason = (string) ($f['reason'] ?? ($f['reasons'][0] ?? ''));
+            $reason = trim(preg_replace('/\s+/', ' ', html_entity_decode(strip_tags($reason), ENT_QUOTES, 'UTF-8')) ?? '');
+            if (mb_strlen($reason) > 140) $reason = rtrim(mb_substr($reason, 0, 137)) . '…';
+            $out[] = [
+                'path'       => (string) ($f['rel'] ?? $key),
+                'confidence' => (string) ($f['confidence'] ?? '') === 'high' ? 'high' : 'medium',
+                'reason'     => $reason,
+            ];
+            if (count($out) >= $max) break;
+        }
+        return $out;
+    }
+
+    /**
      * Loads the bundled per-Joomla-version SHA-256 checksum manifest for a
      * curated set of security-critical, site-independent core files (see
      * helpers/data/joomla_core_checksums.php for how it was generated and
@@ -3156,6 +3309,59 @@ class MuruguardHelper
      * text/regex, no PHP execution, so this is safe to call against an
      * untrusted/potentially-infected codebase.
      */
+    /** This site's host name without "www.", or '' when it can't be worked out (e.g. on the command line). */
+    public static function currentSiteHost(): string
+    {
+        static $host = null;
+        if ($host !== null) return $host;
+        $host = '';
+        try {
+            $host = strtolower((string) parse_url(\Joomla\CMS\Uri\Uri::root(), PHP_URL_HOST));
+        } catch (\Throwable $e) {
+        }
+        return $host = preg_replace('/^www\./', '', $host);
+    }
+
+    /**
+     * A .htaccess below the site root that redirects visitors to another
+     * host: RewriteRule with [R] or [P] to an absolute URL, Redirect /
+     * RedirectMatch, or an ErrorDocument pointing off-site. Attackers drop
+     * these in folders such as images/ to send search-engine visitors to
+     * spam. Redirects to this site's own host (with or without www.) are
+     * normal and ignored. Returns the reason with the matched line, or null.
+     */
+    public static function checkHtaccessForeignRedirect(string $content, string $siteHost): ?string
+    {
+        $siteHost = preg_replace('/^www\./', '', strtolower($siteHost));
+        foreach (preg_split('/\R/', $content) ?: [] as $line) {
+            $line = trim($line);
+            if ($line === '' || $line[0] === '#') continue;
+            if (!preg_match('/^(?:RewriteRule\s+\S+|Redirect(?:Match|Permanent|Temp)?(?:\s+\d{3}|\s+(?:permanent|temp|seeother))?\s+\S+|ErrorDocument\s+\d{3})\s+["\']?(https?:)?\/\/([a-z0-9.-]+)/i', $line, $m)) continue;
+            // A RewriteRule to an absolute URL only leaves the site with a
+            // redirect or proxy flag (or implicitly, but that still needs R/P
+            // to matter for a visitor), so require one.
+            if (stripos($line, 'RewriteRule') === 0 && !preg_match('/\[[^\]]*\b(?:R|P|redirect|proxy)\b[^\]]*\]/i', $line)) continue;
+            $target = preg_replace('/^www\./', '', strtolower($m[2]));
+            if ($target === '' || ($siteHost !== '' && $target === $siteHost)) continue;
+            if (preg_match('/^%\{/', $m[2])) continue;
+            return 'Suspicious .htaccess: redirects visitors to another site (' . $target . '): ' . mb_substr($line, 0, 160);
+        }
+        return null;
+    }
+
+    /** The version compiled into libraries/src/Version.php (MAJOR.MINOR.PATCH), or null if unreadable. */
+    public static function getJoomlaVersionFromVersionClass(string $root): ?string
+    {
+        $contents = @file_get_contents($root . '/libraries/src/Version.php', false, null, 0, 16384);
+        if ($contents === false) return null;
+        $parts = [];
+        foreach (['MAJOR', 'MINOR', 'PATCH'] as $k) {
+            if (!preg_match('/\b' . $k . '_VERSION\s*=\s*(\d+)\s*;/', $contents, $m)) return null;
+            $parts[] = $m[1];
+        }
+        return implode('.', $parts);
+    }
+
     public static function getInstalledJoomlaVersion(string $root): ?string
     {
         $path = $root . '/administrator/manifests/files/joomla.xml';
@@ -3686,10 +3892,17 @@ class MuruguardHelper
      * anyway since this path is a normal, expected component location,
      * not an upload/tmp directory.
      */
-    public static function filterStubProtectedDataCacheExemptions(string $relPath, array $reasons): array
+    public static function filterStubProtectedDataCacheExemptions(string $relPath, array $reasons, string $absPath = ''): array
     {
         $relNorm = ltrim(str_replace('\\', '/', $relPath), '/');
         if ($relNorm !== 'administrator/components/com_muruguard/helpers/data/scan-progress.php') {
+            return $reasons;
+        }
+        // The exemption is only earned by a file that really is ours: it
+        // must start with the exact 403 stub every data file is written
+        // with. A webshell named like it keeps every reason, plus a flag.
+        if (!self::isGenuineDataCacheFile($absPath)) {
+            $reasons[] = 'Unexpected file in the MuRu Guard data folder: it is not a data file this extension wrote';
             return $reasons;
         }
         return array_values(array_filter(
@@ -4100,5 +4313,236 @@ class MuruguardHelper
         ];
 
         return ['exists' => $exists, 'path' => $path, 'checks' => $checks];
+    }
+
+    /** True when $absPath is a data file this extension wrote itself (it starts with the 403 stub). */
+    public static function isGenuineDataCacheFile(string $absPath): bool
+    {
+        if ($absPath === '' || !is_file($absPath)) return false;
+        $prefix = self::dataFileStubPrefix();
+        $fh = @fopen($absPath, 'rb');
+        if ($fh === false) return false;
+        $head = (string) fread($fh, strlen($prefix));
+        fclose($fh);
+        return $head === $prefix;
+    }
+
+    /**
+     * True when $absPath sits under one of SAFE_COMPONENT_PATHS, matched
+     * as a prefix of the path relative to the site root. A plain substring
+     * match let images/administrator/components/com_akeeba/shell.php (or
+     * any folder an attacker names that way) skip the scan.
+     */
+    public static function isSafeComponentPath(string $absPath, string $root, array $safeFragments): bool
+    {
+        $root = rtrim(str_replace('\\', '/', $root), '/');
+        $p = str_replace('\\', '/', $absPath);
+        if ($root !== '' && strpos($p, $root . '/') !== 0) return false;
+        $rel = '/' . ltrim(substr($p, strlen($root)), '/') . '/';
+        foreach ($safeFragments as $frag) {
+            $frag = '/' . trim(str_replace('\\', '/', (string) $frag), '/') . '/';
+            if ($frag !== '//' && stripos($rel, $frag) === 0) return true;
+        }
+        return false;
+    }
+
+    /**
+     * True when the trusted component a SAFE_COMPONENT_PATHS folder belongs
+     * to is really installed. A folder named after a security extension
+     * that is not installed is scanned like any other. $registered is the
+     * installed-component map (lower-case element => true); null means it
+     * could not be read, and the folder is then trusted as before.
+     */
+    public static function isSafeComponentInstalled(string $absPath, string $root, ?array $registered): bool
+    {
+        if ($registered === null) return true;
+        $rel = ltrim(substr(str_replace('\\', '/', $absPath), strlen(rtrim(str_replace('\\', '/', $root), '/'))), '/');
+        if (!preg_match('#^(?:administrator/)?components/(com_[a-z0-9_]+)(?:/|$)#i', $rel, $m)) return true;
+        return isset($registered[strtolower($m[1])]);
+    }
+
+    /**
+     * A finding key (a path) as it can travel through a form field. Paths
+     * that are not valid UTF-8 are base64-encoded with a "b64:" prefix,
+     * because Joomla's input filter would otherwise mangle them and the
+     * file could never be deleted or marked safe from the results.
+     */
+    public static function encodeFindingKey(string $key): string
+    {
+        return (mb_check_encoding($key, 'UTF-8') && strncmp($key, 'b64:', 4) !== 0) ? $key : 'b64:' . base64_encode($key);
+    }
+
+    /** Reverses encodeFindingKey(). Values without the prefix are returned unchanged. */
+    public static function decodeFindingKey(string $value): string
+    {
+        if (strncmp($value, 'b64:', 4) !== 0) return $value;
+        $raw = base64_decode(substr($value, 4), true);
+        return $raw === false ? $value : $raw;
+    }
+
+    private static function shieldErrorsFilePath(): string
+    {
+        return JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/shield-errors.php';
+    }
+
+    /**
+     * Records that a Shield check failed and let the request through, so
+     * Site Protection can say so. Written at most once a minute, so a
+     * broken check on a busy site never turns into a write per request.
+     */
+    public static function recordShieldError(string $where, \Throwable $e): void
+    {
+        $path = self::shieldErrorsFilePath();
+        if (is_file($path) && (time() - (int) @filemtime($path)) < 60) return;
+        $state = is_file($path) ? json_decode(self::stripDataFileStub((string) @file_get_contents($path)), true) : null;
+        $count = is_array($state) ? (int) ($state['count'] ?? 0) : 0;
+        self::writeDataFile($path, [
+            'count' => $count + 1,
+            'at'    => time(),
+            'where' => mb_substr($where, 0, 60),
+            'error' => mb_substr(get_class($e) . ': ' . $e->getMessage(), 0, 300),
+        ]);
+    }
+
+    /** The latest recorded Shield failure within $withinSeconds, or null. */
+    public static function getRecentShieldError(int $withinSeconds = 86400): ?array
+    {
+        $path = self::shieldErrorsFilePath();
+        if (!is_file($path)) return null;
+        $state = json_decode(self::stripDataFileStub((string) @file_get_contents($path)), true);
+        if (!is_array($state) || (time() - (int) ($state['at'] ?? 0)) > $withinSeconds) return null;
+        return $state;
+    }
+
+    private const SHIELD_TIMING_SAMPLES = 200;
+
+    private static function shieldTimingFilePath(): string
+    {
+        return JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/shield-speed.php';
+    }
+
+    /** Adds one measured Shield run (milliseconds) to a small rolling sample. Never throws. */
+    public static function recordShieldTiming(float $ms): void
+    {
+        try {
+            $path = self::shieldTimingFilePath();
+            $fh = @fopen($path, 'c+');
+            if ($fh === false) return;
+            if (@flock($fh, LOCK_EX | LOCK_NB)) {
+                $size = filesize($path) ?: 0;
+                $data = json_decode($size > 0 ? self::stripDataFileStub((string) fread($fh, $size)) : '', true);
+                $samples = is_array($data['samples'] ?? null) ? $data['samples'] : [];
+                $samples[] = round(max(0.0, $ms), 3);
+                $samples = array_slice($samples, -self::SHIELD_TIMING_SAMPLES);
+                self::rewriteLockedDataFile($fh, ['samples' => $samples, 'at' => time()]);
+                fflush($fh);
+                flock($fh, LOCK_UN);
+            }
+            fclose($fh);
+        } catch (\Throwable $e) {
+        }
+    }
+
+    /**
+     * Average and median Shield time per request from the rolling sample,
+     * or null with fewer than 5 samples (too few to mean anything).
+     *
+     * @return array{avg: float, median: float, count: int, at: int}|null
+     */
+    public static function getShieldTiming(): ?array
+    {
+        $path = self::shieldTimingFilePath();
+        if (!is_file($path)) return null;
+        $data = json_decode(self::stripDataFileStub((string) @file_get_contents($path)), true);
+        $samples = array_values(array_filter((array) ($data['samples'] ?? []), 'is_numeric'));
+        if (count($samples) < 5) return null;
+        sort($samples);
+        $n = count($samples);
+        $median = $n % 2 ? $samples[intdiv($n, 2)] : ($samples[$n / 2 - 1] + $samples[$n / 2]) / 2;
+        return ['avg' => array_sum($samples) / $n, 'median' => (float) $median, 'count' => $n, 'at' => (int) ($data['at'] ?? 0)];
+    }
+
+    /** Set while MuRu Guard itself creates a user, so Admin Lockdown does not refuse its own work. */
+    private static bool $internalUserCreate = false;
+
+    public static function isInternalUserCreate(): bool
+    {
+        return self::$internalUserCreate;
+    }
+
+    public static function setInternalUserCreate(bool $on): void
+    {
+        self::$internalUserCreate = $on;
+    }
+
+    /**
+     * A Super User blocking, demoting, editing or deleting an account in
+     * the backend is a deliberate change: the protected-user baseline for
+     * that account follows it, so the scheduled check never "repairs" it
+     * back.
+     */
+    public static function refreshProtectedUserBaseline(int $userId): void
+    {
+        if ($userId <= 0) return;
+        $state = self::loadProtectedUsersState();
+        if ($state === null || !isset($state['users']) || !is_array($state['users'])) return;
+
+        $row = null;
+        try {
+            $db = \MuruguardCompat::isJoomla4()
+                ? Factory::getContainer()->get('DatabaseDriver')
+                : \JFactory::getDbo();
+            $db->setQuery(
+                $db->getQuery(true)
+                    ->select($db->quoteName(['id', 'username', 'email', 'password', 'block']))
+                    ->from($db->quoteName('#__users'))
+                    ->where($db->quoteName('id') . ' = ' . (int) $userId)
+            );
+            $row = $db->loadAssoc();
+        } catch (\Throwable $e) {
+        }
+        // Same definition the snapshot uses: an active member of the Super
+        // Users group (see MuruguardModelScanner::snapshotProtectedUsers()).
+        $isSuper = false;
+        if (is_array($row) && !(int) $row['block']) {
+            try {
+                $isSuper = (int) $db->setQuery(
+                    $db->getQuery(true)
+                        ->select('COUNT(*)')
+                        ->from($db->quoteName('#__user_usergroup_map', 'm'))
+                        ->join('INNER', $db->quoteName('#__usergroups', 'g') . ' ON ' . $db->quoteName('g.id') . ' = ' . $db->quoteName('m.group_id'))
+                        ->where($db->quoteName('m.user_id') . ' = ' . (int) $userId)
+                        ->where($db->quoteName('g.title') . ' IN (' . $db->quote('Super Users') . ',' . $db->quote('Super User') . ')')
+                )->loadResult() > 0;
+            } catch (\Throwable $e) {
+                $isSuper = false;
+            }
+        }
+
+        $key = (string) $userId;
+        if ($isSuper) {
+            $state['users'][$key] = ['username' => $row['username'], 'email' => $row['email'], 'password' => $row['password'], 'block' => 0];
+        } elseif (isset($state['users'][$key])) {
+            unset($state['users'][$key]);
+        } else {
+            return;
+        }
+        foreach (array_keys($state['alerted'] ?? []) as $k) {
+            if (strpos((string) $k, $key . ':') === 0) unset($state['alerted'][$k]);
+        }
+        self::saveProtectedUsersState($state);
+    }
+
+    /**
+     * Actions that write files or can lock the site (the .htaccess rules,
+     * Emergency Mode, Backend Access, Upload lockdown) need a Super User,
+     * even for a group given MuRu Guard's Configure permission.
+     */
+    public static function requireSuperUser(): void
+    {
+        $user = \MuruguardCompat::getUser();
+        if (!$user || $user->guest || !$user->authorise('core.admin')) {
+            throw new \Joomla\CMS\Access\Exception\NotAllowed(Text::_('JERROR_ALERTNOAUTHOR'), 403);
+        }
     }
 }

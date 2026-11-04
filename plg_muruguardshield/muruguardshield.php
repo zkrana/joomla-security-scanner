@@ -49,7 +49,13 @@ use Joomla\CMS\Plugin\CMSPlugin;
 use Joomla\CMS\Component\ComponentHelper;
 use Joomla\CMS\Language\Text;
 
-class plgSystemMuruguardshield extends CMSPlugin
+/**
+ * Everything the plugin does. The class Joomla loads, plgSystemMuruguardshield,
+ * is declared at the bottom of this file in one of two shapes, because the
+ * scheduled-scan bridge (onAjaxMuruguardshield) needs a different method
+ * signature on Joomla 3 than on Joomla 4 and later.
+ */
+abstract class plgSystemMuruguardshieldBase extends CMSPlugin
 {
     /**
      * True when $app is the administrator application. Same two-method
@@ -99,20 +105,53 @@ class plgSystemMuruguardshield extends CMSPlugin
      */
     public function onAfterInitialise()
     {
+        $started = microtime(true);
         try {
             $this->checkBasicAuthGate();
         } catch (\Throwable $e) {
-            // Fail open, silently -- see class docblock.
+            $this->noteFailure('checkBasicAuthGate', $e);
+            // Fail open -- see class docblock.
         }
         try {
             $this->runShieldCheck();
         } catch (\Throwable $e) {
-            // Fail open, silently -- see class docblock.
+            $this->noteFailure('runShieldCheck', $e);
+            // Fail open -- see class docblock.
         }
         try {
             $this->checkAdminLockdownGate();
         } catch (\Throwable $e) {
-            // Fail open, silently -- see class docblock.
+            $this->noteFailure('checkAdminLockdownGate', $e);
+            // Fail open -- see class docblock.
+        }
+        $this->noteTiming(microtime(true) - $started);
+    }
+
+    /**
+     * Records how long the checks above took, for the Shield speed shown in
+     * the Threat Monitor. Only 1 request in 50 is written, and only while
+     * Protection Mode is on, so measuring never adds a file write to every
+     * request. A refused request never gets here (it stops in rejectRequest()).
+     */
+    private function noteTiming(float $seconds): void
+    {
+        try {
+            if (mt_rand(1, 50) !== 1) return;
+            if (!class_exists('MuruguardHelper', false) || !method_exists('MuruguardHelper', 'recordShieldTiming')) return;
+            if (!ComponentHelper::getParams('com_muruguard')->get('shield_enabled', 0)) return;
+            \MuruguardHelper::recordShieldTiming($seconds * 1000);
+        } catch (\Throwable $e) {
+        }
+    }
+
+    /** Records a swallowed failure so Site Protection can show that protection had a problem (never throws). */
+    private function noteFailure(string $where, \Throwable $e): void
+    {
+        try {
+            if (class_exists('MuruguardHelper', false) && method_exists('MuruguardHelper', 'recordShieldError')) {
+                \MuruguardHelper::recordShieldError($where, $e);
+            }
+        } catch (\Throwable $ignored) {
         }
     }
 
@@ -264,6 +303,58 @@ class plgSystemMuruguardshield extends CMSPlugin
     }
 
     /**
+     * Admin Lockdown, enforced where the user is actually created: refuses
+     * any NEW user from the backend or the Web Services API, whatever task
+     * name or controller form the request used. Frontend registration is
+     * not affected.
+     */
+    public function onUserBeforeSave($oldUser, $isNew = false, $newUser = [])
+    {
+        try {
+            if (!$isNew) return true;
+            if (class_exists('MuruguardHelper', false) && method_exists('MuruguardHelper', 'isInternalUserCreate') && \MuruguardHelper::isInternalUserCreate()) return true;
+            $app = Factory::getApplication();
+            $isApi = method_exists($app, 'isClient') && $app->isClient('api');
+            if (!self::isAdminClient($app) && !$isApi) return true;
+            if (!ComponentHelper::getParams('com_muruguard')->get('harden_lock_admin_actions', 0)) return true;
+            $app->enqueueMessage('Creating a new user is locked by MuRu Guard Admin Lockdown (Settings > Site Protection). Switch it off there first.', 'error');
+            return false;
+        } catch (\Throwable $e) {
+            return true;
+        }
+    }
+
+    public function onUserAfterSave($user, $isNew = false, $success = true, $msg = '')
+    {
+        $this->refreshProtectedBaselineAfterAdminChange($user, (bool) $success);
+    }
+
+    public function onUserAfterDelete($user, $success = true, $msg = '')
+    {
+        $this->refreshProtectedBaselineAfterAdminChange($user, (bool) $success);
+    }
+
+    /**
+     * A Super User blocking, demoting or deleting an account in the
+     * backend is a deliberate change: update the protected-user baseline
+     * so the scheduled check doesn't "repair" it back.
+     */
+    private function refreshProtectedBaselineAfterAdminChange($user, bool $success): void
+    {
+        try {
+            if (!$success || !$this->loadShieldHelper()) return;
+            if (!method_exists('MuruguardHelper', 'refreshProtectedUserBaseline')) return;
+            $app = Factory::getApplication();
+            if (!self::isAdminClient($app)) return;
+            $actor = self::getCurrentUser();
+            if (!$actor || $actor->guest || !$actor->authorise('core.admin')) return;
+            $id = is_array($user) ? (int) ($user['id'] ?? 0) : (int) ($user->id ?? 0);
+            \MuruguardHelper::refreshProtectedUserBaseline($id);
+        } catch (\Throwable $e) {
+        }
+    }
+
+    /**
      * Bridges Joomla's own guest-reachable com_ajax entry point --
      * index.php?option=com_ajax&plugin=muruguardshield&group=system&format=raw&token=...
      * -- into com_muruguard's existing scheduledcheck() controller
@@ -302,7 +393,7 @@ class plgSystemMuruguardshield extends CMSPlugin
      * (index.php?option=com_ajax&...) instead of /administrator. This
      * bridge method itself is identical on both platforms.
      */
-    public function onAjaxMuruguardshield()
+    protected function runWebcronBridge(): void
     {
         // This bridge deliberately runs OUTSIDE Joomla's normal
         // option=com_muruguard dispatch (that's the whole point -- see
@@ -394,7 +485,10 @@ class plgSystemMuruguardshield extends CMSPlugin
         // Brute-force IP block -- regardless of who's asking, since an
         // attacker hammering the login form is by definition not an
         // authenticated user yet.
-        if ($params->get('shield_block_bruteforce', 0) && $ip !== '') {
+        // A private or proxy address is never brute-force blocked: behind an
+        // unconfigured proxy every visitor shares it, so one attacker would
+        // lock everyone out.
+        if ($params->get('shield_block_bruteforce', 0) && $ip !== '' && !\MuruguardHelper::isPrivateOrReservedIp($ip)) {
             $threshold = (int) $params->get('shield_bruteforce_threshold', 5);
             $window    = (int) $params->get('shield_bruteforce_window', 15);
 
@@ -479,7 +573,15 @@ class plgSystemMuruguardshield extends CMSPlugin
         // false-positive-prone) risk than an actual code-execution
         // payload in a query parameter, so an admin who wants one
         // shouldn't be forced to accept the other.
-        $shouldBlock = !$isAdminExempt && ($match['rule'] === 'known_scanner_user_agent'
+        // A logged-in admin is exempt from the softer rules, but a high-
+        // severity exploit payload is still blocked for them, so a stolen
+        // admin session can't carry one past the Shield. Backend form
+        // posts stay exempt (an admin may legitimately save code).
+        $adminBlocked = $match['rule'] !== 'known_scanner_user_agent'
+            && $this->adminMatchStillBlocks($match, function () use ($get, $uri, $userAgent) {
+                return \MuruguardHelper::scanRequestForAttack($get, [], $uri, $userAgent);
+            });
+        $shouldBlock = (!$isAdminExempt || $adminBlocked) && ($match['rule'] === 'known_scanner_user_agent'
             ? (bool) $params->get('shield_block_useragents', 0)
             : ($match['block_eligible'] && (bool) $params->get('shield_block_patterns', 0)));
 
@@ -537,13 +639,23 @@ class plgSystemMuruguardshield extends CMSPlugin
         $input = $app->input;
         $option = $input->getCmd('option', '');
 
-        $blockInstaller = ($option === 'com_installer');
+        // "controller=user&task=save" is the same request as "task=user.save".
+        $task = strtolower($input->getCmd('task', ''));
+        $controller = strtolower($input->getCmd('controller', ''));
+        if ($task !== '' && strpos($task, '.') === false && $controller !== '') $task = $controller . '.' . $task;
+
+        // Other ways to put code on the site without com_installer: a
+        // Joomla Update package upload (normal core updates still work)
+        // and the template file editor.
+        $blockInstaller = ($option === 'com_installer')
+            || ($option === 'com_joomlaupdate' && $task === 'update.upload')
+            || ($option === 'com_templates' && (in_array($task, ['template.createfile', 'template.uploadfile', 'template.copyfile', 'template.renamefile', 'template.extractarchive'], true)
+                || (in_array($task, ['template.save', 'template.apply'], true) && $input->getString('file', '') !== '')));
 
         $blockNewUser = false;
         if ($option === 'com_users') {
-            $task = $input->getCmd('task', '');
-            if (in_array($task, ['user.save', 'user.apply', 'user.save2copy'], true)) {
-                $blockNewUser = ($input->getInt('id', 0) === 0);
+            if (in_array($task, ['user.save', 'user.apply', 'user.save2copy', 'user.save2new'], true)) {
+                $blockNewUser = ($input->getInt('id', 0) === 0) || $task === 'user.save2copy';
             }
         }
 
@@ -570,7 +682,7 @@ class plgSystemMuruguardshield extends CMSPlugin
             'why'        => $blockInstaller
                 ? 'The Joomla extension installer is locked down (MuRu Guard Settings > Site Protection > Admin Lockdown).'
                 : 'Creating a new backend user is locked down (MuRu Guard Settings > Site Protection > Admin Lockdown).',
-            'matched'    => $option . ($blockNewUser ? '&task=' . $input->getCmd('task', '') : ''),
+            'matched'    => $option . ($task !== '' ? '&task=' . $task : ''),
             'uri'        => mb_substr((string) $input->server->get('REQUEST_URI', '', 'string'), 0, 300),
             'user_agent' => mb_substr((string) $input->server->get('HTTP_USER_AGENT', '', 'string'), 0, 200),
         ]);
@@ -601,6 +713,24 @@ class plgSystemMuruguardshield extends CMSPlugin
         $app->redirect('index.php');
     }
 
+    /**
+     * True when a high-severity, block-eligible match should still block a
+     * logged-in admin. On the backend the request is checked again without
+     * its POST body, so an admin saving content that contains code is not
+     * blocked; only a payload in the URL or query string counts there.
+     */
+    private function adminMatchStillBlocks(?array $match, callable $rescanWithoutPost): bool
+    {
+        if ($match === null || ($match['severity'] ?? '') !== 'high' || empty($match['block_eligible'])) return false;
+        try {
+            if (!self::isAdminClient(Factory::getApplication())) return true;
+            $again = $rescanWithoutPost();
+        } catch (\Throwable $e) {
+            return false;
+        }
+        return is_array($again) && ($again['severity'] ?? '') === 'high' && !empty($again['block_eligible']);
+    }
+
     /** Plain-text 403 and an immediate, unconditional stop -- deliberately not the site's own error template, which could itself trigger more application code to run. */
     private function rejectRequest(): void
     {
@@ -608,5 +738,34 @@ class plgSystemMuruguardshield extends CMSPlugin
         header('Content-Type: text/plain; charset=utf-8');
         echo "Forbidden\n";
         Factory::getApplication()->close();
+    }
+}
+
+if (defined('JVERSION') && version_compare(JVERSION, '4.0', '>=')) {
+    class plgSystemMuruguardshield extends plgSystemMuruguardshieldBase
+    {
+        /**
+         * Scheduled-scan bridge (see runWebcronBridge()). A guest com_ajax call
+         * in the administrator is only allowed for a handler Joomla registers
+         * directly, which needs this exact typed $event parameter, and newer
+         * Joomla versions also require the attribute below. A legacy
+         * no-argument handler made that check fail with an empty response,
+         * which nginx answered with a 502. To PHP 7 the attribute line is a
+         * plain comment.
+         */
+        #[\Joomla\CMS\Plugin\Attribute\AllowUnauthorizedAdministratorAccess]
+        public function onAjaxMuruguardshield(\Joomla\Event\EventInterface $event)
+        {
+            $this->runWebcronBridge();
+        }
+    }
+} else {
+    class plgSystemMuruguardshield extends plgSystemMuruguardshieldBase
+    {
+        /** Scheduled-scan bridge on Joomla 3, which calls event handlers without arguments. */
+        public function onAjaxMuruguardshield()
+        {
+            $this->runWebcronBridge();
+        }
     }
 }

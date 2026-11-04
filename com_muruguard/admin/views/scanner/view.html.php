@@ -15,6 +15,8 @@ use Joomla\CMS\Component\ComponentHelper;
 
 require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/compat.php';
 require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/muruguard.php';
+require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/threatstats.php';
+require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/threatcharts.php';
 // Loaded explicitly (same reasoning as in controllers/scanner.php) so
 // getModel('Scanner') below never depends on include-path resolution.
 require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/models/scanner.php';
@@ -49,6 +51,10 @@ class MuruguardViewScanner extends HtmlView
     public $shieldThreshold = 5;
     public $shieldWindow = 15;
     public $shieldPluginActive = false;
+    /** Latest Shield failure in the last 24 h, or null (see MuruguardHelper::recordShieldError()). */
+    public $shieldRecentError = null;
+    /** Threat Monitor data: one view per period, plus the last scans. */
+    public ?array $threatMonitor = null;
     public $attackLog = [];
     public ?array $registeredTemplates = null;
     public array $htaccess = [];
@@ -167,6 +173,7 @@ class MuruguardViewScanner extends HtmlView
         $this->shieldThreshold       = (int) $cfgParams->get('shield_bruteforce_threshold', 5);
         $this->shieldWindow          = (int) $cfgParams->get('shield_bruteforce_window', 15);
         $this->shieldPluginActive    = $model->isShieldPluginActive();
+        $this->shieldRecentError     = MuruguardHelper::getRecentShieldError();
         $this->attackLog             = MuruguardHelper::getAttackLog();
         $this->attackLogArchiveCount = MuruguardHelper::getAttackLogArchiveCount();
         $this->shieldBlockUserAgents = (bool) $cfgParams->get('shield_block_useragents', 0);
@@ -263,6 +270,33 @@ class MuruguardViewScanner extends HtmlView
             $this->insights = $model->getInsights($openFindings, count($this->vulnerableExtensions), $this->htaccess);
         } catch (\Throwable $e) {
             $this->insights = null;
+        }
+        // One score-trend row per scan, with the score the Dashboard shows
+        // for it (keyed by the scan's start time, so reloads don't add rows).
+        if ($this->scanned && $this->scanStartedAt > 0 && isset($this->insights['score']['score'])) {
+            \MuruguardThreatStats::recordScan([
+                'at'     => $this->scanStartedAt,
+                'score'  => (int) $this->insights['score']['score'],
+                'high'   => (int) $this->highCount,
+                'medium' => (int) $this->medCount,
+                'total'  => max(0, $openFindings),
+            ]);
+        }
+        try {
+            $tmState = \MuruguardThreatStats::ensureBackfilled() ?? \MuruguardThreatStats::emptyState(time());
+            $tmScans = \MuruguardThreatStats::loadScans();
+            $tmLast = $tmScans ? $tmScans[count($tmScans) - 1] : null;
+            $this->threatMonitor = [
+                'periods' => [
+                    '24h' => \MuruguardThreatStats::buildView($tmState, '24h', time()),
+                    '7d'  => \MuruguardThreatStats::buildView($tmState, '7d', time()),
+                ],
+                'scans' => $tmScans,
+                'score' => $tmLast ? (int) $tmLast['score'] : null,
+                'speed' => MuruguardHelper::getShieldTiming(),
+            ];
+        } catch (\Throwable $e) {
+            $this->threatMonitor = null;
         }
         $this->uploadLock = $model->getUploadLockState();
         $this->php2shellExposed = \MuruguardInsights::php2shellStatus(PHP_VERSION) !== 'fixed';

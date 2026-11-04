@@ -160,6 +160,16 @@
             <option value="HTTP_X_REAL_IP">X-Real-IP</option>
             <option value="HTTP_TRUE_CLIENT_IP">True-Client-IP</option>
         </field>
+        <field
+            name="shield_trusted_proxies"
+            type="textarea"
+            default=""
+            rows="3"
+            filter="string"
+            label="COM_MURUGUARD_CONFIG_SHIELD_TRUSTED_PROXIES_LABEL"
+            description="COM_MURUGUARD_CONFIG_SHIELD_TRUSTED_PROXIES_DESC"
+            showon="shield_trusted_proxy_header!:"
+        />
     </fieldset>
     <!-- Without this fieldset, System > Global Configuration > MuRu Guard
          never shows a Permissions tab at all, no matter what access.xml

@@ -47,6 +47,10 @@ class MuruguardModelScanner extends MuruguardCompatDatabaseModel
     // honestly as "scanned up to the time budget" instead of silently
     // passing as complete.
     protected array $truncatedAreas = [];
+    /** Entries already walked per area in an earlier chunk, so a timed-out area continues where it stopped. */
+    protected array $resumeSkips = [];
+    /** Entries visited so far in the area being walked. */
+    protected int $walkCounter = 0;
 
     public function __construct($config = [])
     {
@@ -577,6 +581,12 @@ class MuruguardModelScanner extends MuruguardCompatDatabaseModel
 
     /** Wall-clock budget per HTTP request/chunk call -- comfortably inside even a conservative host's default execution-time limit. */
     private const CHUNK_TIME_BUDGET_SECONDS = 20;
+
+    /**
+     * A step ends early, after a finished area, once it has run this long, so the scan overlay can show progress
+     * and new findings every few seconds instead of once per 20-second step. Large areas still use the full budget.
+     */
+    private const CHUNK_REPORT_AFTER_SECONDS = 2.0;
     public const CHUNK_WEBROOT_CORE_KEY = '__webroot_core__';
     public const CHUNK_DATABASE_KEY = '__database__';
 
@@ -684,7 +694,10 @@ class MuruguardModelScanner extends MuruguardCompatDatabaseModel
             ];
         }
 
-        $deadline = microtime(true) + self::CHUNK_TIME_BUDGET_SECONDS;
+        $stepStart = microtime(true);
+        $deadline = $stepStart + self::CHUNK_TIME_BUDGET_SECONDS;
+        // Paths already found before this step, so the step can report only what it added (live list on the overlay).
+        $knownBefore = array_flip(array_map('strval', array_keys((array) $progress['findings'])));
 
         while (!empty($progress['queue']) && microtime(true) < $deadline) {
             $item = array_shift($progress['queue']);
@@ -703,12 +716,25 @@ class MuruguardModelScanner extends MuruguardCompatDatabaseModel
             } else {
                 $this->fileFindings = [];
                 $this->truncatedAreas = [];
+                $this->resumeSkips = isset($progress['resume'][$item]) ? [$item => (int) $progress['resume'][$item]] : [];
                 $this->scanFilesystem([$item], false, $deadline);
+                $this->resumeSkips = [];
                 $progress['findings'] = array_merge($progress['findings'], $this->fileFindings);
-                $progress['truncated'] = array_merge($progress['truncated'], array_keys($this->truncatedAreas));
+                if (isset($this->truncatedAreas[$item])) {
+                    // Out of time mid-area: continue this area in the next
+                    // chunk from where it stopped (always at least one
+                    // entry further, so one slow file can't loop forever).
+                    $prevSkip = (int) ($progress['resume'][$item] ?? 0);
+                    $walked = (int) $this->truncatedAreas[$item];
+                    $progress['resume'][$item] = $walked < 0 ? $prevSkip : max($walked, $prevSkip + 1);
+                    array_unshift($progress['queue'], $item);
+                    continue;
+                }
+                unset($progress['resume'][$item]);
             }
 
             $progress['completed'][] = $item;
+            if (microtime(true) - $stepStart >= self::CHUNK_REPORT_AFTER_SECONDS) break;
         }
 
         $progress['updatedAt'] = time();
@@ -735,6 +761,10 @@ class MuruguardModelScanner extends MuruguardCompatDatabaseModel
             'totalCount'     => $progress['totalItems'],
             'currentArea'    => $progress['done'] ? null : ($progress['queue'][0] ?? null),
             'truncated'      => array_values(array_unique($progress['truncated'])),
+            // Live view on the scan overlay: running counts and what this step found.
+            'findingsCount'  => count($progress['findings']),
+            'highCount'      => count(array_filter($progress['findings'], fn($f) => ($f['confidence'] ?? '') === 'high')),
+            'recentFindings' => MuruguardHelper::liveScanFindings((array) $progress['findings'], $knownBefore),
         ];
     }
 
@@ -1322,20 +1352,25 @@ class MuruguardModelScanner extends MuruguardCompatDatabaseModel
                 // Budget already spent before even starting this area (only
                 // reachable when $onlyDirs covers more than one area) --
                 // leave it for the next chunk rather than starting it.
-                $this->truncatedAreas[$relDir] = true;
+                $this->truncatedAreas[$relDir] = -1; // not started: resume from the same place
                 break;
             }
             $dir = $this->root . '/' . $relDir;
             if (!is_dir($dir)) continue;
 
             try {
-                MuruguardHelper::walkDir($dir, function (string $path, bool $isDir) use ($sig, $mode, $maxSize, $isIgnored, $selfBackupPattern, $registeredTemplates, $registeredPlugins, $registeredComponents, $falsePositives, $deadline) {
+                $this->walkCounter = 0;
+                MuruguardHelper::walkDir($dir, function (string $path, bool $isDir) use ($sig, $mode, $maxSize, $isIgnored, $selfBackupPattern, $registeredTemplates, $registeredPlugins, $registeredComponents, $falsePositives, $deadline, $relDir) {
                 if ($deadline !== null && microtime(true) > $deadline) {
                     throw new MuruguardScanChunkTimeout();
                 }
-                foreach ($sig['SAFE_COMPONENT_PATHS'] as $safeFrag) {
-                    if (stripos($path, $safeFrag) !== false) return;
-                }
+                $this->walkCounter++;
+                if ($this->walkCounter <= ($this->resumeSkips[$relDir] ?? 0)) return;
+                // Trusted security extensions are skipped only at their real
+                // folder and only while installed, so a copy of that folder
+                // path under images/ (or anywhere else) is still scanned.
+                if (MuruguardHelper::isSafeComponentPath($path, $this->root, $sig['SAFE_COMPONENT_PATHS'])
+                    && MuruguardHelper::isSafeComponentInstalled($path, $this->root, $registeredComponents)) return;
                 if (preg_match('#/tmp/install_[a-z0-9]+(/|$)#i', $path)) {
                     return; // Joomla's own installer extraction folder — transient, not user-uploadable
                 }
@@ -1481,7 +1516,7 @@ class MuruguardModelScanner extends MuruguardCompatDatabaseModel
                         // filterStubProtectedDataCacheExemptions()'s own
                         // docblock for why this one is structurally
                         // different from the two narrower filters above.
-                        $reasons = MuruguardHelper::filterStubProtectedDataCacheExemptions($relCheck, $reasons);
+                        $reasons = MuruguardHelper::filterStubProtectedDataCacheExemptions($relCheck, $reasons, $path);
                         if (!empty($reasons)) {
                             $flagged = true;
                         }
@@ -1525,6 +1560,10 @@ class MuruguardModelScanner extends MuruguardCompatDatabaseModel
                         if (strtolower($basename) === '.htaccess') {
                             $handlerHijack = MuruguardHelper::checkMaliciousHtaccessHandler($htaccessContents);
                             if ($handlerHijack !== null) { $flagged = true; $reasons[] = $handlerHijack; }
+                            // A .htaccess in a sub-folder that sends visitors
+                            // to another site (search-engine spam redirects).
+                            $foreignRedirect = MuruguardHelper::checkHtaccessForeignRedirect($htaccessContents, MuruguardHelper::currentSiteHost());
+                            if ($foreignRedirect !== null) { $flagged = true; $reasons[] = $foreignRedirect; }
                         }
                         $autoPrepend = MuruguardHelper::checkPhpAutoPrependDirective($htaccessContents);
                         if ($autoPrepend !== null) { $flagged = true; $reasons[] = $autoPrepend; }
@@ -1571,8 +1610,9 @@ class MuruguardModelScanner extends MuruguardCompatDatabaseModel
                 // deadline is already recorded in $this->fileFindings above
                 // -- kept as a partial result rather than discarded, with
                 // the area marked truncated so runScanChunk() can report it
-                // honestly instead of implying a complete scan.
-                $this->truncatedAreas[$relDir] = true;
+                // honestly instead of implying a complete scan. The count
+                // of entries walked lets the next chunk continue from here.
+                $this->truncatedAreas[$relDir] = $this->walkCounter;
                 break;
             }
         }
@@ -1740,6 +1780,17 @@ class MuruguardModelScanner extends MuruguardCompatDatabaseModel
         // of and stronger than every heuristic check here.
         $joomlaVersion = MuruguardHelper::getInstalledJoomlaVersion($this->root);
         $checksumManifest = MuruguardHelper::getCoreChecksumManifest();
+
+        // The checksum check is chosen by the version in joomla.xml, so
+        // editing that one number switched it off. Joomla's own Version
+        // class must agree; if not, say so.
+        $classVersion = MuruguardHelper::getJoomlaVersionFromVersionClass($this->root);
+        if ($includeWebrootCore && $this->isAreaSelected('core_entry') && $joomlaVersion !== null && $classVersion !== null && $joomlaVersion !== $classVersion) {
+            $manifestAbs = $this->root . '/administrator/manifests/files/joomla.xml';
+            MuruguardHelper::recordFinding($this->fileFindings, $manifestAbs, $this->root, [
+                "The Joomla version in joomla.xml ({$joomlaVersion}) does not match the version in libraries/src/Version.php ({$classVersion}). One of them was edited -- core file checksums are chosen by this version, so check both files.",
+            ], false);
+        }
 
         $coreEntries = ($includeWebrootCore && $this->isAreaSelected('core_entry')) ? $sig['CORE_ENTRY_POINTS'] : [];
         foreach ($coreEntries as $relEntry) {
@@ -2079,6 +2130,9 @@ class MuruguardModelScanner extends MuruguardCompatDatabaseModel
             if (!isset($this->fileFindings[$relPath])) { $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_NOT_FLAGGED', $relPath); continue; }
             $abs = realpath($this->root . '/' . $relPath);
             if ($abs === false) { $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_VANISHED', $relPath); continue; }
+            // Never act on a symlink's target: a flagged link pointing at index.php
+            // or a core folder would otherwise delete or rewrite the real thing.
+            if (is_link($this->root . '/' . $relPath) || str_replace('\\', '/', $abs) !== str_replace('\\', '/', $rootReal) . '/' . $relPath) { $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_SYMLINK', $relPath); continue; }
             if (strpos($abs, $rootReal . DIRECTORY_SEPARATOR) !== 0) { $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_OUTSIDE_ROOT', $relPath); continue; }
             if (basename($abs) === 'configuration.php') { $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_PROTECTED', $relPath); continue; }
             if (in_array($abs, $protectedAbs, true) || $abs === $rootReal) { $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_PROTECTED_DIR', $relPath); continue; }
@@ -2122,6 +2176,9 @@ class MuruguardModelScanner extends MuruguardCompatDatabaseModel
 
             $abs = realpath($this->root . '/' . $relPath);
             if ($abs === false || !is_file($abs)) { $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_VANISHED', $relPath); continue; }
+            // Never act on a symlink's target: a flagged link pointing at index.php
+            // or a core folder would otherwise delete or rewrite the real thing.
+            if (is_link($this->root . '/' . $relPath) || str_replace('\\', '/', $abs) !== str_replace('\\', '/', $rootReal) . '/' . $relPath) { $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_SYMLINK', $relPath); continue; }
             if (strpos($abs, $rootReal . DIRECTORY_SEPARATOR) !== 0) { $flash[] = Text::sprintf('COM_MURUGUARD_FLASH_SKIPPED_OUTSIDE_ROOT', $relPath); continue; }
 
             $ext = strtolower(pathinfo($abs, PATHINFO_EXTENSION));

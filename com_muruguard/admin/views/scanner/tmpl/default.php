@@ -72,10 +72,13 @@ $rescanUrl  = 'index.php?option=com_muruguard&task=scanner.scan&rescan=1';
 // collide 1:1 with Joomla's Bootstrap classes like .shadow-sm/.rounded).
 if (MuruguardCompat::isJoomla4()) {
     HTMLHelper::_('stylesheet', 'com_muruguard/muruguard.css', ['relative' => true, 'version' => 'auto']);
+    // The same utility build the Pro edition uses, so both editions look the same.
+    HTMLHelper::_('stylesheet', 'com_muruguard/muruguard-ui.css', ['relative' => true, 'version' => 'auto']);
 } else {
     // Joomla 3's JHtml::stylesheet() takes ($file, $attribs, $relative)
     // positionally instead of an options array -- same media/ resolution.
     HTMLHelper::_('stylesheet', 'com_muruguard/muruguard.css', [], true);
+    HTMLHelper::_('stylesheet', 'com_muruguard/muruguard-ui.css', [], true);
 }
 ?>
 <style>
@@ -86,16 +89,299 @@ if (MuruguardCompat::isJoomla4()) {
   .anim-in { animation: muruguard-fade-up 0.4s ease both; }
   .shield-pulse { animation: muruguard-pulse-ring 2.5s ease-in-out infinite; }
 
+  /* ── Layout-utility fallback ────────────────────────────────────
+     The page's utilities come from the bundled muruguard-tailwind.css
+     (they used to come from the Tailwind Play CDN, which offline sites,
+     firewalls and content blockers broke). If that stylesheet ever
+     fails to load, EVERYTHING stacks vertically (reported: rescan bar,
+     tab bar, toolbars all one-item-per-line). This block
+     re-declares every STRUCTURAL utility the template actually uses
+     (display, flex/grid, widths, position, overflow, whitespace --
+     never colors, type, or cosmetic spacing, which degrade gracefully
+     to unstyled-but-laid-out). Same #muruguard-root scoping and same
+     specificity as the CDN output, and this <style> sits later in
+     source order than the CDN's injected <style>, so these rules win
+     ties -- which is exactly why every value below MUST stay
+     byte-equal to Tailwind v3's, or the design changes even with the
+     CDN up. Maintenance contract: adding a NEW layout utility class
+     to this template means adding its fallback line here too (see
+     DEVELOPMENT.md §18). */
+  #muruguard-root .flex { display:flex; }
+  #muruguard-root .inline-flex { display:inline-flex; }
+  #muruguard-root .grid { display:grid; }
+  #muruguard-root .block { display:block; }
+  #muruguard-root .inline { display:inline; }
+  #muruguard-root .hidden { display:none; }
+  #muruguard-root .flex-1 { flex:1 1 0%; }
+  #muruguard-root .flex-col { flex-direction:column; }
+  #muruguard-root .flex-wrap { flex-wrap:wrap; }
+  #muruguard-root .flex-nowrap { flex-wrap:nowrap; }
+  #muruguard-root .flex-shrink-0, #muruguard-root .shrink-0 { flex-shrink:0; }
+  #muruguard-root .items-start { align-items:flex-start; }
+  #muruguard-root .items-end { align-items:flex-end; }
+  #muruguard-root .items-center { align-items:center; }
+  #muruguard-root .justify-end { justify-content:flex-end; }
+  #muruguard-root .justify-center { justify-content:center; }
+  #muruguard-root .justify-between { justify-content:space-between; }
+  #muruguard-root .gap-1 { gap:.25rem; }
+  #muruguard-root .gap-1\.5 { gap:.375rem; }
+  #muruguard-root .gap-2 { gap:.5rem; }
+  #muruguard-root .gap-3 { gap:.75rem; }
+  #muruguard-root .gap-4 { gap:1rem; }
+  #muruguard-root .gap-5 { gap:1.25rem; }
+  #muruguard-root .gap-6 { gap:1.5rem; }
+  #muruguard-root .gap-x-4 { column-gap:1rem; }
+  #muruguard-root .gap-y-1 { row-gap:.25rem; }
+  #muruguard-root .grid-cols-1 { grid-template-columns:repeat(1,minmax(0,1fr)); }
+  #muruguard-root .grid-cols-2 { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  #muruguard-root .relative { position:relative; }
+  #muruguard-root .absolute { position:absolute; }
+  #muruguard-root .fixed { position:fixed; }
+  #muruguard-root .inset-0 { top:0; right:0; bottom:0; left:0; }
+  #muruguard-root .top-0 { top:0; }
+  #muruguard-root .right-0 { right:0; }
+  #muruguard-root .bottom-0 { bottom:0; }
+  #muruguard-root .left-0 { left:0; }
+  #muruguard-root .z-50 { z-index:50; }
+  #muruguard-root .z-\[9999\] { z-index:9999; }
+  #muruguard-root .w-full { width:100%; }
+  #muruguard-root .w-fit { width:fit-content; }
+  #muruguard-root .w-2 { width:.5rem; }
+  #muruguard-root .w-3 { width:.75rem; }
+  #muruguard-root .w-3\.5 { width:.875rem; }
+  #muruguard-root .w-4 { width:1rem; }
+  #muruguard-root .w-5 { width:1.25rem; }
+  #muruguard-root .w-6 { width:1.5rem; }
+  #muruguard-root .w-7 { width:1.75rem; }
+  #muruguard-root .w-8 { width:2rem; }
+  #muruguard-root .w-10 { width:2.5rem; }
+  #muruguard-root .w-14 { width:3.5rem; }
+  #muruguard-root .w-24 { width:6rem; }
+  #muruguard-root .w-28 { width:7rem; }
+  #muruguard-root .w-60 { width:15rem; }
+  #muruguard-root .h-2 { height:.5rem; }
+  #muruguard-root .h-3 { height:.75rem; }
+  #muruguard-root .h-3\.5 { height:.875rem; }
+  #muruguard-root .h-4 { height:1rem; }
+  #muruguard-root .h-5 { height:1.25rem; }
+  #muruguard-root .h-6 { height:1.5rem; }
+  #muruguard-root .h-7 { height:1.75rem; }
+  #muruguard-root .h-8 { height:2rem; }
+  #muruguard-root .min-w-0 { min-width:0; }
+  #muruguard-root .min-h-0 { min-height:0; }
+  #muruguard-root .min-w-4 { min-width:1rem; }
+  #muruguard-root .min-w-5 { min-width:1.25rem; }
+  #muruguard-root .min-w-\[80px\] { min-width:80px; }
+  #muruguard-root .min-w-\[160px\] { min-width:160px; }
+  #muruguard-root .min-w-\[180px\] { min-width:180px; }
+  #muruguard-root .min-w-\[220px\] { min-width:220px; }
+  #muruguard-root .min-w-\[240px\] { min-width:240px; }
+  #muruguard-root .max-w-xs { max-width:20rem; }
+  #muruguard-root .max-w-md { max-width:28rem; }
+  #muruguard-root .max-w-lg { max-width:32rem; }
+  #muruguard-root .max-w-xl { max-width:36rem; }
+  #muruguard-root .max-w-2xl { max-width:42rem; }
+  #muruguard-root .max-w-3xl { max-width:48rem; }
+  #muruguard-root .max-w-\[220px\] { max-width:220px; }
+  #muruguard-root .max-h-\[80vh\] { max-height:80vh; }
+  #muruguard-root .overflow-hidden { overflow:hidden; }
+  #muruguard-root .overflow-x-auto { overflow-x:auto; }
+  #muruguard-root .overflow-y-auto { overflow-y:auto; }
+  #muruguard-root .truncate { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #muruguard-root .whitespace-nowrap { white-space:nowrap; }
+  #muruguard-root .whitespace-pre { white-space:pre; }
+  #muruguard-root .whitespace-pre-wrap { white-space:pre-wrap; }
+  #muruguard-root .text-left { text-align:left; }
+  #muruguard-root .text-center { text-align:center; }
+  #muruguard-root .text-right { text-align:right; }
+  #muruguard-root .mx-auto { margin-left:auto; margin-right:auto; }
+  #muruguard-root .mx-5 { margin-left:1.25rem; margin-right:1.25rem; }
+  #muruguard-root .ml-auto { margin-left:auto; }
+  #muruguard-root .mr-auto { margin-right:auto; }
+  #muruguard-root .m-0 { margin:0; }
+  #muruguard-root .space-y-0\.5 > :not([hidden]) ~ :not([hidden]) { --tw-space-y-reverse:0; margin-top:calc(.125rem * calc(1 - var(--tw-space-y-reverse))); margin-bottom:calc(.125rem * var(--tw-space-y-reverse)); }
+  #muruguard-root .space-y-1 > :not([hidden]) ~ :not([hidden]) { --tw-space-y-reverse:0; margin-top:calc(.25rem * calc(1 - var(--tw-space-y-reverse))); margin-bottom:calc(.25rem * var(--tw-space-y-reverse)); }
+  #muruguard-root .space-y-1\.5 > :not([hidden]) ~ :not([hidden]) { --tw-space-y-reverse:0; margin-top:calc(.375rem * calc(1 - var(--tw-space-y-reverse))); margin-bottom:calc(.375rem * var(--tw-space-y-reverse)); }
+  #muruguard-root .space-y-2 > :not([hidden]) ~ :not([hidden]) { --tw-space-y-reverse:0; margin-top:calc(.5rem * calc(1 - var(--tw-space-y-reverse))); margin-bottom:calc(.5rem * var(--tw-space-y-reverse)); }
+  #muruguard-root .space-y-2\.5 > :not([hidden]) ~ :not([hidden]) { --tw-space-y-reverse:0; margin-top:calc(.625rem * calc(1 - var(--tw-space-y-reverse))); margin-bottom:calc(.625rem * var(--tw-space-y-reverse)); }
+  #muruguard-root .space-y-3 > :not([hidden]) ~ :not([hidden]) { --tw-space-y-reverse:0; margin-top:calc(.75rem * calc(1 - var(--tw-space-y-reverse))); margin-bottom:calc(.75rem * var(--tw-space-y-reverse)); }
+  #muruguard-root .space-y-4 > :not([hidden]) ~ :not([hidden]) { --tw-space-y-reverse:0; margin-top:calc(1rem * calc(1 - var(--tw-space-y-reverse))); margin-bottom:calc(1rem * var(--tw-space-y-reverse)); }
+  @media (min-width:640px) {
+    #muruguard-root .sm\:grid-cols-2 { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    #muruguard-root .sm\:grid-cols-3 { grid-template-columns:repeat(3,minmax(0,1fr)); }
+    #muruguard-root .sm\:col-span-2 { grid-column:span 2 / span 2; }
+  }
+  @media (min-width:768px) {
+    #muruguard-root .md\:grid-cols-2 { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  }
+  @media (min-width:1024px) {
+    #muruguard-root .lg\:grid-cols-5 { grid-template-columns:repeat(5,minmax(0,1fr)); }
+    #muruguard-root .lg\:grid-cols-\[220px_1fr\] { grid-template-columns:220px 1fr; }
+    #muruguard-root .lg\:grid-cols-\[1fr_320px\] { grid-template-columns:1fr 320px; }
+  }
+
   /* Base resets scoped to our component only, replacing what Tailwind's
      preflight would normally do globally (now disabled above). */
   #muruguard-root, #muruguard-root * { box-sizing: border-box; }
-  #muruguard-root { line-height: 1.55; -webkit-font-smoothing: antialiased; }
-  /* Readable sizes: descriptions at least 14px, headings and buttons 16px. */
-  #muruguard-root .text-xs { font-size: 14px; line-height: 1.5; }
-  #muruguard-root .text-sm { font-size: 16px; line-height: 1.5; }
-  #muruguard-root button, #muruguard-root .muru-btn { font-size: 16px; }
-  #muru-overview > summary::-webkit-details-marker { display: none; }
-  #muru-overview[open] .muru-ov-open, #muru-overview:not([open]) .muru-ov-close { display: none; }
+  #muruguard-root { line-height: 1.55; -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  /* Lateral containment: nothing we render may push the Joomla admin
+     page wider than its container (reported: dashboard content escaping
+     sideways). overflow-x:clip is deliberately NOT hidden -- clip
+     doesn't create a scroll container, so the sticky Site Protection
+     sub-tab bar keeps sticking; the hidden line is only a fallback for
+     browsers too old to know clip. Tables already scroll internally
+     (.tbl-wrap) and the re-scan bar wraps, so nothing legitimate clips.
+     The grid rule fixes the other classic blowout: grid items default
+     to min-width:auto and refuse to shrink below long unbreakable
+     content, forcing the whole grid wider than its parent. */
+  #muruguard-root { max-width:100%; overflow-x:hidden; overflow-x:clip; overflow-y:visible; }
+  #muruguard-root .grid > * { min-width:0; }
+
+  /* ── Readability scale ──
+     Nearly all body/description copy leaned on Tailwind's text-xs
+     (12px), which reads too small on dense panels like Site
+     Protection. These scoped bumps lift reading copy one step while
+     deliberately leaving badges, timestamps, and mono metadata
+     (text-[10px], font-mono microcopy) at their designed sizes.
+     !important is required: the CDN-injected Tailwind stylesheet
+     loads after this block and wins ties (see the settings-tab note
+     above for the same lesson). */
+  #muruguard-root .text-xs { font-size: 14px !important; line-height: 1.6 !important; }
+  #muruguard-root .text-\[11px\] { font-size: 12px !important; line-height: 1.6 !important; }
+  #muruguard-root input, #muruguard-root select, #muruguard-root textarea { font-size: 14px !important; }
+  #muruguard-root h3, #muruguard-root h4 { font-size: 16px !important; line-height: 1.5 !important; }
+
+  
+  
+
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+
+  /* Sticky bar offset: --muru-sticky-top is set by JS to the bottom edge of
+     Joomla's own fixed/sticky admin header, so the bar sticks just under it
+     instead of sliding behind it. Falls back to 0. */
+  #muruguard-root .muru-sec-subtabs{ position:sticky; top:var(--muru-sticky-top, 0px); z-index:1000; display:flex; flex-wrap:wrap; align-items:center; gap:6px; background:#fff; border:1px solid #c7d2fe; border-radius:12px; padding:8px 10px; margin-bottom:6px; box-shadow:0 4px 12px rgba(67,56,202,.10); }
+  #muruguard-root .muru-sec-subtab{ position:relative; font-size:13px !important; font-weight:600; color:#4b5563 !important; background:#f3f4f6; border:1px solid transparent; border-radius:8px; padding:7px 14px; white-space:nowrap; text-decoration:none !important; cursor:pointer; transition:background .12s,color .12s; }
+  #muruguard-root .muru-sec-subtab:hover{ background:#e0e7ff; color:#3730a3 !important; }
+  /* Active = filled indigo, white bold text, a pointer notch underneath and
+     a leading dot, so the open tab is unmistakable at a glance. */
+  #muruguard-root .muru-sec-subtab.active{ background:#4338ca; color:#fff !important; font-weight:800; border-color:#312e81; box-shadow:0 2px 6px rgba(67,56,202,.40); }
+  #muruguard-root .muru-sec-subtab.active::before{ content:'\25CF'; font-size:9px; margin-right:6px; vertical-align:middle; color:#a5b4fc; }
+  #muruguard-root .muru-sec-subtab.active::after{ content:''; position:absolute; left:50%; bottom:-7px; transform:translateX(-50%); border-left:6px solid transparent; border-right:6px solid transparent; border-top:7px solid #4338ca; }
+  #muruguard-root .muru-sec-current { font-size:12px; color:#6b7280; margin:10px 2px 14px; }
+  #muruguard-root .muru-sec-current strong { color:#3730a3; font-size:14px; }
+  /* Shared identity: one header style for every MuRu Guard screen, one signature
+     gradient icon tile, one accent. Tokens keep every page on the same palette. */
+  :root, #muruguard-root { --mg-brand:#4338ca; --mg-brand-2:#7c3aed; --mg-soft:#eef2ff; --mg-ink:#1f2937; --mg-muted:#6b7280; --mg-line:#e5e7eb; }
+  #muruguard-root .muru-hero { position:relative; display:flex; align-items:center; gap:16px; flex-wrap:wrap; background:linear-gradient(100deg,#f5f3ff 0%,#fff 38%); border:1px solid var(--mg-line); border-radius:14px; padding:16px 22px 16px 20px; margin-bottom:18px; box-shadow:0 1px 3px rgba(67,56,202,.08); overflow:hidden; }
+  #muruguard-root .muru-hero::before { content:''; position:absolute; left:0; top:0; bottom:0; width:4px; background:linear-gradient(180deg,var(--mg-brand),var(--mg-brand-2)); }
+  #muruguard-root .muru-hero-icon { width:48px; height:48px; border-radius:13px; background:linear-gradient(135deg,var(--mg-brand),var(--mg-brand-2)); display:flex; align-items:center; justify-content:center; font-size:23px; flex-shrink:0; box-shadow:0 4px 10px rgba(67,56,202,.30); }
+  #muruguard-root .muru-crumb { font-size:11.5px !important; font-weight:700; color:var(--mg-brand); letter-spacing:.07em; text-transform:uppercase; margin-bottom:2px; }
+  #muruguard-root .muru-hero h2 { font-size:20px !important; line-height:1.25 !important; font-weight:800; margin:0 0 2px; color:var(--mg-ink) !important; }
+  #muruguard-root .muru-hero p { font-size:14px !important; line-height:1.5 !important; margin:0; color:#6b7280 !important; max-width:640px; }
+  
+  
+  #muruguard-root .muru-hero-back { margin-left:auto; font-size:14px !important; font-weight:500; color:#374151 !important; background:#fff; border:1px solid #d1d5db; border-radius:8px; padding:6px 16px; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,.05); }
+  #muruguard-root .muru-hero-back:hover { background:#f9fafb; }
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  /* ── Signature button / tab / bar treatment ──
+     Same indigo→violet gradient as the page-header icon tile, applied to every primary
+     button, active tab and dashboard bar so the whole extension reads as one product. */
+  #muruguard-root button.bg-indigo-600, #muruguard-root a.bg-indigo-600, #muruguard-root .mg-btn { transition:filter .15s, box-shadow .15s, transform .15s; background:linear-gradient(135deg, #d9d9d9cc 0%, #ffffff 55%, #9aefff0d 100%) !important; color:#312e81 !important; font-weight:800; border:1px solid #818cf86b !important; box-shadow:none; }
+  #muruguard-root button.bg-indigo-600:hover, #muruguard-root a.bg-indigo-600:hover, #muruguard-root .mg-btn:hover { filter:brightness(.97) saturate(1.15); box-shadow:none; border-color:#4f5df0 !important; }
+  #muruguard-root .mg-btn-ghost { background:linear-gradient(135deg,#eff6ff 0%,#ffffff 50%,#eef2ff 100%) !important; color:#3730a3 !important; border:1px solid #dbeafe !important; box-shadow:0 1px 2px rgba(0,0,0,.05); }
+  #muruguard-root .mg-btn-ghost:hover { background:linear-gradient(135deg,#dbeafe 0%,#e0e7ff 55%,#c7d2fe 100%) !important; border-color:#a5b4fc !important; }
+  /* Tabs: every tab wears the soft blue→white→indigo gradient; the open one is the deeper tint. */
+  #muruguard-root .muru-settings-tab, #muruguard-root .muru-sec-subtab{ background:linear-gradient(135deg, #eff6ff 0%, #ffffff 50%, #eef2ff 100%) !important; color:#3730a3 !important; border:1px solid #a7c8f480 !important; box-shadow:none; }
+  #muruguard-root .muru-settings-tab:hover, #muruguard-root .muru-sec-subtab:hover{ background:linear-gradient(135deg,#dbeafe 0%,#e0e7ff 55%,#c7d2fe 100%) !important; border-color:#a5b4fc !important; }
+  #muruguard-root .muru-settings-tab.active { background:linear-gradient(135deg, #006cfb40 0%, #ffffff 55%, #9aefff2b 100%) !important; color:#312e81 !important; font-weight:800; border:1px solid #818cf8ad !important; box-shadow:none; }
+  #muruguard-root .muru-sec-subtab.active{ background:linear-gradient(135deg, #006cfb40 0%, #ffffff 55%, #9aefff2b 100%) !important; color:#312e81 !important; font-weight:800; border:1px solid #818cf8ad !important; box-shadow:none; }
+  #muruguard-root .muru-sec-subtab.active::after { border-top-color:#dbe9fe; }
+  
+  #muruguard-root .muru-sec-subtab.active::before{ color:#4338ca; }
+  #muruguard-root .mg-bar { position:relative; background:linear-gradient(100deg,#f5f3ff 0%,#fff 38%) !important; border:1px solid var(--mg-line) !important; border-radius:14px !important; box-shadow:0 1px 3px rgba(67,56,202,.08) !important; }
+  #muruguard-root .mg-bar::before { content:''; position:absolute; left:0; top:0; bottom:0; width:4px; border-radius:14px 0 0 14px; background:linear-gradient(180deg,var(--mg-brand),var(--mg-brand-2)); }
+  #muruguard-root .mg-bar-top { z-index:30; }
+  
+  
+  
+  /* Per-group Enable all / Disable all -- same 8px radius as the
+     parent settings-tab buttons (see below), ID-scoped to win over
+     the #muruguard-root button reset above. */
+  
+  
+  .muru-sec-panel[hidden] { display:none !important; }
+  
+  
   #muruguard-root h1, #muruguard-root h2, #muruguard-root h3, #muruguard-root h4, #muruguard-root p { margin: 0; }
   #muruguard-root a { color: inherit; text-decoration: none; }
   #muruguard-root button { font: inherit; cursor: pointer; background: none; border: 0; padding: 0; -webkit-appearance: none; appearance: none; }
@@ -112,10 +398,29 @@ if (MuruguardCompat::isJoomla4()) {
   .muru-tab.active { background:#fff; color:#4338ca; border:1px solid #e5e7eb !important; box-shadow:0 1px 2px rgba(0,0,0,.05); }
   .muru-panel.active { display:block; }
 
-  /* settings sub-tabs (Scheduled Scanning / Setup Guide) */
-  .muru-settings-tab { color:#4b5563; background:transparent; border:1px solid transparent; cursor:pointer; }
-  .muru-settings-tab:hover { background:#fff; color:#111827; }
-  .muru-settings-tab.active { background:#fff; color:#4338ca; border-color:#e5e7eb; box-shadow:0 1px 2px rgba(0,0,0,.05); }
+  /* !important on color -- Joomla's own admin template CSS (or Tailwind's
+     CDN-injected stylesheet, which loads after this static <style> block)
+     can otherwise win this at equal specificity depending on cascade
+     order, which is exactly what made this text render invisible
+     (white-on-white) despite this rule existing. */
+  .muru-settings-tab { color:#374151 !important; background:#fff; border:1px solid #e5e7eb; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,.04); }
+  .muru-settings-tab:hover { background:#f9fafb; color:#111827 !important; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  .muru-settings-tab.active { background:#4338ca; color:#000000 !important; border-color:#4338ca; box-shadow:0 2px 6px rgba(67,56,202,.35); }
+
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+
+  /* Space between sibling Settings panels shown together. */
+  .muru-settings-tabpanel { margin-bottom:20px; }
+  .muru-settings-tabpanel:last-child { margin-bottom:0; }
 
   /* copy-path button feedback */
   .muru-copy-btn.muru-copied { color:#16a34a !important; background:#f0fdf4 !important; }
@@ -131,7 +436,7 @@ if (MuruguardCompat::isJoomla4()) {
 
   /* ── Loading overlay & floating header-actions widget ────────────
      Deliberately PLAIN CSS (no Tailwind utility classes). Both the
-     overlay and the header-actions wrapper (Settings) get
+     overlay and the header-actions wrapper (Settings + Support) get
      re-parented to <body> at runtime via JS: Joomla's admin template
      applies a CSS transform to the content wrapper while animating the
      collapsible sidebar, and a transformed ancestor breaks
@@ -143,27 +448,86 @@ if (MuruguardCompat::isJoomla4()) {
   #muruguard-overlay {
     position: fixed; inset: 0; z-index: 999999; display: none;
     align-items: center; justify-content: center;
-    background: rgba(15,23,42,.86);
+    background: linear-gradient(135deg, #006cfbcc 0%, #ffffff 55%, #9aefff 100%), #ffffff;
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
   #muruguard-overlay.muruguard-show { display: flex; }
-  .muruguard-overlay-card { display:flex; flex-direction:column; align-items:center; text-align:center; max-width:320px; padding:0 16px; }
-  .muruguard-overlay-icon-wrap { position:relative; width:64px; height:64px; margin-bottom:20px; display:flex; align-items:center; justify-content:center; font-size:30px; }
-  .muruguard-overlay-spinner { position:absolute; inset:0; border-radius:9999px; border:4px solid rgba(255,255,255,.12); border-top-color:#3b82f6; animation: muruguard-spin .8s linear infinite; }
-  .muruguard-overlay-icon { animation: muruguard-icon-pulse 1.6s ease-in-out infinite; }
-  @keyframes muruguard-icon-pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
-  .muruguard-overlay-title { color:#fff; font-weight:700; font-size:16px; margin:0 0 8px; }
-  .muruguard-overlay-status { color:#94a3b8; font-size:14px; margin:0 0 20px; min-height:18px; transition:opacity .3s; }
-  .muruguard-overlay-track { width:224px; height:6px; border-radius:9999px; background:rgba(255,255,255,.1); overflow:hidden; margin-bottom:16px; }
-  .muruguard-overlay-bar { height:100%; border-radius:9999px; background:linear-gradient(90deg,#3b82f6,#60a5fa); width:30%; animation: muruguard-bar-slide 1.8s ease-in-out infinite; }
+  .muruguard-overlay-card { position:relative; z-index:1; }
+  /* Real findings: a steady red blip on the radar + a red pulsing counter. */
+  .muruguard-radar-blip-found { left:70px; top:66px; width:11px; height:11px; background:#ef4444; box-shadow:0 0 0 0 rgba(239,68,68,.7); animation:muruguard-found-pulse 1.4s ease-out infinite; display:none; }
+  .muruguard-found .muruguard-radar-blip-found, #muruguard-radar-found.muruguard-on { display:block; }
+  @keyframes muruguard-found-pulse { 0% { box-shadow:0 0 0 0 rgba(239,68,68,.75); } 100% { box-shadow:0 0 0 14px rgba(239,68,68,0); } }
+  .muruguard-found { display:none; align-items:center; gap:8px; margin:-6px 0 16px; padding:6px 14px; border-radius:9999px; background:rgba(239,68,68,.10); border:1px solid rgba(239,68,68,.45); color:#b91c1c; font-size:13px; font-weight:700; }
+  .muruguard-found.muruguard-on { display:inline-flex; }
+  .muruguard-found-dot { width:10px; height:10px; border-radius:50%; background:#ef4444; animation:muruguard-found-pulse 1.4s ease-out infinite; }
+  @media (prefers-reduced-motion: reduce) {     .muruguard-found-dot, .muruguard-radar-blip-found { animation:none; } }
+  .muruguard-overlay-card { display:flex; flex-direction:column; align-items:center; text-align:center; max-width:340px; padding:0 16px; }
+  /* Radar disc: range rings + crosshair are pure background gradients
+     (no extra markup), the sweep is a rotating conic wedge, and the
+     three blips pulse on the same 2.6s period with staggered delays so
+     each one "pings" as the sweep passes. Same blue accent the overlay
+     already used -- no new palette introduced. */
+  .muruguard-radar { position:relative; width:148px; height:148px; margin-bottom:22px; }
+  .muruguard-radar-disc {
+    position:absolute; inset:0; border-radius:50%; overflow:hidden;
+    border:1px solid rgba(67,56,202,.4);
+    box-shadow:0 0 0 6px rgba(67,56,202,.12), 0 0 0 12px rgba(67,56,202,.07);
+    background:
+      linear-gradient(rgba(67,56,202,.14) 0 0) center/100% 1px no-repeat,
+      linear-gradient(rgba(67,56,202,.14) 0 0) center/1px 100% no-repeat,
+      repeating-radial-gradient(circle at 50% 50%, transparent 0 21px, rgba(67,56,202,.2) 21px 22px),
+      radial-gradient(circle, rgba(67,56,202,.18), rgba(67,56,202,.05) 62%, transparent 72%);
+  }
+  .muruguard-radar-sweep {
+    position:absolute; inset:0; border-radius:50%;
+    background:conic-gradient(from 0deg, rgba(67,56,202,0) 0deg, rgba(67,56,202,.6) 55deg, rgba(67,56,202,0) 75deg);
+    animation:muruguard-radar-spin 2.6s linear infinite;
+  }
+  @keyframes muruguard-radar-spin { to { transform:rotate(360deg); } }
+  .muruguard-radar-blip { position:absolute; width:7px; height:7px; border-radius:50%; background:#4338ca; animation:muruguard-radar-blip 2.6s ease-out infinite; }
+  .muruguard-radar-blip-1 { left:38px; top:52px; animation-delay:0s; }
+  .muruguard-radar-blip-2 { left:96px; top:34px; animation-delay:.9s; }
+  .muruguard-radar-blip-3 { left:88px; top:100px; animation-delay:1.8s; }
+  @keyframes muruguard-radar-blip { 0%{opacity:0; transform:scale(.4)} 12%{opacity:1; transform:scale(1)} 45%{opacity:.9} 70%,100%{opacity:0; transform:scale(.65)} }
+  @media (prefers-reduced-motion: reduce) {
+    .muruguard-radar-sweep, .muruguard-radar-blip, .muruguard-overlay-bar { animation:none; }
+  }
+  .muruguard-overlay-title { color:#1e1b4b; font-weight:800; font-size:18px; margin:0 0 8px; }
+  .muruguard-overlay-status { color:#334155; font-size:14px; margin:0 0 20px; min-height:18px; transition:opacity .3s; }
+  .muruguard-overlay-track { width:224px; height:6px; border-radius:9999px; background:rgba(67,56,202,.16); overflow:hidden; margin-bottom:16px; }
+  .muruguard-overlay-bar { height:100%; border-radius:9999px; background:linear-gradient(90deg,#4338ca,#a78bfa); width:30%; animation: muruguard-bar-slide 1.8s ease-in-out infinite; }
   @keyframes muruguard-bar-slide { 0%{width:15%;margin-left:0} 50%{width:55%;margin-left:20%} 100%{width:15%;margin-left:100%} }
-  .muruguard-overlay-note { color:#64748b; font-size:11px; line-height:1.6; margin:0; }
+  .muruguard-overlay-note { color:#475569; font-size:11px; line-height:1.6; margin:0; }
+  /* Live scan view: a real progress bar, elapsed time, the findings as they are found, and a stop button. */
+  .muruguard-overlay-card.muruguard-wide { max-width:560px; width:100%; }
+  .muruguard-overlay-bar.muruguard-determinate { animation:none; margin-left:0; transition:width .5s ease; }
+  .muruguard-overlay-meta { display:flex; gap:14px; justify-content:center; color:#475569; font-size:12px; margin:-12px 0 14px; font-variant-numeric:tabular-nums; }
+  .muruguard-overlay-meta:empty { display:none; }
+  .muruguard-found-high { color:#991b1b; font-weight:800; }
+  .muruguard-live { width:100%; margin:0 0 14px; text-align:left; background:rgba(255,255,255,.88); border:1px solid rgba(67,56,202,.18); border-radius:12px; box-shadow:0 6px 24px rgba(30,27,75,.08); overflow:hidden; }
+  .muruguard-live[hidden] { display:none; }
+  .muruguard-live-head { display:flex; justify-content:space-between; align-items:center; padding:8px 12px; font-size:11px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; color:#4338ca; border-bottom:1px solid rgba(67,56,202,.12); }
+  .muruguard-live-more { text-transform:none; letter-spacing:0; font-weight:600; color:#64748b; }
+  .muruguard-live-list { list-style:none; margin:0; padding:0; max-height:240px; overflow-y:auto; }
+  .muruguard-live-item { display:grid; grid-template-columns:auto 1fr; gap:2px 10px; padding:8px 12px; border-bottom:1px solid rgba(15,23,42,.06); animation:muruguard-live-in .35s ease-out; }
+  .muruguard-live-item:last-child { border-bottom:0; }
+  @keyframes muruguard-live-in { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
+  .muruguard-live-badge { grid-row:span 2; align-self:start; margin-top:1px; padding:2px 8px; border-radius:9999px; font-size:10px; font-weight:800; white-space:nowrap; }
+  .muruguard-live-badge.high { background:#fee2e2; color:#b91c1c; }
+  .muruguard-live-badge.medium { background:#fef3c7; color:#b45309; }
+  .muruguard-live-path { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; color:#0f172a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; direction:rtl; text-align:left; }
+  .muruguard-live-reason { font-size:11px; color:#64748b; line-height:1.45; }
+  .muruguard-overlay-stop { margin-top:14px; padding:7px 16px; border-radius:9999px; border:1px solid rgba(67,56,202,.35); background:#fff; color:#4338ca; font-size:12px; font-weight:700; cursor:pointer; }
+  .muruguard-overlay-stop:hover { background:#eef2ff; }
+  .muruguard-overlay-stop:focus-visible { outline:3px solid rgba(67,56,202,.35); outline-offset:2px; }
+  .muruguard-overlay-stop[hidden] { display:none; }
+  @media (prefers-reduced-motion: reduce) { .muruguard-live-item { animation:none; } .muruguard-overlay-bar.muruguard-determinate { transition:none; } }
 
 
   /* ── Code-analysis modal ──────────────────────────────────────
-     Same plain-CSS + re-parent-to-<body> treatment as the overlay
-     above, for the same reason: Joomla's admin template
+     Same plain-CSS + re-parent-to-<body> treatment as the overlay and
+     support widget above, for the same reason: Joomla's admin template
      transforms the content wrapper, which breaks `position: fixed`. */
   #muru-modal { display:none; position:fixed; inset:0; z-index:999997; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
   #muru-modal.muru-show { display:block; }
@@ -176,7 +540,8 @@ if (MuruguardCompat::isJoomla4()) {
   #muru-modal-path { font-family:ui-monospace,monospace; font-size:12.5px; color:#374151; word-break:break-all; }
   #muru-modal-close { flex-shrink:0; width:28px; height:28px; border-radius:9999px; background:#f3f4f6; color:#6b7280; font-size:14px; line-height:1; cursor:pointer; border:0; }
   #muru-modal-close:hover { background:#e5e7eb; color:#111827; }
-  #muru-modal-body { padding:16px 20px 20px; overflow-y:auto; }
+  #muru-modal-body { padding:16px 20px 20px; overflow-y:auto; min-height:0; }
+  
   .muru-reason-block { padding:12px 0; border-bottom:1px solid #f1f5f9; }
   .muru-reason-block:last-child { border-bottom:0; }
   .muru-reason-block p { font-size:13px; color:#374151; line-height:1.55; margin:0 0 8px; }
@@ -198,14 +563,14 @@ if (MuruguardCompat::isJoomla4()) {
   #muru-htaccess-modal.muru-show { display:flex; align-items:center; justify-content:center; padding:24px; }
   #muru-htaccess-modal-backdrop { position:absolute; inset:0; background:rgba(15,23,42,.65); backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px); }
   #muru-htaccess-modal-dialog { position:relative; max-width:760px; width:100%; max-height:calc(100vh - 48px); background:#fff; border-radius:20px; box-shadow:0 25px 60px rgba(15,23,42,.35); display:flex; flex-direction:column; overflow:hidden; }
-  #muru-htaccess-modal-header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:20px 24px; background:linear-gradient(135deg,#eef2ff 0%,#f5f3ff 55%,#fdf2f8 100%); border-bottom:1px solid #eef0f4; flex-shrink:0; }
+  #muru-htaccess-modal-header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:20px 24px; background:linear-gradient(100deg,#f5f3ff 0%,#fff 62%); border-bottom:1px solid #e5e7eb; border-left:4px solid #4338ca; flex-shrink:0; }
   #muru-htaccess-modal-header-title { display:flex; align-items:flex-start; gap:12px; }
-  #muru-htaccess-modal-header-icon { flex-shrink:0; display:flex; align-items:center; justify-content:center; width:40px; height:40px; border-radius:12px; background:rgba(255,255,255,.7); font-size:19px; box-shadow:0 1px 3px rgba(0,0,0,.06); }
-  #muru-htaccess-modal-header h3 { font-size:15px; font-weight:800; color:#1f2937; margin:0; }
+  #muru-htaccess-modal-header-icon { flex-shrink:0; display:flex; align-items:center; justify-content:center; width:46px; height:46px; border-radius:13px; background:linear-gradient(135deg,#4338ca,#7c3aed); font-size:22px; box-shadow:0 4px 10px rgba(67,56,202,.30); }
+  #muru-htaccess-modal-header h3 { font-size:17px; font-weight:800; color:#1f2937; margin:0; }
   #muru-htaccess-modal-header p { font-size:12px; color:#6b7280; margin:4px 0 0; line-height:1.5; }
   #muru-htaccess-modal-close { flex-shrink:0; width:30px; height:30px; border-radius:9999px; background:rgba(255,255,255,.8); color:#6b7280; font-size:14px; line-height:1; cursor:pointer; border:0; transition:background .15s, color .15s; }
   #muru-htaccess-modal-close:hover { background:#fff; color:#111827; }
-  #muru-htaccess-modal-body { padding:20px 24px; overflow-y:auto; background:#fafbfc; }
+  #muru-htaccess-modal-body { padding:20px 24px; overflow-y:auto; background:#fafbfc; min-height:0; /* flex item: without min-height:0 the body grows past the dialog instead of scrolling (nginx tab was unreadable) */ }
   #muru-htaccess-modal-missing-file { display:flex; align-items:center; gap:10px; color:#b45309; background:#fffbeb; border:1px solid #fde68a; border-radius:12px; padding:12px 14px; margin-bottom:16px; font-size:13px; font-weight:600; }
   .muru-hc-category { font-size:13px; font-weight:800; color:#374151; margin:18px 0 10px; }
   .muru-hc-category:first-child { margin-top:0; }
@@ -221,6 +586,14 @@ if (MuruguardCompat::isJoomla4()) {
   .muru-hc-explain { font-size:12px; color:#4b5563; line-height:1.6; margin:0 0 10px; }
   .muru-hc-rule-label { font-size:11px; font-weight:700; color:#6b7280; margin:0 0 4px; }
   .muru-hc-rule { font-size:11.5px; line-height:1.6; background:#111827; color:#e5e7eb; border-radius:8px; padding:10px 12px; overflow-x:auto; white-space:pre; font-family:ui-monospace,monospace; margin:0; }
+  
+  
+  
+  
+  
+  
+  
+  
   #muru-htaccess-modal-footer { padding:12px 24px 18px; font-size:11px; color:#9ca3af; flex-shrink:0; }
 
   /* ── Scan-area picker modal -- same fixed/re-parent-to-<body> treatment
@@ -238,7 +611,7 @@ if (MuruguardCompat::isJoomla4()) {
   #muru-scan-modal-header p { font-size:12px; color:#6b7280; margin:2px 0 0; }
   #muru-scan-modal-close { flex-shrink:0; width:30px; height:30px; border-radius:9999px; background:rgba(255,255,255,.8); color:#6b7280; font-size:14px; line-height:1; cursor:pointer; border:0; transition:background .15s, color .15s; }
   #muru-scan-modal-close:hover { background:#fff; color:#111827; }
-  #muru-scan-modal-body { padding:20px 24px; overflow-y:auto; background:#fafbfc; }
+  #muru-scan-modal-body { padding:20px 24px; overflow-y:auto; background:#fafbfc; min-height:0; }
   #muru-scan-modal-selectall { display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-bottom:16px; }
   #muru-scan-modal-selectall label { display:inline-flex; align-items:center; gap:7px; font-size:12.5px; font-weight:700; color:#4338ca; background:#eef2ff; border:1px solid #e0e7ff; border-radius:9999px; padding:6px 14px; cursor:pointer; user-select:none; transition:background .15s, box-shadow .15s; }
   #muru-scan-modal-selectall label:hover { background:#e0e7ff; }
@@ -309,6 +682,10 @@ if (MuruguardCompat::isJoomla4()) {
   @media (min-width: 640px) {
     #muru-scan-modal .sm\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
+
+  /* Free edition: the collapsible Security overview card on the Dashboard. */
+  #muru-overview > summary::-webkit-details-marker { display: none; }
+  #muru-overview[open] .muru-ov-open, #muru-overview:not([open]) .muru-ov-close { display: none; }
 </style>
 
 <div id="muruguard-root" class="font-sans text-gray-800 relative">
@@ -325,16 +702,42 @@ if (MuruguardCompat::isJoomla4()) {
        title="<?= Text::_('COM_MURUGUARD_REPORT_ISSUE_TITLE') ?>">
         <?= Text::_('COM_MURUGUARD_REPORT_ISSUE_LINK') ?>
     </a>
+    <?php if (!$this->scanStartedAt): ?>
+    <?php // After a scan the version pill moves into the Last scanned bar instead. ?>
     <a href="index.php?option=com_installer&view=update"
-       class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-[#EF89EB] text-black hover:bg-[#e575e0] transition-colors"
+       class="mg-btn inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition-colors"
        title="<?= Text::_('COM_MURUGUARD_CHECK_UPDATES_TITLE') ?>">
         🛡️ v<?= htmlspecialchars($this->componentVersion) ?>
-        <span class="opacity-40">|</span>
+        <span class="opacity-50">|</span>
         <?= Text::_('COM_MURUGUARD_CHECK_UPDATES_LINK') ?>
     </a>
+    <?php endif; ?>
 </div>
 <?php endif; ?>
 
+<?php
+/* Get Pro banner: shown on the Dashboard and in Settings; "Not now" hides it in this browser for 30 days. */
+$muruProBanner = function (string $where) {
+    ob_start(); ?>
+<div class="muru-pro-banner anim-in flex flex-wrap items-center justify-between gap-4 rounded-xl px-5 py-4 mb-6 shadow-sm border border-indigo-200 bg-gradient-to-r from-indigo-50 via-white to-violet-50" data-pro-banner="<?= htmlspecialchars($where) ?>">
+    <div class="flex items-start gap-3 min-w-[240px] flex-1">
+        <span class="text-2xl leading-none" aria-hidden="true">⭐</span>
+        <div>
+            <p class="text-sm font-bold text-gray-900"><?= Text::_('COM_MURUGUARD_PRO_BANNER_TITLE') ?></p>
+            <p class="text-xs text-gray-600 mt-0.5 max-w-2xl"><?= Text::_('COM_MURUGUARD_PRO_BANNER_TEXT') ?></p>
+        </div>
+    </div>
+    <div class="flex items-center gap-2 flex-wrap">
+        <a href="<?= htmlspecialchars(MuruguardHelper::STORE_REGISTER_URL) ?>" target="_blank" rel="noopener"
+           class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm whitespace-nowrap"><?= Text::_('COM_MURUGUARD_PRO_BANNER_REGISTER') ?></a>
+        <a href="<?= htmlspecialchars(MuruguardHelper::PRODUCT_PAGE_URL) ?>" target="_blank" rel="noopener"
+           class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-indigo-700 hover:text-indigo-900 whitespace-nowrap"><?= Text::_('COM_MURUGUARD_PRO_BANNER_COMPARE') ?> →</a>
+        <button type="button" class="muru-pro-banner-dismiss text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded-lg"><?= Text::_('COM_MURUGUARD_PRO_BANNER_DISMISS') ?></button>
+    </div>
+</div>
+<?php return ob_get_clean();
+};
+?>
 <?php if (!$this->newsletterBannerDismissed): ?>
 <!-- Newsletter opt-in banner -- optional, dismissible, never shown again
      once dismissed or subscribed (see newsletter_banner_dismissed in
@@ -365,6 +768,8 @@ if (MuruguardCompat::isJoomla4()) {
     </div>
 </div>
 <?php endif; ?>
+<?php // One banner above both the Dashboard and Settings (this area stays visible when Settings is open). ?>
+<?= $muruProBanner('dashboard') ?>
 
 
 <?php
@@ -595,14 +1000,26 @@ if ($in !== null):
 <!-- ── Loading overlay (re-parented to <body> at runtime, see script) ── -->
 <div id="muruguard-overlay">
     <div class="muruguard-overlay-card">
-        <div class="muruguard-overlay-icon-wrap">
-            <div class="muruguard-overlay-spinner"></div>
-            <span class="muruguard-overlay-icon">🛡️</span>
+        <div class="muruguard-radar" aria-hidden="true">
+            <div class="muruguard-radar-disc">
+                <div class="muruguard-radar-sweep"></div>
+                <span class="muruguard-radar-blip muruguard-radar-blip-1"></span>
+                <span class="muruguard-radar-blip muruguard-radar-blip-2"></span>
+                <span class="muruguard-radar-blip muruguard-radar-blip-3"></span>
+                <span class="muruguard-radar-blip muruguard-radar-blip-found" id="muruguard-radar-found"></span>
+            </div>
         </div>
         <h3 class="muruguard-overlay-title"><?= Text::_('COM_MURUGUARD_OVERLAY_TITLE') ?></h3>
         <p id="muruguard-loading-status" class="muruguard-overlay-status"><?= Text::_('COM_MURUGUARD_OVERLAY_STARTING') ?></p>
-        <div class="muruguard-overlay-track"><div class="muruguard-overlay-bar"></div></div>
+        <div class="muruguard-overlay-meta" id="muruguard-overlay-meta"></div>
+        <div class="muruguard-found" id="muruguard-found" role="status" aria-live="polite"><span class="muruguard-found-dot"></span><span id="muruguard-found-text"></span></div>
+        <div class="muruguard-overlay-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="muruguard-overlay-track"><div class="muruguard-overlay-bar" id="muruguard-overlay-bar"></div></div>
+        <div class="muruguard-live" id="muruguard-live" hidden>
+            <div class="muruguard-live-head"><span><?= Text::_('COM_MURUGUARD_OVERLAY_LIVE_TITLE') ?></span><span class="muruguard-live-more" id="muruguard-live-more"></span></div>
+            <ul class="muruguard-live-list" id="muruguard-live-list"></ul>
+        </div>
         <p class="muruguard-overlay-note"><?= Text::_('COM_MURUGUARD_OVERLAY_NOTE') ?></p>
+        <button type="button" class="muruguard-overlay-stop" id="muruguard-stop" hidden><?= Text::_('COM_MURUGUARD_OVERLAY_STOP') ?></button>
     </div>
 </div>
 
@@ -629,11 +1046,14 @@ if ($in !== null):
      scan-gate content.
      ══════════════════════════════════════════════════════════════ -->
 <div id="muru-settings-panel" class="hidden">
-    <div class="flex items-center justify-between mb-6">
-        <h2 class="text-lg font-bold text-gray-800 flex items-center gap-2">⚙️ <?= Text::_('COM_MURUGUARD_SETTINGS_HEADING') ?></h2>
-        <button type="button" id="muru-settings-back" class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors shadow-sm">
-            ← <?= Text::_('COM_MURUGUARD_SETTINGS_BACK') ?>
-        </button>
+    <div class="muru-hero">
+        <div class="muru-hero-icon">⚙️</div>
+        <div>
+            <div class="muru-crumb">MuRu Guard › <?= Text::_('COM_MURUGUARD_SETTINGS_HEADING') ?></div>
+            <h2><?= Text::_('COM_MURUGUARD_SETTINGS_HEADING') ?></h2>
+            <p><?= Text::_('COM_MURUGUARD_SETTINGS_HERO_DESC') ?></p>
+        </div>
+        <button type="button" id="muru-settings-back" class="muru-hero-back">← <?= Text::_('COM_MURUGUARD_SETTINGS_BACK') ?></button>
     </div>
 
     <div class="flex flex-wrap gap-1 p-1.5 bg-gray-50 border border-gray-200 rounded-xl mb-5 w-fit">
@@ -648,6 +1068,9 @@ if ($in !== null):
             <?php if (!empty($this->ipList)): ?>
                 <span class="inline-flex items-center justify-center min-w-4 h-4 px-1 bg-gray-200 text-gray-600 text-[10px] font-bold rounded-full"><?= count($this->ipList) ?></span>
             <?php endif; ?>
+        </button>
+        <button type="button" class="muru-settings-tab flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors" data-settings-tab="threat_monitor">
+            📈 <?= Text::_('COM_MURUGUARD_SETTINGS_TAB_THREATMON') ?>
         </button>
         <button type="button" class="muru-settings-tab flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors" data-settings-tab="ai">
             🤖 <?= Text::_('COM_MURUGUARD_SETTINGS_TAB_AI') ?>
@@ -834,6 +1257,46 @@ if ($in !== null):
         </div>
     </div>
 
+    <div class="muru-settings-tabpanel hidden" data-settings-panel="threat_monitor">
+        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-6">
+            <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
+                <div>
+                    <h3 class="text-base font-bold text-gray-800 flex items-center gap-2">📈 <?= Text::_('COM_MURUGUARD_THREATMON_HEADING') ?></h3>
+                    <p class="text-xs text-gray-500 mt-1 max-w-2xl"><?= Text::_('COM_MURUGUARD_THREATMON_LEAD') ?></p>
+                </div>
+                <div class="flex gap-1 p-1 bg-gray-50 border border-gray-200 rounded-lg" role="group" aria-label="<?= Text::_('COM_MURUGUARD_THREATMON_PERIOD') ?>">
+                    <button type="button" class="muru-tm-period px-3 py-1 rounded-md text-xs font-bold" data-tm-period="24h" aria-pressed="false"><?= Text::_('COM_MURUGUARD_THREATMON_24H') ?></button>
+                    <button type="button" class="muru-tm-period px-3 py-1 rounded-md text-xs font-bold" data-tm-period="7d" aria-pressed="true"><?= Text::_('COM_MURUGUARD_THREATMON_7D') ?></button>
+                </div>
+            </div>
+            <?php if ($this->threatMonitor === null): ?>
+                <p class="text-sm text-gray-500"><?= Text::_('COM_MURUGUARD_THREATMON_UNAVAILABLE') ?></p>
+            <?php else: ?>
+                <style><?= MuruguardThreatCharts::css() ?></style>
+                <?php $tmSpeed = $this->threatMonitor['speed'] ?? null; ?>
+                <div class="flex items-start gap-2 bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3 mb-4 text-xs text-emerald-900">
+                    <span class="text-base leading-none">⚡</span>
+                    <span>
+                    <?php if ($tmSpeed !== null): ?>
+                        <?= Text::sprintf('COM_MURUGUARD_THREATMON_SPEED', number_format((float) $tmSpeed['median'], 2), number_format((float) $tmSpeed['avg'], 2), (int) $tmSpeed['count']) ?>
+                    <?php else: ?>
+                        <?= Text::_('COM_MURUGUARD_THREATMON_SPEED_NONE') ?>
+                    <?php endif; ?>
+                    </span>
+                </div>
+                <div class="muru-tm">
+                    <?php foreach ($this->threatMonitor['periods'] as $tmKey => $tmView): ?>
+                    <div class="muru-tm-pane<?= $tmKey === '7d' ? '' : ' hidden' ?>" data-tm-pane="<?= htmlspecialchars($tmKey) ?>">
+                        <?= MuruguardThreatCharts::renderPeriod($tmView, $this->threatMonitor['score']) ?>
+                    </div>
+                    <?php endforeach; ?>
+                    <?= MuruguardThreatCharts::renderScans($this->threatMonitor['scans']) ?>
+                </div>
+                <p class="text-xs text-gray-500 mt-4"><?= Text::_('COM_MURUGUARD_THREATMON_LOG_HINT') ?></p>
+            <?php endif; ?>
+        </div>
+    </div>
+
     <div class="muru-settings-tabpanel hidden" data-settings-panel="ai">
         <?php if (!$this->canAdmin): ?>
         <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-5">
@@ -890,6 +1353,38 @@ if ($in !== null):
     </div>
 
     <div class="muru-settings-tabpanel hidden" data-settings-panel="guide">
+        <?php
+        // Plain-text summary for a support request. Built here, shown in
+        // full, and only copied when the admin clicks: nothing is sent.
+        $diagLimits = $this->serverLimits;
+        $diagLines = [
+            'MuRu Guard (Free): ' . ($this->componentVersion !== '' ? $this->componentVersion : '?'),
+            'Joomla: ' . (defined('JVERSION') ? JVERSION : '?'),
+            'PHP: ' . PHP_VERSION,
+            'Shield plugin: ' . ($this->shieldPluginActive ? 'enabled' : 'not enabled'),
+            'Protection Mode: ' . ($this->shieldEnabled ? 'on' : 'off'),
+            'Scheduled scanning: ' . ($this->cronEnabled ? 'on' : 'off'),
+            'Last scan: ' . ($this->scanned ? date('Y-m-d H:i', $this->scanStartedAt) . ' (' . (int) $this->highCount . ' high, ' . (int) $this->medCount . ' medium)' : 'no results in this session'),
+            'Max execution time: ' . ($diagLimits['execTimeBefore'] ?? '?') . ' -> ' . ($diagLimits['execTimeAfter'] ?? '?') . (empty($diagLimits['execRaisable']) ? ' (locked by host)' : ''),
+            'Memory limit: ' . ($diagLimits['memoryBefore'] ?? '?') . ' -> ' . ($diagLimits['memoryAfter'] ?? '?') . (empty($diagLimits['memRaisable']) ? ' (locked by host)' : ''),
+            'Shield errors (24 h): ' . ($this->shieldRecentError !== null ? (int) $this->shieldRecentError['count'] : 0),
+        ];
+        $diagText = implode("\n", $diagLines);
+        ?>
+        <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-5">
+            <div class="flex items-start justify-between gap-4 mb-3">
+                <div>
+                    <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">🩺 <?= Text::_('COM_MURUGUARD_DIAG_TITLE') ?></h3>
+                    <p class="text-xs text-gray-500 mt-1 max-w-xl"><?= Text::_('COM_MURUGUARD_DIAG_DESC') ?></p>
+                </div>
+                <button type="button"
+                        class="muru-copy-btn flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+                        data-copy="<?= htmlspecialchars($diagText, ENT_QUOTES) ?>" aria-label="<?= Text::_('COM_MURUGUARD_DIAG_COPY') ?>">
+                    <span class="muru-copy-icon">📋</span> <?= Text::_('COM_MURUGUARD_DIAG_COPY') ?>
+                </button>
+            </div>
+            <pre class="text-xs font-mono bg-gray-50 border border-gray-100 rounded-lg p-3 whitespace-pre-wrap text-gray-700 m-0"><?= htmlspecialchars($diagText) ?></pre>
+        </div>
         <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-5">
             <div class="flex items-start justify-between gap-4 mb-4">
                 <div>
@@ -948,6 +1443,12 @@ if ($in !== null):
     </div>
 
     <div class="muru-settings-tabpanel hidden" data-settings-panel="site_protection">
+        <?php if ($this->shieldRecentError !== null): ?>
+        <div class="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-5 text-xs text-red-800">
+            <span class="text-base leading-none">⚠️</span>
+            <span><?= Text::sprintf('COM_MURUGUARD_SHIELD_RECENT_ERROR', (int) $this->shieldRecentError['count'], htmlspecialchars((string) $this->shieldRecentError['where'], ENT_QUOTES), htmlspecialchars((string) $this->shieldRecentError['error'], ENT_QUOTES)) ?></span>
+        </div>
+        <?php endif; ?>
         <?php if (!$this->shieldPluginActive): ?>
         <div class="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-5 text-xs text-amber-800">
             <span class="text-base leading-none">⚠️</span>
@@ -955,6 +1456,16 @@ if ($in !== null):
         </div>
         <?php endif; ?>
 
+        <div class="muru-sec-subtabs" role="tablist" aria-label="<?= Text::_('COM_MURUGUARD_SEC_NAV_LABEL') ?>">
+            <button type="button" class="muru-sec-subtab active" data-sec-tab="request" role="tab" aria-selected="true">🚦 <?= Text::_('COM_MURUGUARD_SEC_NAV_REQUEST') ?></button>
+            <button type="button" class="muru-sec-subtab" data-sec-tab="hardening" role="tab" aria-selected="false">🧹 <?= Text::_('COM_MURUGUARD_SEC_NAV_HARDEN') ?></button>
+            <button type="button" class="muru-sec-subtab" data-sec-tab="access" role="tab" aria-selected="false">🚧 <?= Text::_('COM_MURUGUARD_SEC_NAV_ACCESS') ?></button>
+            <button type="button" class="muru-sec-subtab" data-sec-tab="emergency" role="tab" aria-selected="false">🚨 <?= Text::_('COM_MURUGUARD_SEC_NAV_EMERGENCY') ?></button>
+            <button type="button" class="muru-sec-subtab" data-sec-tab="log" role="tab" aria-selected="false">📋 <?= Text::_('COM_MURUGUARD_SEC_NAV_LOG') ?></button>
+        </div>
+        <div class="muru-sec-current"><?= Text::_('COM_MURUGUARD_SEC_NOW_VIEWING') ?> <strong id="muru-sec-current-label"></strong></div>
+
+        <div class="muru-sec-panel" data-sec-panel="request">
         <?php if (!$this->canAdmin): ?>
         <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-5">
             <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2 mb-3">🛡️ <?= Text::_('COM_MURUGUARD_SHIELD_TITLE') ?></h3>
@@ -1086,7 +1597,9 @@ if ($in !== null):
             </div>
         </form>
         <?php endif; ?>
+        </div>
 
+        <div class="muru-sec-panel" data-sec-panel="emergency" hidden>
         <!-- Upload lockdown -->
         <?php $ul = $this->uploadLock ?? null; ?>
         <div id="muru-sec-uploadlock" class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-5">
@@ -1135,7 +1648,9 @@ if ($in !== null):
             </details>
             <?php endif; ?>
         </div>
+        </div>
 
+        <div class="muru-sec-panel" data-sec-panel="hardening" hidden>
         <!-- Admin Lockdown -->
         <form action="<?= Route::_('index.php?option=com_muruguard&task=scanner.saveadminlockdown') ?>" method="post">
             <?= HTMLHelper::_('form.token') ?>
@@ -1188,7 +1703,9 @@ if ($in !== null):
             </button>
             <span class="text-xs text-gray-400 ml-2"><?= Text::_('COM_MURUGUARD_PROTECTED_USERS_SNAPSHOT_DESC') ?></span>
         </form>
+        </div>
 
+        <div class="muru-sec-panel" data-sec-panel="request">
         <!-- Test a Request -->
         <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-5">
             <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2 mb-1">🧪 <?= Text::_('COM_MURUGUARD_TEST_REQUEST_TITLE') ?></h3>
@@ -1220,7 +1737,9 @@ if ($in !== null):
 
             <div id="muru-test-request-results" class="mt-4 space-y-2"></div>
         </div>
+        </div>
 
+        <div class="muru-sec-panel" data-sec-panel="access" hidden>
         <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-5">
             <div class="mb-4">
                 <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">🚧 <?= Text::_('COM_MURUGUARD_IPLIST_TITLE') ?></h3>
@@ -1300,7 +1819,9 @@ if ($in !== null):
             </form>
             <?php endif; ?>
         </div>
+        </div>
 
+        <div class="muru-sec-panel" data-sec-panel="hardening" hidden>
         <!-- MuRu Shield Hardening: Backend Access (server-level .htaccess
              HTTP Basic Auth in front of /administrator) + Emergency Mode.
              Distinct from Protection Mode above -- this operates at the
@@ -1425,7 +1946,9 @@ if ($in !== null):
             </div>
             <?php endif; ?>
         </div>
+        </div>
 
+        <div class="muru-sec-panel" data-sec-panel="log" hidden>
         <?php
         $attackEntries = array_filter($this->attackLog, fn($e) => ($e['type'] ?? '') === 'request');
         $bruteEntries  = array_filter($this->attackLog, fn($e) => ($e['type'] ?? '') === 'bruteforce');
@@ -1535,6 +2058,7 @@ if ($in !== null):
                 </div>
                 <?php endif; ?>
             <?php endif; ?>
+        </div>
         </div>
     </div>
 </div>
@@ -1717,28 +2241,38 @@ $htaccessByCategory = ['critical' => [], 'header' => []];
 foreach ($htaccessChecks as $c) { $htaccessByCategory[$c['category']][] = $c; }
 ?>
 
-<!-- Re-scan bar -->
-<div class="anim-in flex flex-nowrap items-center justify-between gap-3
-            bg-white border border-gray-200 rounded-xl px-5 py-3 mb-6 shadow-sm overflow-x-auto">
-    <div class="flex items-center gap-2 text-sm text-gray-600 min-w-0 flex-shrink truncate">
-        <span class="text-lg">🕐</span>
-        <?= Text::_('COM_MURUGUARD_LAST_SCANNED_LABEL') ?>
+<!-- Re-scan bar: one compact row on desktop, wraps on narrow screens. -->
+<div class="anim-in flex flex-wrap items-center justify-between gap-2
+            bg-white border border-gray-200 rounded-xl px-5 py-2.5 mb-5 shadow-sm mg-bar mg-bar-top">
+    <div class="flex items-center gap-2 text-[11px] text-gray-600 min-w-0 flex-shrink truncate">
+        <span class="text-lg flex-shrink-0">🕐</span>
+        <span class="truncate"><?= Text::_('COM_MURUGUARD_LAST_SCANNED_LABEL') ?>
         <span class="font-bold text-gray-900"><?= date('Y-m-d H:i:s', $this->scanStartedAt) ?></span>
         <span class="text-gray-300">·</span>
-        <span class="text-gray-400"><?= Text::_('COM_MURUGUARD_CACHED_5MIN') ?></span>
+        <span class="text-gray-400"><?= Text::_('COM_MURUGUARD_CACHED_5MIN') ?></span></span>
         <?php if ($this->cronEnabled): ?>
-            <span class="text-gray-300">·</span>
-            <button type="button" id="muru-cron-status-badge" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors" title="<?= Text::_('COM_MURUGUARD_CRON_BADGE_TITLE') ?>">
+            <span class="text-gray-300 flex-shrink-0">·</span>
+            <button type="button" id="muru-cron-status-badge" class="flex-shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors" title="<?= Text::_('COM_MURUGUARD_CRON_BADGE_TITLE') ?>">
                 ⏰ <?= Text::_('COM_MURUGUARD_CRON_ON_BADGE') ?>
             </button>
+        <?php endif; ?>
+        <?php if ($this->componentVersion !== ''): ?>
+            <span class="text-gray-300 flex-shrink-0">·</span>
+            <a href="index.php?option=com_installer&view=update"
+               class="mg-btn flex-shrink-0 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-bold transition-colors"
+               title="<?= Text::_('COM_MURUGUARD_CHECK_UPDATES_TITLE') ?>">
+                🛡️ v<?= htmlspecialchars($this->componentVersion) ?>
+                <span class="opacity-50">|</span>
+                <?= Text::_('COM_MURUGUARD_CHECK_UPDATES_LINK') ?>
+            </a>
         <?php endif; ?>
     </div>
     <div class="flex items-center gap-2 flex-shrink-0">
         <form action="index.php?option=com_muruguard&task=scanner.reset" method="post" style="margin:0">
             <?= HTMLHelper::_('form.token') ?>
             <button type="submit"
-                    class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-gray-300
-                           rounded-lg text-sm font-semibold text-gray-700 bg-white hover:bg-gray-50
+                    class="mg-btn-ghost inline-flex items-center gap-1.5 px-2.5 py-1 border border-gray-300
+                           rounded-lg text-[11px] font-semibold text-gray-700 bg-white hover:bg-gray-50
                            transition-colors shadow-sm hover:shadow">
                 ⚙ <?= Text::_('COM_MURUGUARD_CHANGE_SCAN_AREAS') ?>
             </button>
@@ -1746,15 +2280,15 @@ foreach ($htaccessChecks as $c) { $htaccessByCategory[$c['category']][] = $c; }
         <form action="<?= Route::_($rescanUrl) ?>" method="post" id="muruguard-rescan-form" style="margin:0">
             <?= HTMLHelper::_('form.token') ?>
             <button type="submit"
-                    class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-indigo-200
-                           rounded-lg text-sm font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100
+                    class="mg-btn inline-flex items-center gap-1.5 px-2.5 py-1 border border-indigo-200
+                           rounded-lg text-[11px] font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100
                            transition-colors shadow-sm hover:shadow">
                 🔄 <?= Text::_('COM_MURUGUARD_RESCAN_NOW') ?>
             </button>
         </form>
         <button type="button" id="muru-open-htaccess-modal"
-                class="inline-flex items-center gap-1.5 px-4 py-1.5 border border-emerald-200
-                       rounded-lg text-sm font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100
+                class="mg-btn inline-flex items-center gap-1.5 px-2.5 py-1 border border-emerald-200
+                       rounded-lg text-[11px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100
                        transition-colors shadow-sm hover:shadow">
             🛡 <?= Text::_('COM_MURUGUARD_TAB_HTACCESS') ?>
             <?php if ($htaccessCriticalMissing > 0): ?>
@@ -1967,7 +2501,7 @@ function muru_mark_safe_button(string $category, string $identifier, array $reas
     ?>
     <button type="button" class="muru-mark-safe-btn flex-shrink-0 inline-flex items-center gap-1 h-7 px-2 rounded-lg border border-gray-200 bg-white text-[11px] font-medium text-gray-500 hover:text-emerald-700 hover:bg-emerald-50 hover:border-emerald-200 transition-colors whitespace-nowrap"
             data-fp-category="<?= htmlspecialchars($category) ?>"
-            data-fp-identifier="<?= htmlspecialchars($identifier) ?>"
+            data-fp-identifier="<?= htmlspecialchars(MuruguardHelper::encodeFindingKey((string) $identifier)) ?>"
             data-fp-fingerprint="<?= htmlspecialchars($fingerprint) ?>"
             title="<?= Text::_('COM_MURUGUARD_FP_MARK_BTN') ?>" aria-label="<?= Text::_('COM_MURUGUARD_FP_MARK_BTN') ?>">
         <span aria-hidden="true">✅</span><span><?= Text::_('COM_MURUGUARD_FP_MARK_BTN_LABEL') ?></span>
@@ -1998,7 +2532,7 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
         <td class="px-4 py-3">
             <?php if ($showCheckbox): ?>
             <input type="checkbox" class="muru-file-chk w-4 h-4 rounded border-gray-300"
-                   name="targets[]" value="<?= htmlspecialchars($f['rel']) ?>"
+                   name="targets[]" value="<?= htmlspecialchars(MuruguardHelper::encodeFindingKey((string) $f['rel'])) ?>"
                    data-confidence="<?= htmlspecialchars($f['confidence']) ?>">
             <?php endif; ?>
         </td>
@@ -2006,7 +2540,7 @@ function muru_render_file_row(array $f, bool $showCleanPreview = false, bool $sh
             <div class="flex items-center gap-1.5 max-w-md">
                 <span class="flex-shrink-0 text-sm"><?= $f['type']==='dir' ? '📂' : '📄' ?></span>
                 <div class="min-w-0 flex-1 bg-gray-50 border border-gray-100 rounded-lg px-2.5 py-1.5 overflow-hidden">
-                    <div class="font-mono text-xs break-all leading-snug" title="<?= htmlspecialchars($f['rel']) ?>">
+                    <div class="font-mono text-xs whitespace-nowrap overflow-x-auto leading-snug" title="<?= htmlspecialchars($f['rel']) ?>">
                         <?php if ($pathDir !== '.'): ?>
                             <span class="text-gray-400"><?= htmlspecialchars($pathDir) ?>/</span>
                         <?php endif; ?>
@@ -2999,6 +3533,74 @@ var muruFpToken = <?= json_encode(\Joomla\CMS\Session\Session::getFormToken()) ?
         });
     }
 
+    // ── Threat Monitor: switch between the 24-hour and 7-day views (both are rendered on the server).
+    (function () {
+        var buttons = document.querySelectorAll('.muru-tm-period');
+        if (!buttons.length) return;
+        function show(period) {
+            document.querySelectorAll('[data-tm-pane]').forEach(function (pane) {
+                pane.classList.toggle('hidden', pane.getAttribute('data-tm-pane') !== period);
+            });
+            buttons.forEach(function (b) {
+                var on = b.getAttribute('data-tm-period') === period;
+                b.setAttribute('aria-pressed', on ? 'true' : 'false');
+                b.classList.toggle('bg-indigo-600', on);
+                b.classList.toggle('text-white', on);
+                b.classList.toggle('text-gray-600', !on);
+            });
+        }
+        buttons.forEach(function (b) { b.addEventListener('click', function () { show(b.getAttribute('data-tm-period')); }); });
+        show('7d');
+    })();
+
+    // ── Get Pro banner: "Not now" hides both copies in this browser for 30 days.
+    (function () {
+        var KEY = 'muruProBannerHiddenUntil';
+        var until = 0;
+        try { until = parseInt(localStorage.getItem(KEY) || '0', 10) || 0; } catch (e) {}
+        var banners = document.querySelectorAll('.muru-pro-banner');
+        if (until > Date.now()) { banners.forEach(function (b) { b.style.display = 'none'; }); }
+        document.querySelectorAll('.muru-pro-banner-dismiss').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                try { localStorage.setItem(KEY, String(Date.now() + 30 * 86400000)); } catch (e) {}
+                banners.forEach(function (b) { b.style.display = 'none'; });
+            });
+        });
+    })();
+
+    // ── Site Protection sub-tabs: one group of cards at a time. The last group viewed is remembered for this browser
+    // tab, so a save (which reloads the page) comes back to the same group.
+    (function () {
+        var btns = document.querySelectorAll('.muru-sec-subtab');
+        var panels = document.querySelectorAll('.muru-sec-panel');
+        if (!btns.length) return;
+        function activate(name) {
+            btns.forEach(function (b) {
+                var on = b.getAttribute('data-sec-tab') === name;
+                b.classList.toggle('active', on);
+                b.setAttribute('aria-selected', on ? 'true' : 'false');
+                if (on) {
+                    var lbl = document.getElementById('muru-sec-current-label');
+                    if (lbl) { lbl.textContent = b.textContent.trim(); }
+                }
+            });
+            panels.forEach(function (p) {
+                if (p.getAttribute('data-sec-panel') === name) { p.removeAttribute('hidden'); } else { p.setAttribute('hidden', ''); }
+            });
+            try { sessionStorage.setItem('muruSecTab', name); } catch (e) {}
+        }
+        btns.forEach(function (b) {
+            b.addEventListener('click', function () {
+                activate(b.getAttribute('data-sec-tab'));
+                var bar = b.closest('.muru-sec-subtabs');
+                if (bar && bar.getBoundingClientRect().top < 0) { bar.scrollIntoView({ block: 'start' }); }
+            });
+        });
+        var saved = null;
+        try { saved = sessionStorage.getItem('muruSecTab'); } catch (e) {}
+        activate(saved && document.querySelector('.muru-sec-subtab[data-sec-tab="' + saved + '"]') ? saved : 'request');
+    })();
+
     // ── Scan-area picker modal ───────────────────────────────────
     var scanModal   = document.getElementById('muru-scan-modal');
     var openScanBtn = document.getElementById('muru-open-scan-modal');
@@ -3085,6 +3687,84 @@ var muruFpToken = <?= json_encode(\Joomla\CMS\Session\Session::getFormToken()) ?
         var resultsUrl = <?= json_encode(Route::_('index.php?option=com_muruguard', false)) ?>;
         var isFirstCall = true;
 
+        // Live view: progress, elapsed time, findings as they arrive, and a way to stop.
+        var card     = overlay.querySelector('.muruguard-overlay-card');
+        var metaEl   = document.getElementById('muruguard-overlay-meta');
+        var barEl    = document.getElementById('muruguard-overlay-bar');
+        var trackEl  = document.getElementById('muruguard-overlay-track');
+        var foundEl  = document.getElementById('muruguard-found');
+        var foundTxt = document.getElementById('muruguard-found-text');
+        var liveBox  = document.getElementById('muruguard-live');
+        var liveList = document.getElementById('muruguard-live-list');
+        var liveMore = document.getElementById('muruguard-live-more');
+        var stopBtn  = document.getElementById('muruguard-stop');
+        var LIVE_MAX = 40;
+        var shown = 0, seenPaths = {}, stopped = false, controller = null;
+        var startedAt = Date.now();
+        while (liveList.firstChild) { liveList.removeChild(liveList.firstChild); }
+        liveBox.hidden = true;
+        liveMore.textContent = '';
+        foundEl.classList.remove('muruguard-on');
+        var resetBlip = document.getElementById('muruguard-radar-found');
+        if (resetBlip) { resetBlip.classList.remove('muruguard-on'); }
+        card.classList.remove('muruguard-wide');
+        barEl.classList.remove('muruguard-determinate');
+        barEl.style.width = '';
+        trackEl.removeAttribute('aria-valuenow');
+
+        function fmtElapsed() {
+            var s = Math.floor((Date.now() - startedAt) / 1000);
+            return Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2);
+        }
+        function renderMeta() {
+            metaEl.textContent = <?= json_encode(Text::_('COM_MURUGUARD_OVERLAY_ELAPSED')) ?>.replace('%s', fmtElapsed());
+        }
+        renderMeta();
+        var timer = setInterval(renderMeta, 1000);
+
+        function addFinding(f) {
+            if (!f || !f.path || seenPaths[f.path]) return;
+            seenPaths[f.path] = true;
+            if (shown >= LIVE_MAX) { return; }
+            var li = document.createElement('li');
+            li.className = 'muruguard-live-item';
+            var badge = document.createElement('span');
+            badge.className = 'muruguard-live-badge ' + (f.confidence === 'high' ? 'high' : 'medium');
+            badge.textContent = f.confidence === 'high' ? <?= json_encode(Text::_('COM_MURUGUARD_OVERLAY_BADGE_HIGH')) ?> : <?= json_encode(Text::_('COM_MURUGUARD_OVERLAY_BADGE_REVIEW')) ?>;
+            var path = document.createElement('span');
+            path.className = 'muruguard-live-path';
+            // Right-to-left trims the start of a long path, so the file name stays visible; the bdi keeps it in order.
+            var bdi = document.createElement('bdi');
+            bdi.textContent = f.path;
+            path.appendChild(bdi);
+            path.title = f.path;
+            li.appendChild(badge);
+            li.appendChild(path);
+            if (f.reason) {
+                var reason = document.createElement('span');
+                reason.className = 'muruguard-live-reason';
+                reason.textContent = f.reason;
+                li.appendChild(reason);
+            }
+            liveList.insertBefore(li, liveList.firstChild);
+            shown++;
+            liveBox.hidden = false;
+            card.classList.add('muruguard-wide');
+        }
+
+        function finish() {
+            clearInterval(timer);
+            stopBtn.hidden = true;
+        }
+
+        stopBtn.hidden = false;
+        stopBtn.onclick = function () {
+            stopped = true;
+            if (controller) { try { controller.abort(); } catch (e) {} }
+            finish();
+            overlay.classList.remove('muruguard-show');
+        };
+
         function step() {
             var fd = new FormData(sourceForm);
             if (isFirstCall) {
@@ -3100,20 +3780,31 @@ var muruFpToken = <?= json_encode(\Joomla\CMS\Session\Session::getFormToken()) ?
                 fd.set('reset', '');
             }
             isFirstCall = false;
+            if (stopped) return;
+            controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
 
-            fetch(chunkUrl, { method: 'POST', body: fd, credentials: 'same-origin' })
+            fetch(chunkUrl, { method: 'POST', body: fd, credentials: 'same-origin', signal: controller ? controller.signal : undefined })
                 .then(function (res) { return res.json(); })
                 .then(function (data) {
-                    if (data.error) { muruChunkScanFailed(data.error); return; }
+                    if (stopped) return;
+                    if (data.error) { finish(); muruChunkScanFailed(data.error); return; }
+
+                    (data.recentFindings || []).forEach(addFinding);
 
                     if (data.done) {
+                        finish();
+                        barEl.classList.add('muruguard-determinate');
+                        barEl.style.width = '100%';
                         if (data.truncatedLabels && data.truncatedLabels.length) {
                             window.alert(
                                 <?= json_encode(Text::_('COM_MURUGUARD_CHUNK_TRUNCATED_ALERT')) ?> +
                                 '\n\n' + data.truncatedLabels.join(', ')
                             );
                         }
-                        window.location.href = resultsUrl;
+                        statusEl.textContent = <?= json_encode(Text::_('COM_MURUGUARD_OVERLAY_DONE')) ?>;
+                        trackEl.setAttribute('aria-valuenow', '100');
+                        // A moment to see the full bar and the last findings before the results page opens.
+                        setTimeout(function () { window.location.href = resultsUrl; }, 700);
                         return;
                     }
 
@@ -3121,11 +3812,39 @@ var muruFpToken = <?= json_encode(\Joomla\CMS\Session\Session::getFormToken()) ?
                         ' ' + data.completedCount + ' / ' + data.totalCount +
                         (data.currentAreaLabel ? ' — ' + data.currentAreaLabel : '');
 
+                    // A real progress bar once the number of scan areas is known.
+                    var total = parseInt(data.totalCount, 10) || 0;
+                    if (total > 0) {
+                        var pct = Math.max(3, Math.min(99, Math.round((parseInt(data.completedCount, 10) || 0) * 100 / total)));
+                        barEl.classList.add('muruguard-determinate');
+                        barEl.style.width = pct + '%';
+                        trackEl.setAttribute('aria-valuenow', String(pct));
+                    }
+
+                    // The counter appears only once the scan has actually found something.
+                    var foundN = parseInt(data.findingsCount, 10) || 0;
+                    var highN = parseInt(data.highCount, 10) || 0;
+                    if (foundN > 0) {
+                        while (foundTxt.firstChild) { foundTxt.removeChild(foundTxt.firstChild); }
+                        foundTxt.appendChild(document.createTextNode(<?= json_encode(Text::_('COM_MURUGUARD_OVERLAY_FOUND')) ?>.replace('%d', foundN)));
+                        if (highN > 0) {
+                            var hi = document.createElement('span');
+                            hi.className = 'muruguard-found-high';
+                            hi.textContent = ' · ' + <?= json_encode(Text::_('COM_MURUGUARD_OVERLAY_HIGH_COUNT')) ?>.replace('%d', highN);
+                            foundTxt.appendChild(hi);
+                        }
+                        foundEl.classList.add('muruguard-on');
+                        var foundBlip = document.getElementById('muruguard-radar-found');
+                        if (foundBlip) { foundBlip.classList.add('muruguard-on'); }
+                    }
+                    var hidden = foundN - shown;
+                    liveMore.textContent = hidden > 0 ? <?= json_encode(Text::_('COM_MURUGUARD_OVERLAY_LIVE_MORE')) ?>.replace('%d', hidden) : '';
+
                     // Another scan step is running (second tab or admin): wait, then ask again.
                     if (data.busy) { setTimeout(step, 1500); return; }
                     step();
                 })
-                .catch(function () { muruChunkScanFailed(''); });
+                .catch(function () { if (stopped) return; finish(); muruChunkScanFailed(''); });
         }
 
         step();

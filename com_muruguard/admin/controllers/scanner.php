@@ -23,6 +23,9 @@ require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/models/scanner.php
 
 class MuruguardControllerScanner extends BaseController
 {
+    /** Shortest scheduled-scan token accepted; the Generate button makes 48 characters. */
+    private const CRON_TOKEN_MIN_LENGTH = 32;
+
     /**
      * Bulk selection forms (delete/clean actions) submit one checkbox per
      * row -- a large scan result (thousands of flagged files, or hundreds
@@ -48,10 +51,10 @@ class MuruguardControllerScanner extends BaseController
         if ($json !== '') {
             $decoded = json_decode($json, true);
             if (is_array($decoded)) {
-                return array_values(array_map('strval', $decoded));
+                return array_values(array_map(fn($v) => \MuruguardHelper::decodeFindingKey((string) $v), $decoded));
             }
         }
-        return $input->post->get($arrayName, [], 'array');
+        return array_values(array_map(fn($v) => \MuruguardHelper::decodeFindingKey((string) $v), (array) $input->post->get($arrayName, [], 'array')));
     }
 
     /**
@@ -331,13 +334,41 @@ public function scan()
         $params = ComponentHelper::getParams('com_muruguard');
         $cronEnabled = (bool) $params->get('cron_enabled', 0);
         $configuredToken = trim((string) $params->get('cron_token', ''));
-        $suppliedToken = (string) $app->input->getString('token', '');
+        // The X-MuruGuard-Token header keeps the token out of web server
+        // access logs; ?token= still works for simple cron services.
+        $suppliedToken = (string) $app->input->server->getString('HTTP_X_MURUGUARD_TOKEN', '');
+        if ($suppliedToken === '') {
+            $suppliedToken = (string) $app->input->getString('token', '');
+        }
 
         header('Content-Type: text/plain; charset=utf-8');
 
         if (!$cronEnabled || $configuredToken === '' || $suppliedToken === '' || !hash_equals($configuredToken, $suppliedToken)) {
+            // Slows down guessing.
+            usleep(500000);
             http_response_code(403);
             echo "Forbidden\n";
+            $app->close();
+        }
+        if (strlen($configuredToken) < self::CRON_TOKEN_MIN_LENGTH) {
+            http_response_code(403);
+            echo "Forbidden: the scheduled scan token is too short. Generate a new one in MuRu Guard > Settings.\n";
+            $app->close();
+        }
+
+        // One scheduled scan at a time, and not again within 5 minutes, so
+        // a leaked URL can't be used to keep the server busy.
+        $lockPath = JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/scheduled-check.lock';
+        $lock = @fopen($lockPath, 'c');
+        if ($lock !== false && !@flock($lock, LOCK_EX | LOCK_NB)) {
+            http_response_code(429);
+            echo "Busy: a scheduled scan is already running\n";
+            $app->close();
+        }
+        $lastRun = (new MuruguardModelScanner())->getLastScheduledRunTime();
+        if ($lastRun !== null && (time() - $lastRun) < 300) {
+            http_response_code(429);
+            echo "Too soon: the last scheduled scan ran less than 5 minutes ago\n";
             $app->close();
         }
 
@@ -520,6 +551,12 @@ public function scan()
 
         if ($cronEnabled && $cronToken === '') {
             $app->enqueueMessage(Text::_('COM_MURUGUARD_SETTINGS_NEEDS_TOKEN'), 'error');
+            $this->setRedirect($this->settingsRedirectUrl());
+            return;
+        }
+
+        if ($cronToken !== '' && strlen($cronToken) < self::CRON_TOKEN_MIN_LENGTH) {
+            $app->enqueueMessage(Text::sprintf('COM_MURUGUARD_SETTINGS_TOKEN_TOO_SHORT', self::CRON_TOKEN_MIN_LENGTH), 'error');
             $this->setRedirect($this->settingsRedirectUrl());
             return;
         }
@@ -775,6 +812,7 @@ public function scan()
     {
         Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
         \MuruguardHelper::requireAdminAccess();
+        \MuruguardHelper::requireSuperUser();
         $app = Factory::getApplication();
 
         $hours = $app->input->getInt('uploadlock_hours', 24);
@@ -860,6 +898,7 @@ public function scan()
     {
         Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
         \MuruguardHelper::requireAdminAccess();
+        \MuruguardHelper::requireSuperUser();
 
         /** @var MuruguardModelScanner $model */
         $model = $this->getModel('Scanner');
@@ -910,6 +949,7 @@ public function scan()
     {
         Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
         \MuruguardHelper::requireAdminAccess();
+        \MuruguardHelper::requireSuperUser();
 
         $app = Factory::getApplication();
         $username = trim($app->input->getString('backend_auth_username', ''));
@@ -950,6 +990,7 @@ public function scan()
     {
         Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
         \MuruguardHelper::requireAdminAccess();
+        \MuruguardHelper::requireSuperUser();
 
         /** @var MuruguardModelScanner $model */
         $model = $this->getModel('Scanner');
@@ -969,6 +1010,7 @@ public function scan()
     {
         Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
         \MuruguardHelper::requireAdminAccess();
+        \MuruguardHelper::requireSuperUser();
 
         $app = Factory::getApplication();
         $username = trim($app->input->getString('emergency_username', ''));
@@ -998,6 +1040,7 @@ public function scan()
     {
         Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
         \MuruguardHelper::requireAdminAccess();
+        \MuruguardHelper::requireSuperUser();
 
         /** @var MuruguardModelScanner $model */
         $model = $this->getModel('Scanner');
@@ -1068,7 +1111,7 @@ public function scan()
         $input = $app->input;
 
         $category    = $input->getCmd('fp_category', '');
-        $identifier  = $input->getString('fp_identifier', '');
+        $identifier  = \MuruguardHelper::decodeFindingKey($input->getString('fp_identifier', ''));
         $fingerprint = $input->getString('fp_fingerprint', '');
         $note        = $input->getString('fp_note', '');
 

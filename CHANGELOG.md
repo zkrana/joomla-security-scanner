@@ -8,6 +8,48 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [4.2.0] - 2026-11-04
+
+Update the Shield plugin to 1.6.0 together with the component (the package installs both).
+
+### Added
+
+* **Threat Monitor tab** (Settings). What the Shield blocked and detected over the last 24 hours or 7 days: a threat level, the headline numbers with the change from the previous period, attacks over time by severity, the top rules and the attack types, plus your security score over the last 5 scans. Every chart has a "View as table" version. Drawn from the Protection Log; clearing the log clears the charts.
+* **Shield speed.** The Threat Monitor shows how long the Shield takes per request, measured on 1 request in 50 while Protection Mode is on.
+* **Diagnostics for a support request** (Settings > Setup Guide). Versions, which protections are on, the last scan's counts and the server limits as plain text with a Copy button. Nothing is sent.
+* **Live scan screen.** While a scan runs you see a radar, a progress bar, the elapsed time, how many items were found so far and the latest findings (path, High or Review, short reason). **Stop scan** ends it cleanly. Scan steps report back about every 2 seconds.
+* **Get MuRu Guard Pro banner** on the Dashboard and in Settings, with a link to create a free account and a Free vs Pro comparison. **Not now** hides it in that browser for 30 days.
+
+### Security
+
+* **Visitor IPs can no longer be faked behind a proxy setting.** The trusted proxy header is believed only for requests that come from a trusted proxy: a new **Trusted proxy IPs** setting, or with that empty, a private or local proxy, or Cloudflare for CF-Connecting-IP. X-Forwarded-For is read from the right. A public proxy that is not Cloudflare must now be listed.
+* **Webshells can no longer hide in folders named like trusted extensions.** The Akeeba, Admin Tools, RSFirewall and htProtect skip now applies only to those extensions' real folders, and only while they are installed.
+* **Files planted in MuRu Guard's own data folder are found.** A file posing as the scan-progress file is reported unless it is one the extension wrote.
+* **A .htaccess in a sub-folder that redirects visitors to another site is reported** (RewriteRule with a redirect, Redirect, RedirectMatch or ErrorDocument pointing off-site). Redirects to your own domain are ignored.
+* **Marking a file safe now follows its contents.** A file marked safe comes back if its bytes change, and a file that no longer exists can't be marked safe.
+* **High-severity attack payloads are blocked for administrators too.** Admins stay exempt from the softer rules and country checks, but a logged-in session can no longer carry a high-severity exploit past the Shield; backend form posts are still exempt.
+* **Admin Lockdown covers more ways in.** New users from any backend task or the Web Services API, Joomla Update package uploads and template file editing are blocked while it is on.
+* **Blocking or removing a Super User is no longer undone.** Protected users follow changes a Super User makes in the backend.
+* **A site behind a proxy can no longer be locked out by brute-force blocking.** Private and proxy addresses are never brute-force blocked.
+* **Stronger scheduled scan token.** Tokens must be at least 32 characters (the Generate button makes 48), can be sent in an X-MuruGuard-Token header to keep them out of logs, wrong tokens are slowed down, and a scheduled scan can't start while one is running or within 5 minutes of the last. If your current token is shorter, generate a new one and update your cron job.
+* **File-writing and lockout actions need a Super User:** Backend Access, Emergency Mode, the Upload lockdown and the protected-user snapshot, even for a group with MuRu Guard's Configure permission.
+* **Delete and clean never follow a symbolic link.** A link pointing at a core file is reported for removal by hand instead of the real file being changed.
+* **The Joomla version check can't be switched off by editing one file.** A mismatch between joomla.xml and Joomla's Version class is reported.
+* **Contact messages are no longer blocked for plain English.** The code-execution request rule now needs a PHP-shaped argument, so text like "operating system (Windows 11)" passes while real payloads are still blocked.
+* **Shield problems are visible.** If a Shield check hits an error it still lets the request through, and Site Protection now says that it happened.
+
+### Fixed
+
+* **Scheduled scans work again through the webcron URL on Joomla 5 and 6.** The administrator com_ajax call answered with a 502 error because newer Joomla versions only accept a guest call for a handler registered in the new way.
+* **Large folders are scanned to the end.** A folder that runs out of time continues in the next scan step instead of being left half-scanned.
+* **Files with unusual names can be removed from the results.** A file whose name has invalid characters can now be deleted, cleaned or marked safe from the scan results.
+
+### Changed
+
+* **New admin design, shared with Pro.** Settings opens with a header and back link; buttons, tabs and cards use the same style as MuRu Guard Pro.
+* **Site Protection is split into sub-tabs** (Firewall, Emergency, Hardening, Access, Log). The tab you last opened is remembered for the session.
+* **Results page:** the Last scanned bar is more compact and holds the version / Check for updates link. Paths in the Suspicious Files table stay on one line and scroll sideways.
+
 ## [4.1.0] - 2026-10-29
 
 ### Security
