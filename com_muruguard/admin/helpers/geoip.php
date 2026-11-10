@@ -206,7 +206,8 @@ class MuruguardGeoIp
         $in = @fopen($url, 'rb', false, $ctx);
         if ($in === false) return 'Could not reach download.db-ip.com';
         $status = 0;
-        foreach ((array) ($http_response_header ?? []) as $h) {
+        // PHP 8.4+ has http_get_last_response_headers(); $http_response_header is deprecated in 8.5.
+        foreach ((array) (function_exists('http_get_last_response_headers') ? (http_get_last_response_headers() ?? []) : ($http_response_header ?? [])) as $h) {
             if (preg_match('#^HTTP/\S+\s+(\d{3})#', $h, $m)) $status = (int) $m[1];
         }
         if ($status !== 200) {

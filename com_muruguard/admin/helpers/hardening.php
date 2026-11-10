@@ -227,11 +227,13 @@ class MuruguardHardeningHelper
             'ssl' => ['verify_peer' => false, 'verify_peer_name' => false],
         ]);
         $result = @file_get_contents($url, false, $context);
-        if ($result === false || !isset($http_response_header)) return null;
+        // PHP 8.4+ has http_get_last_response_headers(); $http_response_header is deprecated in 8.5.
+        $responseHeaders = (function_exists('http_get_last_response_headers') ? (http_get_last_response_headers() ?? []) : ($http_response_header ?? []));
+        if ($result === false || $responseHeaders === []) return null;
         $status = null;
         $server = null;
         $location = null;
-        foreach ($http_response_header as $line) {
+        foreach ($responseHeaders as $line) {
             if ($status === null && preg_match('#^HTTP/\S+\s+(\d{3})#', $line, $m)) {
                 $status = (int) $m[1];
             } elseif (preg_match('#^Server:\s*(.+)$#i', $line, $m)) {
@@ -480,7 +482,7 @@ class MuruguardHardeningHelper
             'ssl' => ['verify_peer' => false, 'verify_peer_name' => false],
         ]);
         $response = @file_get_contents($url, false, $context);
-        $headers = $http_response_header ?? [];
+        $headers = (function_exists('http_get_last_response_headers') ? (http_get_last_response_headers() ?? []) : ($http_response_header ?? []));
         if ($response === false && $headers === []) return null;
         if (isset($headers[0]) && preg_match('#HTTP/\S+\s+(\d{3})#', (string) $headers[0], $m)) return (int) $m[1];
 

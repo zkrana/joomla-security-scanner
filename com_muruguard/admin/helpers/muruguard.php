@@ -2152,13 +2152,14 @@ class MuruguardHelper
                 return ['ok' => false, 'error' => 'Could not reach the AI provider (network error or timeout).'];
             }
 
-            // $http_response_header is populated by file_get_contents()
-            // itself for an http:// stream -- checking it is the only way
-            // to tell "got a response" apart from "got a 4xx/5xx response
-            // body" when ignore_errors is on, which is deliberate here
-            // (a 4xx body often has the actual reason, e.g. a bad key).
+            // The response headers (http_get_last_response_headers() on PHP
+            // 8.4+, $http_response_header before; deprecated in 8.5) are the
+            // only way to tell "got a response" apart from "got a 4xx/5xx
+            // response body" when ignore_errors is on, which is deliberate
+            // here (a 4xx body often has the actual reason, e.g. a bad key).
+            $responseHeaders = (function_exists('http_get_last_response_headers') ? (http_get_last_response_headers() ?? []) : ($http_response_header ?? []));
             $statusOk = true;
-            if (isset($http_response_header[0]) && preg_match('/\s(\d{3})\s/', $http_response_header[0], $m)) {
+            if (isset($responseHeaders[0]) && preg_match('/\s(\d{3})\s/', $responseHeaders[0], $m)) {
                 $statusOk = ((int) $m[1]) < 400;
             }
 
@@ -4378,6 +4379,40 @@ class MuruguardHelper
         if (strncmp($value, 'b64:', 4) !== 0) return $value;
         $raw = base64_decode(substr($value, 4), true);
         return $raw === false ? $value : $raw;
+    }
+
+    private static function newsletterStateFilePath(): string
+    {
+        return JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/data/newsletter-state.php';
+    }
+
+    /**
+     * True once the newsletter opt-in banner has been answered on this site
+     * (subscribed or dismissed). Kept in a data file, not only in the
+     * component params: saving Joomla's Options replaces the params with the
+     * form's fields alone, which dropped the flag and brought the banner back.
+     * A site that answered before this file existed still has the old param:
+     * it is copied into the file the first time it is seen, so the next
+     * Options save cannot bring the banner back.
+     */
+    public static function isNewsletterBannerDone($params): bool
+    {
+        $path = self::newsletterStateFilePath();
+        if (is_file($path)) {
+            $state = json_decode(self::stripDataFileStub((string) @file_get_contents($path)), true);
+            if (is_array($state) && !empty($state['done'])) return true;
+        }
+        if ($params && (int) $params->get('newsletter_banner_dismissed', 0) === 1) {
+            self::markNewsletterBannerDone((int) $params->get('newsletter_subscribed', 0) === 1);
+            return true;
+        }
+        return false;
+    }
+
+    /** Records that the banner was answered, so it is never shown on this site again. */
+    public static function markNewsletterBannerDone(bool $subscribed): void
+    {
+        self::writeDataFile(self::newsletterStateFilePath(), ['done' => true, 'subscribed' => $subscribed, 'at' => time()]);
     }
 
     private static function shieldErrorsFilePath(): string

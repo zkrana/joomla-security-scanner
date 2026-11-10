@@ -188,10 +188,10 @@ class MuruguardViewScanner extends HtmlView
             : ['hasSnapshot' => false, 'count' => 0, 'takenAt' => null];
         $this->ipList                = MuruguardHelper::getIpList();
         $this->falsePositives        = MuruguardHelper::getFalsePositives();
-        // Covers both an explicit dismissal and a successful subscription
-        // (subscribeToNewsletter() sets this same flag on success) --
+        // Covers both an explicit dismissal and a successful subscription --
         // either way, the banner has nothing left to ask this site for.
-        $this->newsletterBannerDismissed = (bool) $cfgParams->get('newsletter_banner_dismissed', 0);
+        // Read from a data file too: saving Options drops the param.
+        $this->newsletterBannerDismissed = MuruguardHelper::isNewsletterBannerDone($cfgParams);
 
         // AI Integration -- see MuruguardHelper::askAi() for how these are
         // actually used (only ever server-side, on the per-row "Ask AI"

@@ -8,6 +8,15 @@ Each release on GitHub pulls its description directly from this file — see `sc
 
 ## [Released]
 
+## [4.2.1] - 2026-11-10
+
+A maintenance release for every supported Joomla version (3.10 to 6). Only the component changes; the Shield plugin stays at 1.6.0.
+
+### Fixed
+
+* **Ready for PHP 8.5.** Response headers are read with PHP's new function, so no deprecation notice is written on PHP 8.5; older PHP versions work as before.
+* **The newsletter box stays away once you answer it.** After you subscribe or close it, saving MuRu Guard's Options no longer brings it back, including on sites that answered it with an earlier version.
+
 ## [4.2.0] - 2026-11-04
 
 Update the Shield plugin to 1.6.0 together with the component (the package installs both).

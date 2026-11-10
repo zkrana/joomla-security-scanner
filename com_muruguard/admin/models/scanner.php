@@ -794,6 +794,7 @@ class MuruguardModelScanner extends MuruguardCompatDatabaseModel
     /** Dismisses the "get security alerts & updates" dashboard banner without subscribing. */
     public function dismissNewsletterBanner(): void
     {
+        \MuruguardHelper::markNewsletterBannerDone(false);
         $this->saveHardeningParams(['newsletter_banner_dismissed' => 1]);
     }
 
@@ -808,6 +809,7 @@ class MuruguardModelScanner extends MuruguardCompatDatabaseModel
     {
         $ok = \MuruguardHelper::submitNewsletterOptIn($name, $email);
         if ($ok) {
+            \MuruguardHelper::markNewsletterBannerDone(true);
             $this->saveHardeningParams(['newsletter_subscribed' => 1, 'newsletter_banner_dismissed' => 1]);
         }
         return $ok;
