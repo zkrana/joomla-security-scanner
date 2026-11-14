@@ -8,7 +8,7 @@
     <license>GNU General Public License version 2 or later; see LICENSE.txt</license>
     <authorEmail>zkranao@gmail.com</authorEmail>
     <authorUrl>https://store.lyzerslab.com/joomla-products/muru-guard-security-scanner</authorUrl>
-    <version>4.2.1</version>
+    <version>4.3.0</version>
     <description>PKG_MURUGUARD_XML_DESCRIPTION</description>
     <files>
         <file type="component" id="com_muruguard">com_muruguard.zip</file>

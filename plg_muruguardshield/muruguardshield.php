@@ -564,6 +564,8 @@ abstract class plgSystemMuruguardshieldBase extends CMSPlugin
         $get       = $input->get->getArray();
         $post      = $input->post->getArray();
 
+        if ($this->runSppbGuard($params, $ip, $uri, $userAgent)) return;
+
         $match = \MuruguardHelper::scanRequestForAttack($get, $post, $uri, $userAgent);
         if ($match === null) return;
 
@@ -627,6 +629,46 @@ abstract class plgSystemMuruguardshieldBase extends CMSPlugin
      * #__users -- NOT $_POST['jform']['id'], which FormController
      * overwrites with this same value before it ever reaches the model).
      */
+    /**
+     * SP Page Builder Guard: refuses requests to SP Page Builder that use the attack routes behind its reported holes
+     * (see MuruguardHelper::sppbGuardMatch()). Reads the request as sent (Joomla's input filter would hide encoded
+     * values) and a JSON body up to 1 MB. Returns true when the request was refused.
+     */
+    private function runSppbGuard($params, string $ip, string $uri, string $userAgent): bool
+    {
+        if (!(bool) $params->get('sppb_guard_endpoints', 1)) return false;
+        $get  = is_array($_GET ?? null) ? $_GET : [];
+        $post = is_array($_POST ?? null) ? $_POST : [];
+        $json = stripos((string) ($_SERVER['CONTENT_TYPE'] ?? ''), 'json') !== false;
+        $option = (string) ($get['option'] ?? $post['option'] ?? '');
+        if (strtolower($option) !== 'com_sppagebuilder' && !$json) return false;
+        try {
+            if ($json) {
+                $raw = (string) @file_get_contents('php://input', false, null, 0, 1048576);
+                $body = $raw !== '' ? json_decode($raw, true) : null;
+                if (is_array($body)) $post['__json_body'] = $body;
+            }
+            $match = \MuruguardHelper::sppbGuardMatch($get, $post);
+        } catch (\Throwable $e) {
+            return false;
+        }
+        if ($match === null) return false;
+        \MuruguardHelper::recordAttackLogEntry([
+            'type'       => 'request',
+            'ip'         => $ip,
+            'time'       => time(),
+            'blocked'    => true,
+            'rule'       => $match['rule'],
+            'severity'   => $match['severity'],
+            'why'        => $match['why'],
+            'matched'    => $match['matched_text'],
+            'uri'        => mb_substr($uri, 0, 300),
+            'user_agent' => mb_substr($userAgent, 0, 200),
+        ]);
+        $this->rejectRequest();
+        return true;
+    }
+
     private function checkAdminLockdownGate(): void
     {
         $app = Factory::getApplication();

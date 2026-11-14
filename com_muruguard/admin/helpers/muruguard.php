@@ -56,6 +56,126 @@ class MuruguardHelper
         self::requirePermission('core.delete');
     }
 
+    /** SP Page Builder Guard rule names. */
+    public const SPPB_GUARD_RULES = ['sppb_dead_endpoint', 'sppb_path_param'];
+
+    /**
+     * SP Page Builder Guard: checks a request to com_sppagebuilder for the attack shapes behind its known holes, so a
+     * hole that is not patched yet cannot be used: the "get-page-data" AJAX action (unused by the editor, reads JSON
+     * files from anywhere under the site root), and a path-like parameter holding a traversal, a stream wrapper, a
+     * system path or a non-plain addon name.
+     *
+     * @param array $post may hold a decoded JSON body under '__json_body'
+     * @return array|null rule, severity, block_eligible, why, matched_text
+     */
+    public static function sppbGuardMatch(array $get, array $post): ?array
+    {
+        $option = (string) ($get['option'] ?? $post['option'] ?? ($post['__json_body']['option'] ?? ''));
+        if (strtolower($option) !== 'com_sppagebuilder') return null;
+        $hit = static function (string $rule, string $why, string $text): array {
+            return ['rule' => $rule, 'severity' => 'high', 'block_eligible' => true, 'why' => $why, 'matched_text' => mb_substr($text, 0, 200)];
+        };
+        // Every scalar with its key, nested arrays included (bounded depth and count).
+        $pairs = [];
+        $walk = static function ($node, string $key, int $depth) use (&$walk, &$pairs): void {
+            if (count($pairs) > 5000 || $depth > 8) return;
+            if (is_array($node)) { foreach ($node as $k => $v) $walk($v, (string) $k, $depth + 1); return; }
+            if (is_scalar($node)) $pairs[] = [$key, (string) $node];
+        };
+        $walk($get, '', 0);
+        $walk($post, '', 0);
+
+        foreach ($pairs as [$key, $value]) {
+            if (strtolower($key) === 'callback' && strtolower(trim($value)) === 'get-page-data') {
+                return $hit('sppb_dead_endpoint', 'SP Page Builder\'s "get-page-data" action reads JSON files from anywhere under the site root and is not used by its editor; requests for it are refused.', $value);
+            }
+        }
+        foreach ($pairs as [$key, $value]) {
+            $k = strtolower($key);
+            if ($k === 'addon_name' && $value !== '' && !preg_match('/^[a-z0-9_-]{1,80}$/i', $value)) {
+                return $hit('sppb_path_param', 'An SP Page Builder addon name that is not a plain name (a path or traversal in place of an addon).', $value);
+            }
+            if (!preg_match('/path|file|dir|folder/', $k)) continue;
+            $v = rawurldecode(rawurldecode($value));
+            if (preg_match('#(\.\./|\.\.\\\\|\x00|^(?:php|phar|data|file|zip|expect|glob)://|^/(?:etc|var|home|usr|proc|root|tmp|opt|srv)/|^[a-z]:[\\\\/])#i', $v)
+                || (defined('JPATH_ROOT') && JPATH_ROOT !== '' && strpos($v, JPATH_ROOT) === 0)) {
+                return $hit('sppb_path_param', 'An SP Page Builder parameter that names a file holds a traversal, a stream wrapper or a server path.', $value);
+            }
+        }
+        return null;
+    }
+
+    /** Attack signs inside a script or event handler: stealing cookies or stored tokens, hiding code, loading a payload. */
+    private const SPPB_ATTACK_SIGNS = [
+        'reads the visitor\'s cookies (document.cookie)' => '/document\s*\.\s*cookie/i',
+        'reads stored browser data (localStorage / sessionStorage)' => '/\b(?:local|session)Storage\b/',
+        'runs hidden code (eval)' => '/\beval\s*\(/',
+        'decodes hidden code (atob / fromCharCode / unescape)' => '/\batob\s*\(|fromCharCode|\bunescape\s*\(/',
+        'builds code from text (new Function)' => '/\bnew\s+Function\s*\(/',
+        'loads a script from an address built at run time' => '/\.src\s*=\s*[\'"]https?:\/\/[^\'"]+[\'"]\s*\+/i',
+    ];
+
+    /**
+     * Stored cross-site scripting in SP Page Builder content (a page, draft, version, collection value, saved section
+     * or saved addon). Many sites add their own scripts (analytics, chat widgets) to pages, so a script alone is not a
+     * finding: only a script or handler with an attack sign is, plus the shapes legitimate content does not use
+     * (onerror/onload handlers, script handlers on SVG, iframes with inline content, xss.report).
+     *
+     * @return array{reasons: string[], snippet: string} reasons are stable labels (for Mark as Safe); empty when clean
+     */
+    public static function sppbContentThreats(string $text): array
+    {
+        $none = ['reasons' => [], 'snippet' => ''];
+        if ($text === '') return $none;
+        // The editor stores JSON (often with < escapes) and some fields hold HTML entities.
+        $text = str_ireplace(['\\u003c', '\\u003e', '\\u0022', '\\u0027', '\\/', '\\"', "\\'"], ['<', '>', '"', "'", '/', '"', "'"], $text);
+        $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        if (!preg_match('/<|javascript|xss\.report/i', $text)) return $none;
+
+        $reasons = [];
+        $snippet = '';
+        $add = static function (string $reason, string $code) use (&$reasons, &$snippet): void {
+            $reasons[$reason] = true;
+            if ($snippet === '') $snippet = mb_substr(preg_replace('/\s+/', ' ', $code), 0, 160);
+        };
+        if (preg_match('/[^\s"\'<>]{0,60}xss\.report[^\s"\'<>]{0,60}/i', $text, $m)) {
+            $add('points to xss.report (a cross-site scripting test service)', $m[0]);
+        }
+
+        // Code fragments: script bodies, inline handlers and javascript: URLs.
+        $fragments = [];
+        if (preg_match_all('/<script\b[^>]*>(.*?)(?:<\/script\s*>|$)/is', $text, $mm)) {
+            foreach ($mm[1] as $code) $fragments[] = $code;
+        }
+        if (preg_match_all('/<([a-z][a-z0-9-]*)\b[^>]*?\s(on[a-z]{3,20})\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s>]+))/i', $text, $mm, PREG_SET_ORDER)) {
+            foreach ($mm as $h) {
+                $code = ($h[3] ?? '') . ($h[4] ?? '') . ($h[5] ?? '');
+                $event = strtolower($h[2]);
+                if ($event === 'onerror' || $event === 'onload') {
+                    $add('an ' . $event . ' handler (the usual way injected markup runs code)', $h[0]);
+                } elseif (strtolower($h[1]) === 'svg') {
+                    $add('a script handler on an SVG image', $h[0]);
+                }
+                $fragments[] = $code;
+            }
+        }
+        if (preg_match_all('/javascript\s*:([^"<>]{0,400})/i', $text, $mm)) {
+            foreach ($mm[1] as $code) $fragments[] = $code;
+        }
+        if (preg_match('/<iframe\b[^>]*\ssrcdoc\s*=/i', $text, $m)) {
+            $add('an iframe with inline content (srcdoc)', $m[0]);
+        }
+        foreach ($fragments as $code) {
+            foreach (self::SPPB_ATTACK_SIGNS as $reason => $re) {
+                if (preg_match($re, $code)) $add('a script that ' . $reason, $code);
+            }
+        }
+        if (!$reasons) return $none;
+        $list = array_keys($reasons);
+        sort($list);
+        return ['reasons' => $list, 'snippet' => $snippet];
+    }
+
     /** Required for in-place modification: Clean code, Clean menu XSS. */
     public static function requireEditAccess(): void
     {
@@ -1601,7 +1721,7 @@ class MuruguardHelper
         return rtrim(JPATH_ROOT, '/') . '/' . $rel;
     }
 
-    private const FALSE_POSITIVE_CATEGORIES = ['file', 'superusers', 'menu_xss', 'sppb_assets', 'rogue_iconfont', 'template_defacement'];
+    private const FALSE_POSITIVE_CATEGORIES = ['file', 'superusers', 'menu_xss', 'sppb_assets', 'rogue_iconfont', 'template_defacement', 'sppb_pages'];
 
     /**
      * @param string $category One of FALSE_POSITIVE_CATEGORIES.
@@ -2059,6 +2179,162 @@ class MuruguardHelper
         } catch (\Throwable $e) {
             return null;
         }
+    }
+
+    /**
+     * Verdict for the update-site banner from #__extensions LEFT JOIN #__update_sites rows (extension_id, name,
+     * element, package_id, update_site_id, enabled; one row per linked update site, update_site_id null when none).
+     *
+     * An extension that is part of a package is updated through the package: Joomla registers the update site on the
+     * package (JCE: pkg_jce), not on each part, so a part counts as covered when its package has a working update
+     * site. Returns null when nothing is wrong, else ['disabled' => labels, 'missing' => labels]. "Missing" is only
+     * reported for the extensions named in $knownNames; "disabled" for any extension. Pure.
+     *
+     * @param array<int,array> $rows
+     * @param array<string,string> $knownNames element => label
+     */
+    public static function updateSiteHealth(array $rows, array $knownNames): ?array
+    {
+        $byExtension = [];
+        foreach ($rows as $row) {
+            $extId = (int) ($row['extension_id'] ?? 0);
+            if (!isset($byExtension[$extId])) {
+                $byExtension[$extId] = [
+                    'element' => (string) ($row['element'] ?? ''),
+                    'name'    => (string) ($row['name'] ?? ''),
+                    'package' => (int) ($row['package_id'] ?? 0),
+                    'any'     => false,
+                    'enabled' => false,
+                ];
+            }
+            if (($row['update_site_id'] ?? null) !== null) {
+                $byExtension[$extId]['any'] = true;
+                if ((int) ($row['enabled'] ?? 0) === 1) $byExtension[$extId]['enabled'] = true;
+            }
+        }
+
+        $disabled = [];
+        $missing  = [];
+        foreach ($byExtension as $info) {
+            if ($info['enabled']) continue;
+            $pkg = $info['package'];
+            if ($pkg > 0 && isset($byExtension[$pkg]) && $byExtension[$pkg]['enabled']) continue;
+
+            $label = $knownNames[$info['element']] ?? $info['name'];
+            if ($info['any']) {
+                $disabled[] = $label;
+            } elseif (isset($knownNames[$info['element']])) {
+                $pkgInfo = $pkg > 0 ? ($byExtension[$pkg] ?? null) : null;
+                // The package's own disabled site is reported for the package; do not report the part twice.
+                if ($pkgInfo !== null && $pkgInfo['any']) continue;
+                $missing[] = $label;
+            }
+        }
+
+        if (empty($disabled) && empty($missing)) return null;
+        return ['disabled' => array_values(array_unique($disabled)), 'missing' => array_values(array_unique($missing))];
+    }
+
+    /**
+     * Highest version named in a curated advisory's free text, for advisories whose structured affectedFrom /
+     * affectedTo are both blank ("1.5 and previous", "pre 8.7.0", "EDocman, 1.23.3, XSS"), or null when the text
+     * names no version. Pure.
+     */
+    public static function advisoryBoundFromText(string $text): ?string
+    {
+        $range = self::advisoryRangeFromText($text);
+        return $range === null ? null : $range['bound'];
+    }
+
+    /**
+     * The affected range a curated advisory's text implies: ['bound' => highest version named, 'inclusive' => bool].
+     * "pre 8.7.0", "before 8.7.0", "prior to 8.7.0" and "< 8.7.0" exclude the bound itself; every other wording
+     * ("and previous", "<= 2.0", a lone tested version) includes it. Null when the text names no version. Pure.
+     *
+     * @return array{bound:string,inclusive:bool}|null
+     */
+    public static function advisoryRangeFromText(string $text): ?array
+    {
+        $text = trim($text);
+        if ($text === '' || !preg_match_all('/\d+(?:\.\d+)+/', $text, $m)) return null;
+
+        $bound = $m[0][0];
+        foreach ($m[0] as $v) {
+            if (version_compare($v, $bound, '>')) $bound = $v;
+        }
+        $exclusive = (bool) preg_match('/(?:\bpre|\bbefore|\bprior\s+to|<(?!=))\s*v?' . preg_quote($bound, '/') . '\b/i', $text);
+
+        return ['bound' => $bound, 'inclusive' => !$exclusive];
+    }
+
+    /**
+     * Cross-references installed extensions against the curated advisory feed. Only a confirmed match is reported,
+     * so an alert always means "this installed version is listed as affected". Rules, in order:
+     *  - the advisory must name an installed extension by its element AND its type (when the advisory gives one);
+     *  - extensions that ship with Joomla itself are skipped (Joomla's own updates cover them, and their short
+     *    element names such as "content" collide with third-party advisories);
+     *  - explicit affectedFrom / affectedTo bounds are inclusive; a fixedVersion at or below the installed version
+     *    clears the match;
+     *  - with no structured bounds the highest version in the advisory text is the upper bound (see
+     *    advisoryRangeFromText()), so a newer install is not reported;
+     *  - an advisory with no version anywhere (no bounds, no fixed version, none in its text) is not reported:
+     *    nothing says which versions it covers, so it cannot be confirmed for this install.
+     * Pure -- no Joomla, no I/O.
+     *
+     * @param array<int,array> $advisories feed rows
+     * @param array<int,array> $installed  rows with element, type, name, version, optional core
+     * @return array<int,array>
+     */
+    public static function matchVulnerabilityAdvisories(array $advisories, array $installed): array
+    {
+        $byElement = [];
+        foreach ($installed as $ext) {
+            if (!is_array($ext) || !empty($ext['core'])) continue;
+            $byElement[strtolower((string) ($ext['element'] ?? ''))][] = $ext;
+        }
+
+        $matches = [];
+        foreach ($advisories as $advisory) {
+            if (!is_array($advisory)) continue;
+            $element = strtolower(trim((string) ($advisory['extensionElement'] ?? '')));
+            if ($element === '' || !isset($byElement[$element])) continue;
+            $advType = strtolower(trim((string) ($advisory['extensionType'] ?? '')));
+
+            $from  = trim((string) ($advisory['affectedFrom'] ?? ''));
+            $to    = trim((string) ($advisory['affectedTo'] ?? ''));
+            $fixed = trim((string) ($advisory['fixedVersion'] ?? ''));
+            $textRange = null;
+            if ($from === '' && $to === '') {
+                $textRange = self::advisoryRangeFromText((string) ($advisory['title'] ?? '') . ' ' . (string) ($advisory['extensionName'] ?? ''));
+                if ($textRange === null && $fixed === '') continue;
+            }
+
+            foreach ($byElement[$element] as $ext) {
+                if ($advType !== '' && strtolower((string) ($ext['type'] ?? '')) !== $advType) continue;
+                $version = (string) $ext['version'];
+
+                if ($from !== '' && version_compare($version, $from, '<')) continue;
+                if ($to !== '' && version_compare($version, $to, '>')) continue;
+                if ($textRange !== null && version_compare($version, $textRange['bound'], $textRange['inclusive'] ? '>' : '>=')) continue;
+                if ($fixed !== '' && version_compare($version, $fixed, '>=')) continue;
+
+                $matches[] = [
+                    'element'          => $element,
+                    'installedName'    => $ext['name'],
+                    'installedType'    => $ext['type'],
+                    'installedVersion' => $version,
+                    'extensionName'    => (string) ($advisory['extensionName'] ?? $ext['name']),
+                    'title'            => (string) ($advisory['title'] ?? ''),
+                    'severity'         => strtoupper((string) ($advisory['severity'] ?? 'MEDIUM')),
+                    'fixedVersion'     => $fixed !== '' ? $fixed : null,
+                    'cveId'            => $advisory['cveId'] ?? null,
+                    'advisoryUrl'      => $advisory['advisoryUrl'] ?? null,
+                    'description'      => $advisory['description'] ?? null,
+                ];
+            }
+        }
+
+        return $matches;
     }
 
     private const NEWSLETTER_OPT_IN_URL = 'https://store.lyzerslab.com/api/optin';
@@ -2818,6 +3094,9 @@ class MuruguardHelper
         $contents = @file_get_contents($absPath, false, null, 0, 4096);
         if ($contents === false) return null;
         if (self::isStandardJoomlaStub($contents)) return null;
+        // A layout that stops on direct access (the extension renders it itself) is not a hidden entry point. The
+        // content-signature scan still runs on it like on every other file.
+        if (self::startsWithJoomlaGuard($contents)) return null;
 
         $preview = trim(preg_replace('/\s+/', ' ', $contents));
         $preview = strlen($preview) > 220 ? substr($preview, 0, 220) . '…' : $preview;
@@ -3154,6 +3433,28 @@ class MuruguardHelper
         }
         $relNorm = ltrim(str_replace('\\', '/', $relPath), '/');
         return (bool) preg_match('#^media/com_hikashop/mail/#i', $relNorm);
+    }
+
+    /**
+     * True when the first statement of a PHP file is Joomla's "no direct access" guard
+     * (defined('_JEXEC') or die, or JPATH_PLATFORM / JPATH_BASE), with nothing before it but the opening tag,
+     * comments, declare(), namespace and use lines. Opened directly over the web, such a file stops at once, so it
+     * cannot serve as a webshell entry point; extensions use this shape for their own view layouts (JCE's
+     * Wfe/views/plugin/index.php, for one). Any other code first, HTML before the opening tag, or a guard that only
+     * comes later does not count. Pure.
+     */
+    public static function startsWithJoomlaGuard(string $contents): bool
+    {
+        $s = (string) preg_replace('/^\xEF\xBB\xBF/', '', $contents);
+        if (!preg_match('/^<\?php\b/i', $s)) return false;
+        $s = substr($s, 5);
+
+        $skip = '/^(?:\s+|\/\*.*?\*\/|\/\/[^\n]*|#(?!\[)[^\n]*|declare\s*\([^)]*\)\s*;|namespace\s+[A-Za-z0-9_\\\\]+\s*;|use\s+[A-Za-z0-9_\\\\,\s{}]+(?:\s+as\s+[A-Za-z0-9_]+)?\s*;)/is';
+        for ($i = 0; $i < 200 && preg_match($skip, $s, $m); $i++) {
+            $s = substr($s, strlen($m[0]));
+        }
+
+        return (bool) preg_match('/^\\\\?defined\s*\(\s*[\'"](?:_JEXEC|JPATH_PLATFORM|JPATH_BASE)[\'"]\s*\)\s*(?:or|\|\|)\s*(?:die|exit)\b/i', $s);
     }
 
     /**

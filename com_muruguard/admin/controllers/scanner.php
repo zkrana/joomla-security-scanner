@@ -749,6 +749,43 @@ public function scan()
      * that separately so the admin isn't misled by a setting with no
      * effect).
      */
+    /** Security presets: apply a protection level (only its settings change; the previous values are kept for Undo). */
+    public function applypreset()
+    {
+        Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
+        \MuruguardHelper::requireAdminAccess();
+        $app = Factory::getApplication();
+        $level = $app->input->getCmd('preset', '');
+        $back = 'index.php?option=com_muruguard&view_panel=settings&settings_tab=site_protection#muru-presets';
+        require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/presets.php';
+        if (!\MuruguardPresets::isLevel($level)) {
+            $app->enqueueMessage(Text::_('COM_MURUGUARD_PRESET_UNKNOWN'), 'error');
+            $this->setRedirect($back);
+            return;
+        }
+        /** @var MuruguardModelScanner $model */
+        $model = $this->getModel('Scanner');
+        $changed = $model->applySecurityPreset($level);
+        $name = Text::_('COM_MURUGUARD_PRESET_' . strtoupper($level));
+        $app->enqueueMessage($changed > 0
+            ? Text::sprintf('COM_MURUGUARD_PRESET_APPLIED', $name, $changed)
+            : Text::sprintf('COM_MURUGUARD_PRESET_ALREADY', $name), 'message');
+        $this->setRedirect($back);
+    }
+
+    /** Security presets: put back the settings the last preset changed. */
+    public function undopreset()
+    {
+        Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
+        \MuruguardHelper::requireAdminAccess();
+        $app = Factory::getApplication();
+        /** @var MuruguardModelScanner $model */
+        $model = $this->getModel('Scanner');
+        $ok = $model->undoSecurityPreset();
+        $app->enqueueMessage(Text::_($ok ? 'COM_MURUGUARD_PRESET_UNDONE' : 'COM_MURUGUARD_PRESET_NOTHING_TO_UNDO'), $ok ? 'message' : 'warning');
+        $this->setRedirect('index.php?option=com_muruguard&view_panel=settings&settings_tab=site_protection#muru-presets');
+    }
+
     public function saveshieldsettings()
     {
         Session::checkToken() or jexit(Text::_('JINVALID_TOKEN'));
@@ -765,6 +802,7 @@ public function scan()
         $blockUserAgents  = (bool) $input->getInt('shield_block_useragents', 0);
         $blockCountries   = (bool) $input->getInt('shield_block_countries', 0);
         $blockedCountries = $input->getString('shield_blocked_countries', '');
+        $sppbEndpoints    = (bool) $input->getInt('sppb_guard_endpoints', 1);
 
         /** @var MuruguardModelScanner $model */
         $model = $this->getModel('Scanner');
@@ -790,7 +828,8 @@ public function scan()
             $window,
             $blockUserAgents,
             $blockCountries,
-            $blockedCountries
+            $blockedCountries,
+            $sppbEndpoints
         );
 
         $app->enqueueMessage(Text::_('COM_MURUGUARD_SETTINGS_SAVED_MSG'), 'message');

@@ -45,6 +45,9 @@ class MuruguardViewScanner extends HtmlView
     public $canDelete = false;
     public $canEdit = false;
     public $canAdmin = false;
+    /** Security presets: active level, plans and Undo (see MuruguardModelScanner::getSecurityPresetState()). */
+    public $securityPresets = [];
+    public $sppbGuardEndpoints = true;
     public $shieldEnabled = false;
     public $shieldBlockPatterns = false;
     public $shieldBlockBruteForce = false;
@@ -125,6 +128,14 @@ class MuruguardViewScanner extends HtmlView
 
         /** @var MuruguardModelScanner $model */
         $model = $this->getModel('Scanner');
+        // Security presets (cheap: one read of the params row).
+        if ($this->canAdmin) {
+            try {
+                $this->securityPresets = $model->getSecurityPresetState();
+            } catch (\Throwable $e) {
+                $this->securityPresets = [];
+            }
+        }
 
         // Show SPPB version warning
         $this->sppbWarning = $model->getSppbVersionWarning();
@@ -177,6 +188,7 @@ class MuruguardViewScanner extends HtmlView
         $this->attackLog             = MuruguardHelper::getAttackLog();
         $this->attackLogArchiveCount = MuruguardHelper::getAttackLogArchiveCount();
         $this->shieldBlockUserAgents = (bool) $cfgParams->get('shield_block_useragents', 0);
+        $this->sppbGuardEndpoints    = (bool) $cfgParams->get('sppb_guard_endpoints', 1);
         $this->shieldBlockCountries  = (bool) $cfgParams->get('shield_block_countries', 0);
         $this->shieldBlockedCountries = (string) $cfgParams->get('shield_blocked_countries', '');
         $this->geoipStatus           = $model->getGeoIpStatus();

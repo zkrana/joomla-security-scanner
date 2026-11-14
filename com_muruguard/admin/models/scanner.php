@@ -14,6 +14,7 @@ use Joomla\CMS\Language\Text;
 require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/compat.php';
 require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/muruguard.php';
 require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/insights.php';
+require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/extensions.php';
 
 /**
  * Internal control-flow signal only -- thrown from inside scanFilesystem()'s
@@ -35,7 +36,7 @@ class MuruguardModelScanner extends MuruguardCompatDatabaseModel
     protected array $fileFindings = [];
     protected array $dbFindings = [
         'superusers' => [], 'menu_xss' => [], 'sppb_assets' => [],
-        'rogue_iconfont' => [], 'template_defacement' => [], 'vulnerable_extensions' => [],
+        'rogue_iconfont' => [], 'template_defacement' => [], 'vulnerable_extensions' => [], 'sppb_pages' => [],
     ];
     protected array $seenAbs = [];
     protected ?array $registeredTemplatesCache = null;
@@ -325,6 +326,12 @@ class MuruguardModelScanner extends MuruguardCompatDatabaseModel
 
         try { $out['news'] = \MuruguardInsights::fetchSecurityNews(5); } catch (\Throwable $e) { $out['news'] = []; }
 
+        try {
+            $out['extensions'] = $this->getExtensionHealth($now);
+        } catch (\Throwable $e) {
+            $out['extensions'] = ['abandoned' => [], 'unused' => [], 'checked' => 0];
+        }
+
         $htTotal = count($htaccess['checks'] ?? []);
         $htPresent = count(array_filter($htaccess['checks'] ?? [], fn($c) => !empty($c['present'])));
         $out['score'] = \MuruguardInsights::computeSecurityScore([
@@ -343,6 +350,140 @@ class MuruguardModelScanner extends MuruguardCompatDatabaseModel
         ]);
         $out['scanned'] = $openFindings >= 0;
         return $out;
+    }
+
+    /**
+     * Installed third-party extensions worth a second look (see MuruguardExtensionHealth): abandoned ones and unused
+     * ones. Core extensions, MuRu Guard itself and the parts of an installed package (they cannot be removed on their
+     * own) are left out. Plain queries only, so it runs on Joomla 3.10 and Joomla 4 to 6.
+     */
+    public function getExtensionHealth(int $now): array
+    {
+        $db = $this->getDatabase();
+        $types = array_map([$db, 'quote'], ['component', 'module', 'plugin', 'template', 'library', 'package', 'file']);
+        $all = (array) $db->setQuery(
+            $db->getQuery(true)
+                ->select($db->quoteName(['extension_id', 'name', 'type', 'element', 'folder', 'client_id', 'enabled', 'manifest_cache', 'package_id']))
+                ->from($db->quoteName('#__extensions'))
+                ->where($db->quoteName('type') . ' IN (' . implode(',', $types) . ')')
+        )->loadAssocList('extension_id');
+
+        $sites = array_flip(array_map('intval', (array) $db->setQuery(
+            $db->getQuery(true)->select('DISTINCT ' . $db->quoteName('use.extension_id'))
+                ->from($db->quoteName('#__update_sites_extensions', 'use'))
+                ->join('INNER', $db->quoteName('#__update_sites', 'us') . ' ON ' . $db->quoteName('us.update_site_id') . ' = ' . $db->quoteName('use.update_site_id'))
+                ->where($db->quoteName('us.enabled') . ' = 1')
+        )->loadColumn()));
+        $updates = array_flip(array_map('intval', (array) $db->setQuery(
+            $db->getQuery(true)->select('DISTINCT ' . $db->quoteName('extension_id'))->from($db->quoteName('#__updates'))
+                ->where($db->quoteName('extension_id') . ' > 0')
+        )->loadColumn()));
+
+        // Published module instances per module and client.
+        $published = [];
+        foreach ((array) $db->setQuery(
+            $db->getQuery(true)->select([$db->quoteName('module'), $db->quoteName('client_id'), 'COUNT(*) AS n'])
+                ->from($db->quoteName('#__modules'))->where($db->quoteName('published') . ' = 1')
+                ->group([$db->quoteName('module'), $db->quoteName('client_id')])
+        )->loadAssocList() as $m) {
+            $published[$m['module'] . '|' . (int) $m['client_id']] = (int) $m['n'];
+        }
+        // Site templates in use: a default style (home is '1' or a language code) or a style a menu item uses.
+        $styleTemplate = [];
+        $templateInUse = [];
+        foreach ((array) $db->setQuery(
+            $db->getQuery(true)->select($db->quoteName(['id', 'template', 'home']))->from($db->quoteName('#__template_styles'))
+                ->where($db->quoteName('client_id') . ' = 0')
+        )->loadAssocList() as $st) {
+            $styleTemplate[(int) $st['id']] = (string) $st['template'];
+            if ((string) $st['home'] !== '0' && (string) $st['home'] !== '') $templateInUse[(string) $st['template']] = true;
+        }
+        foreach ((array) $db->setQuery(
+            $db->getQuery(true)->select('DISTINCT ' . $db->quoteName('template_style_id'))->from($db->quoteName('#__menu'))
+                ->where($db->quoteName('template_style_id') . ' > 0')->where($db->quoteName('client_id') . ' = 0')
+        )->loadColumn() as $sid) {
+            if (isset($styleTemplate[(int) $sid])) $templateInUse[$styleTemplate[(int) $sid]] = true;
+        }
+
+        $abandonedRows = [];
+        $unusedRows = [];
+        $owners = [];
+        $checked = 0;
+        foreach ($all as $id => $e) {
+            $pkg = (int) ($e['package_id'] ?? 0);
+            if ($pkg > 0 && isset($all[$pkg])) continue; // part of an installed package: judged as the package
+            $core = false;
+            try {
+                $core = \Joomla\CMS\Extension\ExtensionHelper::checkIfCoreExtension((string) $e['type'], (string) $e['element'], (int) $e['client_id'], (string) $e['folder']);
+            } catch (\Throwable $ex) {
+                continue; // without the core list nothing can be told apart: never guess
+            }
+            if ($core) continue;
+            $checked++;
+            if ($e['type'] === 'component') $owners[] = preg_replace('/^com_/', '', (string) $e['element']);
+            if ($e['type'] === 'template') $owners[] = (string) $e['element'];
+            $mc = json_decode((string) $e['manifest_cache'], true) ?: [];
+            $name = (string) ($mc['name'] ?? $e['name']);
+            $installed = null;
+            foreach (\MuruguardExtensionHealth::manifestCandidates((string) $e['type'], (string) $e['element'], (string) $e['folder'], (int) $e['client_id']) as $file) {
+                if (is_file($file)) { $installed = (int) filemtime($file); break; }
+            }
+            $abandonedRows[] = [
+                'id' => (int) $id, 'name' => $name, 'type' => (string) $e['type'], 'element' => (string) $e['element'],
+                'created' => (string) ($mc['creationDate'] ?? ''), 'version' => (string) ($mc['version'] ?? ''), 'installed' => $installed,
+                'hasUpdateSite' => isset($sites[(int) $id]), 'updateAvailable' => isset($updates[(int) $id]),
+            ];
+            if (in_array($e['type'], ['component', 'module', 'plugin', 'template'], true)) {
+                $row = ['id' => (int) $id, 'name' => $name, 'type' => (string) $e['type'], 'element' => (string) $e['element'],
+                        'folder' => (string) $e['folder'], 'enabled' => (int) $e['enabled'] === 1, 'clientId' => (int) $e['client_id']];
+                if ($e['type'] === 'module') $row['publishedModules'] = $published[$e['element'] . '|' . (int) $e['client_id']] ?? 0;
+                if ($e['type'] === 'template' && (int) $e['client_id'] === 0) $row['templateInUse'] = isset($templateInUse[(string) $e['element']]);
+                $unusedRows[] = $row;
+            }
+        }
+        $abandoned = \MuruguardExtensionHealth::abandoned($abandonedRows, $now);
+        $unused = \MuruguardExtensionHealth::unused($unusedRows, $owners);
+        // Names as the Extensions screen shows them: many manifests hold a language key, not the name.
+        $byId = [];
+        foreach ($all as $id => $e) $byId[(int) $id] = $e;
+        foreach ([&$abandoned, &$unused] as &$list) {
+            foreach ($list as &$item) {
+                if (isset($byId[$item['id']])) $item['name'] = $this->translatedExtensionName($byId[$item['id']], $item['name']);
+            }
+            unset($item);
+        }
+        unset($list);
+        return ['abandoned' => $abandoned, 'unused' => $unused, 'checked' => $checked];
+    }
+
+    /** Loads an extension's .sys.ini (like Joomla's Extensions screen) and returns its translated name. */
+    private function translatedExtensionName(array $e, string $name): string
+    {
+        try {
+            $lang = Factory::getLanguage();
+            $element = (string) $e['element'];
+            $type = (string) $e['type'];
+            $client = (int) $e['client_id'] === 1 ? JPATH_ADMINISTRATOR : JPATH_SITE;
+            switch ($type) {
+                case 'component':
+                    $lang->load($element . '.sys', JPATH_ADMINISTRATOR) || $lang->load($element . '.sys', JPATH_ADMINISTRATOR . '/components/' . $element);
+                    break;
+                case 'module':
+                    $lang->load($element . '.sys', $client) || $lang->load($element . '.sys', $client . '/modules/' . $element);
+                    break;
+                case 'plugin':
+                    $file = 'plg_' . $e['folder'] . '_' . $element . '.sys';
+                    $lang->load($file, JPATH_ADMINISTRATOR) || $lang->load($file, JPATH_PLUGINS . '/' . $e['folder'] . '/' . $element);
+                    break;
+                case 'template':
+                    $lang->load('tpl_' . $element . '.sys', $client) || $lang->load('tpl_' . $element . '.sys', $client . '/templates/' . $element);
+                    break;
+            }
+            $t = Text::_($name);
+            return $t !== '' ? $t : $name;
+        } catch (\Throwable $ex) {
+            return $name;
+        }
     }
 
     /** Newest Joomla core version Joomla's own updater has found, or null when it has not checked. */
@@ -852,7 +993,8 @@ class MuruguardModelScanner extends MuruguardCompatDatabaseModel
         int $window,
         bool $blockUserAgents = false,
         bool $blockCountries = false,
-        string $blockedCountries = ''
+        string $blockedCountries = '',
+        bool $sppbEndpoints = true
     ): void {
         // Normalise to a clean, de-duplicated, comma-separated list of
         // 2-letter codes -- whatever stray formatting an admin pastes in
@@ -871,6 +1013,7 @@ class MuruguardModelScanner extends MuruguardCompatDatabaseModel
             'shield_block_useragents'    => $blockUserAgents ? 1 : 0,
             'shield_block_countries'     => $blockCountries ? 1 : 0,
             'shield_blocked_countries'   => implode(',', $codes),
+            'sppb_guard_endpoints'       => $sppbEndpoints ? 1 : 0,
         ]);
     }
 
@@ -898,6 +1041,103 @@ class MuruguardModelScanner extends MuruguardCompatDatabaseModel
                 }
             }
         };
+    }
+
+    /** The stored params blob, read straight from #__extensions (plain queries, so Joomla 3 works too). */
+    private function storedParams(): array
+    {
+        $db = $this->getDatabase();
+        $db->setQuery(
+            $db->getQuery(true)->select($db->quoteName('params'))->from($db->quoteName('#__extensions'))
+                ->where($db->quoteName('element') . ' = ' . $db->quote('com_muruguard'))
+                ->where($db->quoteName('type') . ' = ' . $db->quote('component'))
+        );
+        $params = json_decode((string) $db->loadResult(), true);
+        return is_array($params) ? $params : [];
+    }
+
+    /** Writes the whole params blob (used where keys must also be removed, which saveHardeningParams() cannot do). */
+    private function replaceStoredParams(array $params): void
+    {
+        $db = $this->getDatabase();
+        $db->setQuery(
+            $db->getQuery(true)->update($db->quoteName('#__extensions'))
+                ->set($db->quoteName('params') . ' = ' . $db->quote(json_encode($params)))
+                ->where($db->quoteName('element') . ' = ' . $db->quote('com_muruguard'))
+                ->where($db->quoteName('type') . ' = ' . $db->quote('component'))
+        )->execute();
+        if (MuruguardCompat::isJoomla4()) $this->cleanCache('_system');
+    }
+
+    /**
+     * Security presets: what applying each level would change, for the confirmation list.
+     *
+     * @return array{active: string, stored: string, plans: array, undo: ?array}
+     */
+    public function getSecurityPresetState(): array
+    {
+        require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/presets.php';
+        $params = $this->storedParams();
+        $plans = [];
+        foreach (\MuruguardPresets::LEVELS as $level) {
+            $plans[$level] = ['changes' => \MuruguardPresets::plan($params, $level)];
+        }
+        $undo = json_decode((string) ($params[\MuruguardPresets::UNDO] ?? ''), true);
+        return [
+            'active' => \MuruguardPresets::active($params),
+            'stored' => (string) ($params[\MuruguardPresets::STORED] ?? ''),
+            'plans' => $plans,
+            'undo' => is_array($undo) && !empty($undo['values']) ? $undo : null,
+        ];
+    }
+
+    /**
+     * Applies a protection level: only the settings the level sets are written (everything else is kept), the values
+     * they replace are saved for Undo, and Protected Users goes through its own setter (it takes the first snapshot).
+     *
+     * @return int how many settings changed
+     */
+    public function applySecurityPreset(string $level): int
+    {
+        require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/presets.php';
+        if (!\MuruguardPresets::isLevel($level)) return 0;
+        $stored = $this->storedParams();
+        $plan = \MuruguardPresets::plan($stored, $level);
+        $targets = \MuruguardPresets::targets($level);
+
+        $set = $targets;
+        unset($set['protected_users_enabled']);
+        $set[\MuruguardPresets::STORED] = $level;
+        // Applying the same level again (nothing to change) keeps the Undo of the earlier apply.
+        if ($plan !== []) $set[\MuruguardPresets::UNDO] = json_encode(\MuruguardPresets::undoSnapshot($stored, $level));
+        $this->saveHardeningParams($set);
+        if (isset($plan['protected_users_enabled'])) {
+            $this->saveProtectedUsersSetting((bool) $targets['protected_users_enabled']);
+        }
+        return count($plan);
+    }
+
+    /** Puts back the settings the last preset replaced (and the preset shown before it). Returns false when there is nothing to undo. */
+    public function undoSecurityPreset(): bool
+    {
+        require_once JPATH_ADMINISTRATOR . '/components/com_muruguard/helpers/presets.php';
+        $stored = $this->storedParams();
+        $undo = json_decode((string) ($stored[\MuruguardPresets::UNDO] ?? ''), true);
+        if (!is_array($undo) || empty($undo['values']) || !is_array($undo['values'])) return false;
+
+        $allowed = array_flip(\MuruguardPresets::keys());
+        $paramsLock = $this->lockParams();
+        $params = $this->storedParams();
+        foreach ($undo['values'] as $key => $value) {
+            if (!isset($allowed[$key])) continue; // only keys a preset can write
+            if ($value === null) unset($params[$key]); else $params[$key] = $value;
+        }
+        $prev = (string) ($undo['level'] ?? '');
+        $params[\MuruguardPresets::STORED] = \MuruguardPresets::isLevel($prev) ? $prev : '';
+        unset($params[\MuruguardPresets::UNDO]);
+        $this->replaceStoredParams($params);
+        unset($paramsLock);
+        return true;
     }
 
     private function saveHardeningParams(array $set): void
@@ -1282,6 +1522,88 @@ class MuruguardModelScanner extends MuruguardCompatDatabaseModel
     // ------------------------------------------------------------------
     // Filesystem scan
     // ------------------------------------------------------------------
+
+    /**
+     * SP Page Builder content (pages, unsaved 7.x drafts, saved versions, collection values, saved sections and saved
+     * addons) checked for stored cross-site scripting -- see MuruguardHelper::sppbContentThreats(). Report-only: the
+     * finding links to the page in SP Page Builder. Tables or columns a version does not have are skipped, so 3.x to
+     * 7.x all work. The database pre-filters rows on cheap words so only candidate rows reach PHP.
+     */
+    private function scanSppbPages(array $falsePositives): void
+    {
+        $this->dbFindings['sppb_pages'] = [];
+        $db = $this->getDatabase();
+        try {
+            $prefix = $db->getPrefix();
+            $tables = array_flip(array_map('strtolower', $db->getTableList()));
+        } catch (\Throwable $e) {
+            return;
+        }
+        if (!isset($tables[strtolower($prefix . 'sppagebuilder')])) return;
+
+        // source => [table, id column, page id column (or ''), title column (or ''), content columns]
+        $sources = [
+            'page'       => ['#__sppagebuilder', 'id', 'id', 'title', ['text', 'content', 'css']],
+            'draft'      => ['#__sppagebuilder_drafts', 'page_id', 'page_id', '', ['content', 'css']],
+            'version'    => ['#__sppagebuilder_versions', 'id', 'page_id', '', ['content', 'css']],
+            'collection' => ['#__sppagebuilder_collection_item_values', 'item_id', '', '', ['value']],
+            'section'    => ['#__sppagebuilder_sections', 'id', '', 'title', ['section', 'content']],
+            'addon'      => ['#__sppagebuilder_addons', 'id', '', 'title', ['code']],
+        ];
+        $words = ['script', 'onerror', 'onload', 'srcdoc', 'cookie', 'Storage', 'eval', 'atob', 'fromCharCode', 'unescape', 'Function', 'xss.report'];
+        $pageTitles = [];
+        foreach ($sources as $source => [$table, $idCol, $pageCol, $titleCol, $wanted]) {
+            if (count($this->dbFindings['sppb_pages']) >= 200) break;
+            $real = strtolower(str_replace('#__', $prefix, $table));
+            if (!isset($tables[$real])) continue;
+            try {
+                $have = array_map('strtolower', array_keys($db->getTableColumns($table)));
+                $cols = array_values(array_intersect($wanted, $have));
+                if (!$cols || !in_array($idCol, $have, true)) continue;
+                $select = array_unique(array_filter(array_merge([$idCol, $pageCol, in_array($titleCol, $have, true) ? $titleCol : ''], $cols)));
+                if ($source === 'collection' && in_array('field_id', $have, true)) $select[] = 'field_id';
+                $or = [];
+                foreach ($cols as $c) {
+                    foreach ($words as $w) $or[] = $db->quoteName($c) . ' LIKE ' . $db->quote('%' . $w . '%');
+                }
+                $offset = 0;
+                do {
+                    $query = $db->getQuery(true)->select($db->quoteName(array_values($select)))->from($db->quoteName($table))
+                        ->where('(' . implode(' OR ', $or) . ')')->order($db->quoteName($idCol));
+                    $db->setQuery($query, $offset, 100);
+                    $offset += 100;
+                    $rows = $db->loadAssocList() ?: [];
+                    foreach ($rows as $row) {
+                        $text = '';
+                        foreach ($cols as $c) $text .= "\n" . (string) ($row[$c] ?? '');
+                        $threat = MuruguardHelper::sppbContentThreats($text);
+                        if (!$threat['reasons']) continue;
+                        $id = (string) $row[$idCol];
+                        if ($source === 'collection') $id .= ':' . (string) ($row['field_id'] ?? '');
+                        $identifier = $source . ':' . $id;
+                        if (MuruguardHelper::isFalsePositive($falsePositives, 'sppb_pages', $identifier, MuruguardHelper::fingerprintReasons($threat['reasons']))) continue;
+                        $pageId = $pageCol !== '' ? (int) ($row[$pageCol] ?? 0) : 0;
+                        $title = (string) ($row[$titleCol] ?? '');
+                        if ($title === '' && $pageId > 0) {
+                            if (!array_key_exists($pageId, $pageTitles)) {
+                                $q = $db->getQuery(true)->select($db->quoteName('title'))->from($db->quoteName('#__sppagebuilder'))->where($db->quoteName('id') . ' = ' . $pageId);
+                                $db->setQuery($q);
+                                $pageTitles[$pageId] = (string) $db->loadResult();
+                            }
+                            $title = $pageTitles[$pageId];
+                        }
+                        $this->dbFindings['sppb_pages'][] = [
+                            'source' => $source, 'id' => $id, 'identifier' => $identifier, 'page_id' => $pageId, 'title' => $title,
+                            'matches' => $threat['reasons'], 'snippet' => $threat['snippet'],
+                        ];
+                        if (count($this->dbFindings['sppb_pages']) >= 200) break 2;
+                    }
+                } while (count($rows) === 100);
+            } catch (\Throwable $e) {
+                // A table that cannot be read is skipped; the other sources still run.
+            }
+        }
+    }
 
     /**
      * @param ?array $onlyDirs Restricts the SCAN_CONFIG directory walk to
@@ -2044,6 +2366,8 @@ class MuruguardModelScanner extends MuruguardCompatDatabaseModel
 
 }
 
+        $this->scanSppbPages($falsePositives);
+
         try {
             $query = $db->getQuery(true)->select('id, template, title, params, client_id')->from($db->quoteName('#__template_styles'));
             $db->setQuery($query);
@@ -2427,7 +2751,7 @@ class MuruguardModelScanner extends MuruguardCompatDatabaseModel
         try {
             $db    = $this->getDatabase();
             $query = $db->getQuery(true)
-                ->select($db->quoteName(['e.extension_id', 'e.name', 'e.element', 'us.update_site_id', 'us.enabled']))
+                ->select($db->quoteName(['e.extension_id', 'e.name', 'e.element', 'e.package_id', 'us.update_site_id', 'us.enabled']))
                 ->from($db->quoteName('#__extensions', 'e'))
                 ->join('LEFT', $db->quoteName('#__update_sites_extensions', 'use') . ' ON ' . $db->quoteName('use.extension_id') . ' = ' . $db->quoteName('e.extension_id'))
                 ->join('LEFT', $db->quoteName('#__update_sites', 'us') . ' ON ' . $db->quoteName('us.update_site_id') . ' = ' . $db->quoteName('use.update_site_id'))
@@ -2439,48 +2763,34 @@ class MuruguardModelScanner extends MuruguardCompatDatabaseModel
             return null;
         }
 
-        $knownNames = [
+        return MuruguardHelper::updateSiteHealth($rows, [
             'com_sppagebuilder' => 'SP Page Builder',
             'com_jce'           => 'JCE Editor',
-        ];
+        ]);
+    }
 
-        // Group by extension first -- a LEFT JOIN through
-        // #__update_sites_extensions can legitimately return more than
-        // one row per extension (an extension CAN register more than one
-        // update site), so a per-row decision would misjudge an extension
-        // that has one disabled site AND one working one.
-        $byExtension = [];
-        foreach ($rows as $row) {
-            $extId = (int) $row['extension_id'];
-            $byExtension[$extId]['element'] = $byExtension[$extId]['element'] ?? (string) $row['element'];
-            $byExtension[$extId]['name']    = $byExtension[$extId]['name']    ?? (string) $row['name'];
-            $byExtension[$extId]['sites'][]   = ['has' => $row['update_site_id'] !== null, 'enabled' => (int) ($row['enabled'] ?? 0) === 1];
-        }
-
-        $disabled = [];
-        $missing  = [];
-        foreach ($byExtension as $info) {
-            $label         = $knownNames[$info['element']] ?? $info['name'];
-            $hasAnySite     = false;
-            $hasEnabledSite = false;
-            foreach ($info['sites'] as $site) {
-                if ($site['has']) {
-                    $hasAnySite = true;
-                    if ($site['enabled']) $hasEnabledSite = true;
-                }
+    /**
+     * Whether an #__extensions row ships with Joomla itself. Joomla's own list is asked first: core extensions added
+     * by a later Joomla update get ids above 10000, so the id alone misses them. The id rule (Joomla gives the
+     * extensions of a fresh install ids below 10000) is the fallback when that list is not available.
+     */
+    protected static function isCoreExtensionRow(array $row): bool
+    {
+        $id = (int) ($row['extension_id'] ?? 0);
+        if ($id > 0 && $id < 10000) return true;
+        try {
+            if (class_exists('\\Joomla\\CMS\\Extension\\ExtensionHelper') && method_exists('\\Joomla\\CMS\\Extension\\ExtensionHelper', 'checkIfCoreExtension')) {
+                return (bool) \Joomla\CMS\Extension\ExtensionHelper::checkIfCoreExtension(
+                    (string) ($row['type'] ?? ''),
+                    (string) ($row['element'] ?? ''),
+                    (int) ($row['client_id'] ?? 0),
+                    (string) ($row['folder'] ?? '')
+                );
             }
-            if ($hasAnySite && !$hasEnabledSite) {
-                $disabled[] = $label;
-            } elseif (!$hasAnySite && isset($knownNames[$info['element']])) {
-                $missing[] = $label;
-            }
+        } catch (\Throwable $e) {
+            // fall through: treated as third-party
         }
-
-        if (empty($disabled) && empty($missing)) {
-            return null;
-        }
-
-        return ['disabled' => $disabled, 'missing' => $missing];
+        return false;
     }
 
     /**
@@ -2498,7 +2808,7 @@ class MuruguardModelScanner extends MuruguardCompatDatabaseModel
         try {
             $db = $this->getDatabase();
             $query = $db->getQuery(true)
-                ->select($db->quoteName(['element', 'type', 'name', 'manifest_cache']))
+                ->select($db->quoteName(['extension_id', 'element', 'type', 'folder', 'client_id', 'name', 'manifest_cache']))
                 ->from($db->quoteName('#__extensions'));
             $db->setQuery($query);
             $rows = $db->loadAssocList() ?: [];
@@ -2520,6 +2830,7 @@ class MuruguardModelScanner extends MuruguardCompatDatabaseModel
                 'type'    => (string) $row['type'],
                 'name'    => (string) $row['name'],
                 'version' => $version,
+                'core'    => self::isCoreExtensionRow($row),
             ];
         }
 
@@ -2548,48 +2859,6 @@ class MuruguardModelScanner extends MuruguardCompatDatabaseModel
         $installed = $this->getInstalledExtensionsWithVersions();
         if (empty($installed)) return [];
 
-        // Index installed extensions by element for O(1) lookup per advisory
-        // rather than a nested loop over every installed row per advisory.
-        $byElement = [];
-        foreach ($installed as $ext) {
-            $byElement[$ext['element']] = $ext;
-        }
-
-        $matches = [];
-        foreach ($advisories as $advisory) {
-            $element = strtolower(trim((string) ($advisory['extensionElement'] ?? '')));
-            if ($element === '' || !isset($byElement[$element])) continue;
-
-            $ext = $byElement[$element];
-            $version = $ext['version'];
-            $from = trim((string) ($advisory['affectedFrom'] ?? ''));
-            $to   = trim((string) ($advisory['affectedTo'] ?? ''));
-
-            if ($from !== '' && version_compare($version, $from, '<')) continue;
-            if ($to !== '' && version_compare($version, $to, '>')) continue;
-
-            // A fixed version already installed is never a match, even if
-            // it technically still falls inside an affectedTo bound the
-            // admin hasn't tightened yet (fixedVersion is the more
-            // trustworthy, more specific signal when both are present).
-            $fixedVersion = trim((string) ($advisory['fixedVersion'] ?? ''));
-            if ($fixedVersion !== '' && version_compare($version, $fixedVersion, '>=')) continue;
-
-            $matches[] = [
-                'element'        => $element,
-                'installedName'  => $ext['name'],
-                'installedType'  => $ext['type'],
-                'installedVersion' => $version,
-                'extensionName'  => (string) ($advisory['extensionName'] ?? $ext['name']),
-                'title'          => (string) ($advisory['title'] ?? ''),
-                'severity'       => strtoupper((string) ($advisory['severity'] ?? 'MEDIUM')),
-                'fixedVersion'   => $fixedVersion !== '' ? $fixedVersion : null,
-                'cveId'          => $advisory['cveId'] ?? null,
-                'advisoryUrl'    => $advisory['advisoryUrl'] ?? null,
-                'description'    => $advisory['description'] ?? null,
-            ];
-        }
-
-        return $matches;
+        return MuruguardHelper::matchVulnerabilityAdvisories($advisories, $installed);
     }
 }
